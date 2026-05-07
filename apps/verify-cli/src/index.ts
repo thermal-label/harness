@@ -33,6 +33,7 @@ interface VerifyCommandOptions {
   dryRun?: boolean;
   /** Inverted by commander from `--no-submit`; `true` (default) = submit. */
   submit?: boolean;
+  preview?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
 }
@@ -78,6 +79,10 @@ program
     'Run the print + assessment, but render the body to stdout instead of submitting. Useful when iterating on the print.',
   )
   .option(
+    '--preview',
+    'Print the diagnostic bitmap as ASCII to stdout before sending bytes (or alone, with --dry-run).',
+  )
+  .option(
     '--reporter <handle>',
     'Optional reporter handle (e.g. @mannes); appears in the issue body.',
   )
@@ -114,6 +119,7 @@ program
         // commander turns `--no-submit` into `submit: false`; absence is the
         // default, treated as wanting submit.
         noSubmit: options.submit === false,
+        preview: options.preview === true,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
       });

@@ -19,6 +19,8 @@ export interface VerifyOptions {
   dryRun: boolean;
   /** Run the real print + assessment, but render the body to stdout instead of submitting. */
   noSubmit: boolean;
+  /** Print the diagnostic bitmap as ASCII to stdout before sending. With --dry-run, prints alone. */
+  preview: boolean;
   reporter: string | undefined;
   /** Labelmanager-specific. Defaults to 12 mm. */
   tapeWidth: 6 | 9 | 12 | 19 | undefined;

@@ -68,9 +68,10 @@ const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
  * Build the head-aligned diagnostic bitmap. Width matches the head dot
  * count for the chosen tape; height grows as sections are stacked.
  *
- * Exported separately from `encodeDiagnosticPrint` so tests (plan 05
- * step 6) can snapshot the bitmap dimensions without going through the
- * full `buildPrinterStream` pipeline.
+ * Exported separately from `encodeBitmap` so the orchestrator can
+ * preview the bitmap before printing, and tests can snapshot bitmap
+ * dimensions without going through the full `buildPrinterStream`
+ * pipeline.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap {
   const headDots = HEAD_DOTS_FOR_TAPE[input.tapeWidth];
@@ -117,14 +118,17 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
 }
 
 /**
- * Encode the diagnostic print to printer wire bytes for the active USB
- * Printer-Class endpoint. Uses `buildPrinterStream` (the labelle-style
- * raw-byte path), not the HID-report path — node-side USB driver writes
- * to bulk EP 5 OUT.
+ * Encode an already-built bitmap to printer wire bytes for the active
+ * USB Printer-Class endpoint. Uses `buildPrinterStream` (the
+ * labelle-style raw-byte path), not the HID-report path — node-side USB
+ * driver writes to bulk EP 5 OUT.
+ *
+ * Split from `buildDiagnosticBitmap` so the orchestrator can preview
+ * the bitmap (via `renderBitmapPreview`) before committing bytes to
+ * the wire.
  */
-export function encodeDiagnosticPrint(input: DiagnosticPrintInput): Uint8Array {
-  const bitmap = buildDiagnosticBitmap(input);
-  return buildPrinterStream(bitmap, { tapeWidth: input.tapeWidth, copies: 1 });
+export function encodeBitmap(bitmap: LabelBitmap, tapeWidth: TapeWidth): Uint8Array {
+  return buildPrinterStream(bitmap, { tapeWidth, copies: 1 });
 }
 
 /**

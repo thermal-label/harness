@@ -40,8 +40,10 @@ import {
   type PromptContext,
 } from '../../prompts.js';
 import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
-import { encodeDiagnosticPrint } from './diagnostic-print.js';
+import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
+import { renderBitmapPreview } from '../../bitmap-preview.js';
+import type { LabelBitmap } from '@mbtech-nl/bitmap';
 
 const DRIVER_KEY = 'labelmanager';
 const HARNESS_VERSION = '0.0.0';
@@ -79,7 +81,22 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
 
   printSessionHeader(device, transport, tapeWidth);
 
-  const identity = await runConnect(device, options, tapeWidth);
+  // Build the bitmap up front so `--preview` can show it before any
+  // hardware contact, and so dry-run + preview is a useful combo
+  // (see what's about to print without needing a printer).
+  const bitmap = buildDiagnosticBitmap({
+    device,
+    tapeWidth,
+    harnessVersion: HARNESS_VERSION,
+    driverVersion: DRIVER_VERSION,
+  });
+
+  if (options.preview) {
+    console.log(renderBitmapPreview(bitmap));
+    console.log('');
+  }
+
+  const identity = await runConnect(device, options, bitmap, tapeWidth);
 
   const rung = await resolveRung(options, ctx);
   const notes = await resolveNotes(options, ctx);
@@ -195,6 +212,7 @@ function printSessionHeader(
 async function runConnect(
   device: LabelManagerDevice,
   options: VerifyOptions,
+  bitmap: LabelBitmap,
   tapeWidth: 6 | 9 | 12 | 19,
 ): Promise<IdentitySnapshot> {
   if (options.dryRun) {
@@ -222,12 +240,7 @@ async function runConnect(
   );
 
   console.log('Encoding diagnostic print...');
-  const bytes = encodeDiagnosticPrint({
-    device,
-    tapeWidth,
-    harnessVersion: HARNESS_VERSION,
-    driverVersion: DRIVER_VERSION,
-  });
+  const bytes = encodeBitmap(bitmap, tapeWidth);
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
   try {
     await writeDiagnosticPrint(session.transport, bytes);
