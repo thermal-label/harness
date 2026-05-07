@@ -1,0 +1,40 @@
+{
+  "name": "@thermal-label/harness-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Schemas, types, serializers, and env-scoped runtime helpers for the thermal-label hardware-reporting harness. Workspace-internal — never published.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mannes Brak",
+  "sideEffects": false,
+  "exports": {
+    "./shared": {
+      "types": "./src/shared/index.ts",
+      "import": "./src/shared/index.ts"
+    },
+    "./web": {
+      "types": "./src/web/index.ts",
+      "import": "./src/web/index.ts"
+    },
+    "./cli": {
+      "types": "./src/cli/index.ts",
+      "import": "./src/cli/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@thermal-label/contracts": "^0.5.0"
+  },
+  "devDependencies": {
+    "@mbtech-nl/tsconfig": "^1.1.0",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "typescript": "~5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
