@@ -43,11 +43,15 @@ Steps:
    booleans — the operator's eyes are the source of truth.
 6. **Optional notes** — free-text one-liner, e.g. "left edge clipped
    on 12 mm tape".
-7. **Submit** — `gh issue create` if available, otherwise a prefilled
-   GitHub URL printed to the terminal, otherwise the JSON dumped to
-   stdout with the maintainer email as a last resort. Photos go into
-   the GitHub issue comment after submit using GitHub's native
-   attachment UI; the harness has no photo path.
+7. **Submit?** — wizard asks "Submit this report now?" (defaults yes).
+   Answer no to print the body to stdout without filing — useful when
+   you want to re-print and look again. Re-running the command repeats
+   the connect+print; pass the same flags to skip prompts second time.
+8. **Submit** — `gh issue create` if available; otherwise the prefilled
+   GitHub URL is printed AND auto-opened in your default browser
+   (`xdg-open`/`open`/`start`); JSON-dump-to-stdout + email is the last
+   resort. Photos go into the GitHub issue comment after submit using
+   GitHub's native attachment UI; the harness has no photo path.
 
 ## Expert flags
 
@@ -63,17 +67,18 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
   --reporter "@mannes"
 ```
 
-| Flag                     | Effect                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                   |
-| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.            |
-| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect. |
-| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.            |
-| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                   |
-| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).              |
-| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**    |
-| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                |
-| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                    |
+| Flag                     | Effect                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                                                                   |
+| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                            |
+| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                 |
+| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                            |
+| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                                                                   |
+| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).                                                              |
+| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**                                                    |
+| `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing. |
+| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                |
+| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                    |
 
 ## Dry-run output
 
@@ -152,15 +157,17 @@ diagnostic [pass] — bench self-validation
 The labelmanager diagnostic print stitches several head-aligned sections
 vertically:
 
-1. **Header** — harness version, model key, `LM-DIAG` banner (1x then
-   2x scale).
+1. **Header** — harness version (`v0.0.0`) and model key (e.g.
+   `LM_PNP`), each on its own 1x line. Both fit the 64-dot 12 mm head;
+   strings deliberately short to avoid right-edge clipping.
 2. **Orientation marker (top)** — `TOP>`. Asymmetric vs the bottom
    marker so mirror / upside-down jumps out without measuring.
 3. **Edge probes** — left and right. Bars step in 2-dot increments
    along the chosen edge; the first row whose bar didn't print marks
    the printable margin.
-4. **Sample text** — `Sample 1x` and `SAMP 2x` for legibility eyeball
-   at both scales.
+4. **Sample text** — `TXT 1X` (1x) and `2X` (2x) for legibility
+   eyeball at both scales. Strings sized to fit the 64-dot 12 mm
+   head at the requested scale.
 5. **Fill region** — alternating 1-dot stripes for density uniformity.
 6. **Orientation marker (bottom)** — `B`. Single-character, distinct
    from `TOP>`.

@@ -41,7 +41,7 @@ import {
 } from '../../prompts.js';
 import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
 import { encodeDiagnosticPrint } from './diagnostic-print.js';
-import { submitIssue, buildPrefillUrl } from '../../submit.js';
+import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 
 const DRIVER_KEY = 'labelmanager';
 const HARNESS_VERSION = '0.0.0';
@@ -101,6 +101,21 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
     return;
   }
 
+  // Optional submit step. `--no-submit` is the non-interactive bypass;
+  // wizard mode asks. Either way: skip-submit prints the body to stdout
+  // so the operator can iterate on the print (re-run the command) and
+  // file later by hand.
+  const shouldSubmit = await resolveShouldSubmit(options, ctx);
+  if (!shouldSubmit) {
+    console.log('');
+    console.log('Skipping submit. The rendered issue body is below — re-run the');
+    console.log('command to print again, or paste this body into a new issue when');
+    console.log('you are ready.');
+    console.log('');
+    process.stdout.write(body);
+    return;
+  }
+
   const title = buildIssueTitle(report);
   const result = await submitIssue({
     repo: TARGET_REPO,
@@ -115,13 +130,19 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
       console.log(`Filed via gh: ${result.detail ?? '(unknown URL)'}`);
       console.log("Have a photo? Drop it into that issue's comment thread.");
       return;
-    case 'prefill-url':
-      console.log('gh CLI not available. Open this URL in a browser:');
+    case 'prefill-url': {
+      const url = result.detail ?? '';
+      console.log('gh CLI not available. Opening this URL in your browser:');
       console.log('');
-      console.log(result.detail ?? '');
+      console.log(url);
       console.log('');
+      const launcher = openInBrowser(url);
+      if (launcher) {
+        console.log(`(Tried ${launcher}; if nothing opened, copy the URL above.)`);
+      }
       console.log("Have a photo? Drop it into the issue's comment thread after submit.");
       return;
+    }
     case 'clipboard-fallback':
       console.log(
         "Prefill URL would exceed GitHub's limit. Copy the JSON below into a new issue " +
@@ -291,6 +312,17 @@ async function resolveRung(options: VerifyOptions, ctx: PromptContext): Promise<
     'How does the diagnostic print look?',
     RUNG_CHOICES,
   );
+}
+
+async function resolveShouldSubmit(options: VerifyOptions, ctx: PromptContext): Promise<boolean> {
+  // Explicit `--no-submit` always wins, regardless of wizard mode.
+  if (options.noSubmit) return false;
+  // Non-interactive default: submit (matches the maintainer one-liner
+  // for self-validating known-good hardware).
+  if (ctx.noPrompt) return true;
+  // Wizard: ask. Default to submit-yes because that's the common path
+  // and re-running for another print is cheap.
+  return promptConfirm(ctx, 'submit', 'Submit this report now?', true);
 }
 
 async function resolveNotes(

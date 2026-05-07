@@ -31,6 +31,8 @@ interface VerifyCommandOptions {
   /** Inverted by commander from `--no-prompt`; `true` (default) = wizard. */
   prompt?: boolean;
   dryRun?: boolean;
+  /** Inverted by commander from `--no-submit`; `true` (default) = submit. */
+  submit?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
 }
@@ -67,7 +69,14 @@ program
   )
   .option('-n, --notes <notes>', 'Pre-fill the operator notes free-text field.')
   .option('--no-prompt', 'Fail fast if any further prompt would be needed.')
-  .option('--dry-run', 'Render the IssueBody to stdout instead of submitting.')
+  .option(
+    '--dry-run',
+    'Render the IssueBody to stdout instead of submitting (no print, no transport).',
+  )
+  .option(
+    '--no-submit',
+    'Run the print + assessment, but render the body to stdout instead of submitting. Useful when iterating on the print.',
+  )
   .option(
     '--reporter <handle>',
     'Optional reporter handle (e.g. @mannes); appears in the issue body.',
@@ -102,6 +111,9 @@ program
         // (no flag) is `prompt: true`. Map it to a positive `wizard` boolean.
         wizard: options.prompt !== false,
         dryRun: options.dryRun === true,
+        // commander turns `--no-submit` into `submit: false`; absence is the
+        // default, treated as wanting submit.
+        noSubmit: options.submit === false,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
       });

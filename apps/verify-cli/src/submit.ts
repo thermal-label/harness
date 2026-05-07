@@ -17,8 +17,33 @@
  * short-circuits to stdout before submit.
  */
 import { spawn } from 'node:child_process';
+import { platform } from 'node:os';
 
 const MAX_PREFILL_URL_LENGTH = 7_500; // GitHub truncates ~8 KB; stay clear.
+
+/**
+ * Best-effort cross-platform "open in default browser." Returns the
+ * launcher used (or `null` if no plausible launcher is available, which
+ * is rare on real systems).
+ *
+ * Detached + unref'd so the harness exit doesn't kill the browser
+ * window. Stdio ignored — we don't care about the launcher's chatter.
+ */
+export function openInBrowser(url: string): string | null {
+  const p = platform();
+  if (p === 'darwin') {
+    spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    return 'open';
+  }
+  if (p === 'win32') {
+    spawn('cmd', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+    return 'start';
+  }
+  // Linux / BSD: xdg-open is the de-facto standard. If it's missing the
+  // spawn errors silently — caller still has the URL printed to stdout.
+  spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+  return 'xdg-open';
+}
 
 export interface SubmitTarget {
   /** GitHub `owner/repo` for the driver repo (e.g. `thermal-label/labelmanager`). */

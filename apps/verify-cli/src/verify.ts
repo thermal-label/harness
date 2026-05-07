@@ -17,6 +17,8 @@ export interface VerifyOptions {
   notes: string | undefined;
   wizard: boolean;
   dryRun: boolean;
+  /** Run the real print + assessment, but render the body to stdout instead of submitting. */
+  noSubmit: boolean;
   reporter: string | undefined;
   /** Labelmanager-specific. Defaults to 12 mm. */
   tapeWidth: 6 | 9 | 12 | 19 | undefined;
