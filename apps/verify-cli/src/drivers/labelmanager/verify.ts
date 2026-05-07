@@ -41,11 +41,14 @@ import {
 } from '../../prompts.js';
 import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
 import { encodeDiagnosticPrint } from './diagnostic-print.js';
+import { submitIssue, buildPrefillUrl } from '../../submit.js';
 
 const DRIVER_KEY = 'labelmanager';
 const HARNESS_VERSION = '0.0.0';
 const DRIVER_VERSION = '0.5.1';
 const DEFAULT_TAPE_WIDTH = 12 as const;
+const TARGET_REPO = 'thermal-label/labelmanager';
+const FALLBACK_EMAIL = 'mannes@krukje.nl';
 
 const SUPPORTED_TRANSPORTS: readonly TransportType[] = ['usb'];
 
@@ -90,10 +93,65 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
     reporter: options.reporter,
   });
 
-  // Submit-flow path lands in plan 05 step 5; for now both modes print
-  // the rendered body to stdout. `--dry-run` is the explicit signal
-  // that this is the test path.
-  process.stdout.write(renderIssueBody(report));
+  const body = renderIssueBody(report);
+
+  if (options.dryRun) {
+    // Test path — render to stdout, never submit.
+    process.stdout.write(body);
+    return;
+  }
+
+  const title = buildIssueTitle(report);
+  const result = await submitIssue({
+    repo: TARGET_REPO,
+    title,
+    body,
+    fallbackEmail: FALLBACK_EMAIL,
+  });
+
+  console.log('');
+  switch (result.path) {
+    case 'gh-cli':
+      console.log(`Filed via gh: ${result.detail ?? '(unknown URL)'}`);
+      console.log("Have a photo? Drop it into that issue's comment thread.");
+      return;
+    case 'prefill-url':
+      console.log('gh CLI not available. Open this URL in a browser:');
+      console.log('');
+      console.log(result.detail ?? '');
+      console.log('');
+      console.log("Have a photo? Drop it into the issue's comment thread after submit.");
+      return;
+    case 'clipboard-fallback':
+      console.log(
+        'Prefill URL would exceed GitHub\'s limit. Copy the JSON below into a new issue ' +
+          `at https://github.com/${TARGET_REPO}/issues/new manually, or email it to ` +
+          `${result.detail ?? FALLBACK_EMAIL}:`,
+      );
+      console.log('');
+      console.log(body);
+      // Surface the raw prefill URL too in case it works despite our
+      // length guard — GitHub's actual limit varies per browser.
+      console.log('');
+      console.log(`(prefill URL, may exceed limits: ${buildPrefillUrl({
+        repo: TARGET_REPO,
+        title,
+        body,
+        fallbackEmail: FALLBACK_EMAIL,
+      })})`);
+      return;
+    default: {
+      const _exhaustive: never = result.path;
+      throw new Error(`Unhandled submit path: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function buildIssueTitle(report: HardwareReport): string {
+  const transport = report.transports[0];
+  const model = report.device.confirmed.model;
+  const rung = transport ? transport.rung : 'unverified';
+  return `[harness] ${model} on ${transport?.name ?? 'unknown'} — ${rung}`;
 }
 
 function printSessionHeader(
