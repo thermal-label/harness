@@ -13,16 +13,23 @@ import type { TransportType } from '@thermal-label/contracts';
 /**
  * Per-pattern result reported by the harness.
  *
- * - `'pass'` — pattern executed and the operator confirmed the visual result.
- * - `'fail'` — pattern executed but the operator marked it visually wrong.
- * - `'skipped'` — operator declined to run this pattern (no signal either way).
+ * - `'pass'` — pattern executed and bytes were sent (the printer responded
+ *   physically — something came out, even if visually flawed).
+ * - `'fail'` — bytes did not reach the printer (transport-layer failure,
+ *   device unreachable, write rejected).
+ * - `'skipped'` — operator declined to run this pattern.
+ *
+ * Whether the *output* looked correct is the operator's call, captured on
+ * `TransportReport.rung` directly — not derived from these mechanics.
  */
 export type PatternResult = 'pass' | 'fail' | 'skipped';
 
 /**
- * Harness-proposed rung for a transport, derived from `patterns` per the
- * rung-translation rule in `IssueBody`. Pre-computed so plan 04's parser
- * lifts it directly rather than re-deriving.
+ * The rung the operator proposes for a transport, captured directly from the
+ * harness UI after they've inspected the diagnostic print. Plan 04's parser
+ * lifts this verbatim — the maintainer may still override during triage, but
+ * the harness does not synthesise it from booleans (only a human can tell if
+ * a thermal print "looks right").
  */
 export type ProposedRung = 'verified' | 'partial' | 'unsupported';
 
@@ -60,8 +67,11 @@ export interface IdentitySnapshot {
  * One transport's worth of test results inside a `HardwareReport`.
  *
  * `name` is a `TransportType` from `@thermal-label/contracts` (single source
- * of truth — see plan 0). `patterns` maps `TestPattern.id` → `PatternResult`;
- * `rung` is the harness's proposed promotion derived from `patterns`.
+ * of truth — see plan 0). `patterns` maps `TestPattern.id` → `PatternResult`,
+ * recording mechanics only ("bytes went out" / "transport failed"); standard
+ * convention is a single entry `{ diagnostic: 'pass' | 'fail' | 'skipped' }`
+ * — the diagnostic-print pattern (plan 06). `rung` is the operator's direct
+ * assessment of what came out of the printer, not derived from `patterns`.
  */
 export interface TransportReport {
   name: TransportType;

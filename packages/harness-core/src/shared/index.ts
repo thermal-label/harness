@@ -16,7 +16,6 @@ export type {
 
 export type { TestPattern } from './test-pattern.js';
 
-export { computeRung } from './rung.js';
 export { renderIssueBody } from './issue-body.js';
 
 export type { TransportInstruction } from './transport-instructions.js';
