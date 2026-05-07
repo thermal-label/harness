@@ -49,13 +49,13 @@ import {
   type LabelWriterDevice,
   type LabelWriterMedia,
 } from '@thermal-label/labelwriter-core';
+import { createBitmap, padBitmap, stackBitmaps, type LabelBitmap } from '@mbtech-nl/bitmap';
 import {
-  bytesPerRow,
-  createBitmap,
-  padBitmap,
-  stackBitmaps,
-  type LabelBitmap,
-} from '@mbtech-nl/bitmap';
+  cropHeight,
+  cropToWidth,
+  diagonalStripes,
+  edgeProbeSection,
+} from '@thermal-label/harness-core/shared';
 
 interface DiagnosticPrintInput {
   device: LabelWriterDevice;
@@ -96,8 +96,8 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
     textSection(input.device.key, headDots, 1),
     textSection(String(input.media.id).toUpperCase(), headDots, 1),
     textSection('TOP>', headDots, 2),
-    edgeProbeSection(headDots, 'left', 32),
-    edgeProbeSection(headDots, 'right', 32),
+    edgeProbeSection(headDots, 'left', { stepCount: 32 }),
+    edgeProbeSection(headDots, 'right', { stepCount: 32 }),
     textSection('TXT 1X SAMPLE', headDots, 1),
     textSection('TXT 2X', headDots, 2),
   ];
@@ -118,7 +118,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   const headHeight = sumHeightsWithGaps(headSections);
   const tailHeight = sumHeightsWithGaps(tailSections);
   const fillHeight = computeFillHeight(headHeight, tailHeight, labelHeight);
-  const middleSection = fillStripes(headDots, fillHeight);
+  const middleSection = diagonalStripes(headDots, fillHeight);
 
   const sections = [...headSections, middleSection, ...tailSections];
 
@@ -229,60 +229,6 @@ function textSection(text: string, headDots: number, scale: number): LabelBitmap
 }
 
 /**
- * Build an edge-probe section: each row is a bar that steps further
- * from the chosen edge as the row index increases. The first row whose
- * bar didn't print marks the printable margin in dots.
- *
- * `stepCount` controls how far we probe — 32 steps × 2 dots = 64-dot
- * coverage from each edge, which is enough to surface the margin on
- * every label in the registry.
- */
-function edgeProbeSection(
-  headDots: number,
-  edge: 'left' | 'right',
-  stepCount: number,
-): LabelBitmap {
-  const rowsPerStep = 2;
-  const dotsPerStep = 2;
-  const heightPx = stepCount * rowsPerStep;
-  const bitmap = createBitmap(headDots, heightPx);
-  const bytesPerLine = bytesPerRow(headDots);
-
-  for (let step = 0; step < stepCount; step += 1) {
-    const barLength = (step + 1) * dotsPerStep;
-    for (let r = 0; r < rowsPerStep; r += 1) {
-      const y = step * rowsPerStep + r;
-      for (let x = 0; x < barLength; x += 1) {
-        const px = edge === 'left' ? x : headDots - 1 - x;
-        const byteIdx = y * bytesPerLine + Math.floor(px / 8);
-        const bitIdx = 7 - (px % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
-}
-
-/**
- * Alternating black/white stripes (1 dot each) repeated for `repeatRows`
- * rows. Density check: pattern integrity at the head's resolution limit.
- */
-function fillStripes(headDots: number, heightPx: number): LabelBitmap {
-  const bitmap = createBitmap(headDots, heightPx);
-  const bytesPerLine = bytesPerRow(headDots);
-  for (let y = 0; y < heightPx; y += 1) {
-    for (let x = 0; x < headDots; x += 1) {
-      if (x % 2 === 0) {
-        const byteIdx = y * bytesPerLine + Math.floor(x / 8);
-        const bitIdx = 7 - (x % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
-}
-
-/**
  * Trailing-edge probe marker — a 24-dot-wide × 4-row bar centred on
  * the head, easy to spot in a photo. Read against the `TRAIL+N` text
  * label printed just above it.
@@ -291,40 +237,16 @@ function trailingProbeMarker(headDots: number): LabelBitmap {
   const heightPx = 4;
   const barWidth = 24;
   const bitmap = createBitmap(headDots, heightPx);
-  const bytesPerLine = bytesPerRow(headDots);
   const startX = Math.max(0, Math.floor((headDots - barWidth) / 2));
+  // Use padBitmap-style construction: fill a centred barWidth-wide bar
+  // by composing a left-pad + bar + right-pad horizontally — but for
+  // 4 rows it's simpler to set bits directly.
+  const bytesPerLine = Math.ceil(headDots / 8);
   for (let y = 0; y < heightPx; y += 1) {
     for (let x = startX; x < startX + barWidth && x < headDots; x += 1) {
-      const byteIdx = y * bytesPerLine + Math.floor(x / 8);
-      const bitIdx = 7 - (x % 8);
-      bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
+      const byteIdx = y * bytesPerLine + (x >> 3);
+      bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << (7 - (x & 7)));
     }
   }
   return bitmap;
-}
-
-function cropToWidth(bitmap: LabelBitmap, targetWidth: number): LabelBitmap {
-  const cropped = createBitmap(targetWidth, bitmap.heightPx);
-  const srcBpr = bytesPerRow(bitmap.widthPx);
-  const dstBpr = bytesPerRow(targetWidth);
-  for (let y = 0; y < bitmap.heightPx; y += 1) {
-    for (let x = 0; x < targetWidth; x += 1) {
-      const srcByteIdx = y * srcBpr + Math.floor(x / 8);
-      const srcBitIdx = 7 - (x % 8);
-      if (((bitmap.data[srcByteIdx] ?? 0) >> srcBitIdx) & 1) {
-        const dstByteIdx = y * dstBpr + Math.floor(x / 8);
-        const dstBitIdx = 7 - (x % 8);
-        cropped.data[dstByteIdx] = (cropped.data[dstByteIdx] ?? 0) | (1 << dstBitIdx);
-      }
-    }
-  }
-  return cropped;
-}
-
-function cropHeight(bitmap: LabelBitmap, targetHeight: number): LabelBitmap {
-  if (bitmap.heightPx <= targetHeight) return bitmap;
-  const cropped = createBitmap(bitmap.widthPx, targetHeight);
-  const bpr = bytesPerRow(bitmap.widthPx);
-  cropped.data.set(bitmap.data.subarray(0, targetHeight * bpr));
-  return cropped;
 }

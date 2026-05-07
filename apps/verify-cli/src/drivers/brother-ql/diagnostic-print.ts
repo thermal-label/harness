@@ -52,6 +52,12 @@ import {
   type PageData,
 } from '@thermal-label/brother-ql-core';
 import { bytesPerRow, createBitmap, padBitmap, stackBitmaps } from '@mbtech-nl/bitmap';
+import {
+  blankBitmap,
+  cropToWidth,
+  diagonalStripes,
+  edgeProbeSection,
+} from '@thermal-label/harness-core/shared';
 
 interface DiagnosticPrintInput {
   device: BrotherQLDevice;
@@ -120,7 +126,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticPr
   for (const text of headerStrings) {
     const rendered = textSection(text, widthDots, 1);
     if (twoColor) {
-      sections.push({ black: blank(widthDots, rendered.heightPx), red: rendered });
+      sections.push({ black: blankBitmap(widthDots, rendered.heightPx), red: rendered });
     } else {
       sections.push({ black: rendered });
     }
@@ -130,22 +136,33 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticPr
   //    mirror / upside-down jumps out of a photo without measuring.
   const top = textSection('TOP>', widthDots, 2);
   if (twoColor) {
-    sections.push({ black: blank(widthDots, top.heightPx), red: top });
+    sections.push({ black: blankBitmap(widthDots, top.heightPx), red: top });
   } else {
     sections.push({ black: top });
   }
 
   // 3. Edge probes (left + right). Always black — the operator measures
-  //    margins by the first bar that didn't print.
-  sections.push({ black: edgeProbeSection(widthDots, 'left') });
-  sections.push({ black: edgeProbeSection(widthDots, 'right') });
+  //    margins by the first bar that didn't print. Wide QL head → step
+  //    in 4-dot increments to keep the section under ~30 mm.
+  sections.push({ black: edgeProbeSection(widthDots, 'left', { dotsPerStep: 4 }) });
+  sections.push({ black: edgeProbeSection(widthDots, 'right', { dotsPerStep: 4 }) });
 
   // 4. Sample text at 1x and 2x. Always black.
   sections.push({ black: textSection('TXT 1X SAMPLE', widthDots, 1) });
   sections.push({ black: textSection('2X', widthDots, 2) });
 
-  // 5. Fill stripes for density uniformity.
-  sections.push({ black: fillStripes(widthDots, FILL_STRIPES_HEIGHT_PX) });
+  // 5. Fill region — diagonal stripe pattern for density uniformity. On
+  //    two-color media this lands on the red plane so the operator
+  //    immediately sees the second ink working across a meaningful area
+  //    (header glyphs alone would be easy to miss); on mono it stays
+  //    black. Diagonal beats horizontal on visual readability — a
+  //    diagonal slip is obvious in the photo.
+  const fill = diagonalStripes(widthDots, FILL_STRIPES_HEIGHT_PX);
+  if (twoColor) {
+    sections.push({ black: blankBitmap(widthDots, fill.heightPx), red: fill });
+  } else {
+    sections.push({ black: fill });
+  }
 
   // 6. Cutter-offset ladder. Always black. The probe lives at the
   //    bottom of the bitmap; the auto-cut happens shortly after the
@@ -157,7 +174,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticPr
   //    mirror is obvious from a photo.
   const bottom = textSection('B', widthDots, 2);
   if (twoColor) {
-    sections.push({ black: blank(widthDots, bottom.heightPx), red: bottom });
+    sections.push({ black: blankBitmap(widthDots, bottom.heightPx), red: bottom });
   } else {
     sections.push({ black: bottom });
   }
@@ -168,10 +185,10 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticPr
   for (const section of sections) {
     blackPlanes.push(section.black);
     if (twoColor) {
-      redPlanes.push(section.red ?? blank(widthDots, section.black.heightPx));
+      redPlanes.push(section.red ?? blankBitmap(widthDots, section.black.heightPx));
     }
-    blackPlanes.push(blank(widthDots, ROW_GAP_PX));
-    if (twoColor) redPlanes.push(blank(widthDots, ROW_GAP_PX));
+    blackPlanes.push(blankBitmap(widthDots, ROW_GAP_PX));
+    if (twoColor) redPlanes.push(blankBitmap(widthDots, ROW_GAP_PX));
   }
   // Drop the trailing gap — the cutter ladder already serves as the
   // last visual element.
@@ -206,63 +223,12 @@ export function encodeBitmap(
   return encodeJobForEngine([page], { copies: 1 }, engine, device.name);
 }
 
-function blank(widthDots: number, heightPx: number): LabelBitmap {
-  return createBitmap(widthDots, heightPx);
-}
-
 function textSection(text: string, widthDots: number, scale: number): LabelBitmap {
   const rendered = renderText(text, { scaleX: scale, scaleY: scale });
   if (rendered.widthPx <= widthDots) {
     return padBitmap(rendered, { right: widthDots - rendered.widthPx });
   }
   return cropToWidth(rendered, widthDots);
-}
-
-/**
- * Edge probe: each row is a bar that steps further from the chosen
- * edge as the row index increases. The first row whose bar didn't
- * print is the printable margin in dots (head-edge to first reliable
- * print).
- *
- * Bars step in 4-dot increments to keep the section short on the wide
- * QL head — 696 dots / 4 = 174 steps × 2 px/row = 348 rows ≈ 29 mm.
- */
-function edgeProbeSection(widthDots: number, edge: 'left' | 'right'): LabelBitmap {
-  const rowsPerStep = 2;
-  const dotsPerStep = 4;
-  const stepCount = Math.max(1, Math.floor(widthDots / dotsPerStep));
-  const heightPx = stepCount * rowsPerStep;
-  const bitmap = createBitmap(widthDots, heightPx);
-  const bytesPerLine = bytesPerRow(widthDots);
-
-  for (let step = 0; step < stepCount; step += 1) {
-    const barLength = (step + 1) * dotsPerStep;
-    for (let r = 0; r < rowsPerStep; r += 1) {
-      const y = step * rowsPerStep + r;
-      for (let x = 0; x < barLength; x += 1) {
-        const px = edge === 'left' ? x : widthDots - 1 - x;
-        const byteIdx = y * bytesPerLine + Math.floor(px / 8);
-        const bitIdx = 7 - (px % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
-}
-
-function fillStripes(widthDots: number, heightPx: number): LabelBitmap {
-  const bitmap = createBitmap(widthDots, heightPx);
-  const bytesPerLine = bytesPerRow(widthDots);
-  for (let y = 0; y < heightPx; y += 1) {
-    for (let x = 0; x < widthDots; x += 1) {
-      if (x % 2 === 0) {
-        const byteIdx = y * bytesPerLine + Math.floor(x / 8);
-        const bitIdx = 7 - (x % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
 }
 
 /**
@@ -299,22 +265,4 @@ function cutterProbeSection(widthDots: number): LabelBitmap {
     }
   }
   return bitmap;
-}
-
-function cropToWidth(bitmap: LabelBitmap, targetWidth: number): LabelBitmap {
-  const cropped = createBitmap(targetWidth, bitmap.heightPx);
-  const srcBpr = bytesPerRow(bitmap.widthPx);
-  const dstBpr = bytesPerRow(targetWidth);
-  for (let y = 0; y < bitmap.heightPx; y += 1) {
-    for (let x = 0; x < targetWidth; x += 1) {
-      const srcByteIdx = y * srcBpr + Math.floor(x / 8);
-      const srcBitIdx = 7 - (x % 8);
-      if (((bitmap.data[srcByteIdx] ?? 0) >> srcBitIdx) & 1) {
-        const dstByteIdx = y * dstBpr + Math.floor(x / 8);
-        const dstBitIdx = 7 - (x % 8);
-        cropped.data[dstByteIdx] = (cropped.data[dstByteIdx] ?? 0) | (1 << dstBitIdx);
-      }
-    }
-  }
-  return cropped;
 }

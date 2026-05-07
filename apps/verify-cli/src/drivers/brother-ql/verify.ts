@@ -72,7 +72,7 @@ import {
 } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
-import { writeBitmapPngToTmp } from '../../bitmap-png.js';
+import { writeBitmapPngToTmp, writeTwoColorPngToTmp } from '../../bitmap-png.js';
 
 const DRIVER_KEY = 'brother-ql';
 const HARNESS_VERSION = '0.0.0';
@@ -139,23 +139,23 @@ export async function runBrotherQlVerify(options: VerifyOptions): Promise<void> 
   });
 
   if (options.preview) {
-    console.log('Black plane:');
-    console.log(renderBitmapPreview(bitmaps.black));
     if (bitmaps.red) {
+      console.log('Black plane:');
+      console.log(renderBitmapPreview(bitmaps.black));
       console.log('');
       console.log('Red plane:');
       console.log(renderBitmapPreview(bitmaps.red));
+    } else {
+      console.log(renderBitmapPreview(bitmaps.black));
     }
     console.log('');
   }
   if (options.previewPng) {
-    const blackPath = writeBitmapPngToTmp(bitmaps.black, `verify-${device.key}-black`);
-    console.log(`Wrote PNG preview (black): ${blackPath}`);
-    if (bitmaps.red) {
-      const redPath = writeBitmapPngToTmp(bitmaps.red, `verify-${device.key}-red`);
-      console.log(`Wrote PNG preview (red):   ${redPath}`);
-    }
-    const launcher = openInBrowser(blackPath);
+    const path = bitmaps.red
+      ? writeTwoColorPngToTmp({ black: bitmaps.black, red: bitmaps.red }, `verify-${device.key}`)
+      : writeBitmapPngToTmp(bitmaps.black, `verify-${device.key}`);
+    console.log(`Wrote PNG preview: ${path}`);
+    const launcher = openInBrowser(path);
     if (launcher) {
       console.log(`(Opening with ${launcher}; if nothing appeared, open the path above manually.)`);
     }

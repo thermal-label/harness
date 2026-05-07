@@ -41,13 +41,8 @@ import {
   type LabelManagerDevice,
   type TapeWidth,
 } from '@thermal-label/labelmanager-core';
-import {
-  bytesPerRow,
-  createBitmap,
-  padBitmap,
-  stackBitmaps,
-  type LabelBitmap,
-} from '@mbtech-nl/bitmap';
+import { createBitmap, padBitmap, stackBitmaps, type LabelBitmap } from '@mbtech-nl/bitmap';
+import { cropToWidth, diagonalStripes, edgeProbeSection } from '@thermal-label/harness-core/shared';
 
 interface DiagnosticPrintInput {
   device: LabelManagerDevice;
@@ -99,8 +94,8 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   sections.push(textSection('TXT 1X', headDots, 1));
   sections.push(textSection('2X', headDots, 2));
 
-  // 5. Fill region — alternating stripes for density uniformity.
-  sections.push(fillStripes(headDots, 12));
+  // 5. Fill region — diagonal stripe pattern for density uniformity.
+  sections.push(diagonalStripes(headDots, 24));
 
   // 6. Bottom orientation marker — different glyph from `TOP>`.
   sections.push(textSection('B', headDots, 1));
@@ -144,75 +139,4 @@ function textSection(text: string, headDots: number, scale: number): LabelBitmap
   // Crop visually rather than throw — diagnostic print tolerates a
   // truncated label more than it tolerates a hard failure.
   return cropToWidth(rendered, headDots);
-}
-
-/**
- * Build an edge-probe section: each row is a bar that steps further
- * from the chosen edge as the row index increases. The first row whose
- * bar didn't print (when the operator examines the output) is the
- * printable margin in dots.
- *
- * Rows are 2 px tall to be visible without a magnifier; bar lengths
- * step by 2 dots between rows so a 32-dot head covers 0..30 in
- * 16 rows.
- */
-function edgeProbeSection(headDots: number, edge: 'left' | 'right'): LabelBitmap {
-  const rowsPerStep = 2;
-  const dotsPerStep = 2;
-  const stepCount = Math.floor(headDots / dotsPerStep);
-  const heightPx = stepCount * rowsPerStep;
-  const bitmap = createBitmap(headDots, heightPx);
-  const bytesPerLine = bytesPerRow(headDots);
-
-  for (let step = 0; step < stepCount; step += 1) {
-    const barLength = (step + 1) * dotsPerStep;
-    for (let r = 0; r < rowsPerStep; r += 1) {
-      const y = step * rowsPerStep + r;
-      // Set bits along the chosen edge, `barLength` dots wide.
-      for (let x = 0; x < barLength; x += 1) {
-        const px = edge === 'left' ? x : headDots - 1 - x;
-        const byteIdx = y * bytesPerLine + Math.floor(px / 8);
-        const bitIdx = 7 - (px % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
-}
-
-/**
- * Alternating black/white stripes (1 dot each) repeated for `repeatRows`
- * rows. Density check: pattern integrity at the head's resolution limit.
- */
-function fillStripes(headDots: number, heightPx: number): LabelBitmap {
-  const bitmap = createBitmap(headDots, heightPx);
-  const bytesPerLine = bytesPerRow(headDots);
-  for (let y = 0; y < heightPx; y += 1) {
-    for (let x = 0; x < headDots; x += 1) {
-      if (x % 2 === 0) {
-        const byteIdx = y * bytesPerLine + Math.floor(x / 8);
-        const bitIdx = 7 - (x % 8);
-        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
-      }
-    }
-  }
-  return bitmap;
-}
-
-function cropToWidth(bitmap: LabelBitmap, targetWidth: number): LabelBitmap {
-  const cropped = createBitmap(targetWidth, bitmap.heightPx);
-  const srcBpr = bytesPerRow(bitmap.widthPx);
-  const dstBpr = bytesPerRow(targetWidth);
-  for (let y = 0; y < bitmap.heightPx; y += 1) {
-    for (let x = 0; x < targetWidth; x += 1) {
-      const srcByteIdx = y * srcBpr + Math.floor(x / 8);
-      const srcBitIdx = 7 - (x % 8);
-      if (((bitmap.data[srcByteIdx] ?? 0) >> srcBitIdx) & 1) {
-        const dstByteIdx = y * dstBpr + Math.floor(x / 8);
-        const dstBitIdx = 7 - (x % 8);
-        cropped.data[dstByteIdx] = (cropped.data[dstByteIdx] ?? 0) | (1 << dstBitIdx);
-      }
-    }
-  }
-  return cropped;
 }

@@ -110,3 +110,98 @@ export function writeBitmapPngToTmp(bitmap: LabelBitmap, prefix = 'verify-diag')
   writeFileSync(path, png);
   return path;
 }
+
+/**
+ * Two-color (black + red) PNG encoder for printers like brother-ql QL-820 with
+ * DK-22251 / DK-44205 media. Each pixel reads from both planes:
+ *
+ *   - red set, black clear   → RED
+ *   - black set, red clear   → BLACK
+ *   - both set               → dark-mix (overlap, mostly black with red tint)
+ *   - both clear             → WHITE
+ *
+ * `scale` upsamples each source dot to an N×N block in the PNG (default 4×).
+ * Both planes must have identical dimensions; the encoder doesn't pad.
+ */
+export interface TwoColorBitmap {
+  black: LabelBitmap;
+  red: LabelBitmap;
+}
+
+const RGB_WHITE = [0xff, 0xff, 0xff] as const;
+const RGB_BLACK = [0x10, 0x10, 0x10] as const;
+const RGB_RED = [0xc8, 0x28, 0x28] as const;
+const RGB_MIX = [0x4a, 0x18, 0x18] as const;
+
+export function encodeTwoColorAsPng(bitmaps: TwoColorBitmap, scale = 4): Buffer {
+  const { black, red } = bitmaps;
+  if (black.widthPx !== red.widthPx || black.heightPx !== red.heightPx) {
+    throw new Error(
+      `encodeTwoColorAsPng: plane dimensions differ (black ${String(black.widthPx)}×${String(black.heightPx)} vs red ${String(red.widthPx)}×${String(red.heightPx)})`,
+    );
+  }
+  const widthPx = black.widthPx;
+  const heightPx = black.heightPx;
+  const bpr = bytesPerRow(widthPx);
+  const outWidth = widthPx * scale;
+  const outHeight = heightPx * scale;
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(outWidth, 0);
+  ihdr.writeUInt32BE(outHeight, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: RGB truecolour
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  // Each scanline = 1 filter byte + outWidth × 3 RGB bytes.
+  const stride = 1 + outWidth * 3;
+  const scanlines = Buffer.alloc(outHeight * stride);
+  const oneRow = Buffer.alloc(outWidth * 3);
+
+  for (let sy = 0; sy < heightPx; sy += 1) {
+    let cursor = 0;
+    for (let sx = 0; sx < widthPx; sx += 1) {
+      const blackByte = black.data[sy * bpr + (sx >> 3)] ?? 0;
+      const redByte = red.data[sy * bpr + (sx >> 3)] ?? 0;
+      const shift = 7 - (sx & 7);
+      const blackBit = (blackByte >> shift) & 1;
+      const redBit = (redByte >> shift) & 1;
+      const rgb =
+        blackBit === 1 && redBit === 1
+          ? RGB_MIX
+          : blackBit === 1
+            ? RGB_BLACK
+            : redBit === 1
+              ? RGB_RED
+              : RGB_WHITE;
+      for (let dx = 0; dx < scale; dx += 1) {
+        oneRow[cursor++] = rgb[0];
+        oneRow[cursor++] = rgb[1];
+        oneRow[cursor++] = rgb[2];
+      }
+    }
+    for (let dy = 0; dy < scale; dy += 1) {
+      const base = (sy * scale + dy) * stride;
+      scanlines[base] = 0;
+      oneRow.copy(scanlines, base + 1);
+    }
+  }
+
+  const idat = deflateSync(scanlines);
+
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+export function writeTwoColorPngToTmp(bitmaps: TwoColorBitmap, prefix = 'verify-diag'): string {
+  const png = encodeTwoColorAsPng(bitmaps);
+  const path = join(tmpdir(), `${prefix}-${String(Date.now())}.png`);
+  writeFileSync(path, png);
+  return path;
+}

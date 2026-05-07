@@ -17,5 +17,16 @@ export type { TestPattern } from './test-pattern.js';
 
 export { renderIssueBody } from './issue-body.js';
 
+export type { EdgeProbeOptions } from './diagnostic-bitmap.js';
+export {
+  blankBitmap,
+  cropHeight,
+  cropToWidth,
+  diagonalStripes,
+  edgeProbeSection,
+  sumHeightsWithGaps,
+  verticalStripes,
+} from './diagnostic-bitmap.js';
+
 export type { TransportInstruction } from './transport-instructions.js';
 export { transportInstructions } from './transport-instructions.js';
