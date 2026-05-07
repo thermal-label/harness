@@ -107,19 +107,6 @@ export interface DeviceIdentity {
 }
 
 /**
- * Photo attached to a report. The mechanics (where the bytes live, how the
- * harness uploads, etc.) are still an open question in plan 03 — the schema
- * carries the shape so we can ship the contract without committing to a
- * mechanism. Triage may see zero, one, or many photos per report.
- */
-export interface ReportPhoto {
-  /** URL where the photo is hosted (GitHub user-content, image host, ...). */
-  url: string;
-  /** Optional operator caption. */
-  caption?: string;
-}
-
-/**
  * Optional reporter metadata. Never auto-filled with PII (see open question
  * in plan 03 §reporter PII); operator types `handle` voluntarily if they
  * want attribution.
@@ -149,8 +136,11 @@ export interface HardwareReport {
   harnessVersion: string;
   device: DeviceIdentity;
   transports: readonly TransportReport[];
-  photos?: readonly ReportPhoto[];
   /** ISO-8601 timestamp at submit time. */
   submittedAt: string;
   reporter?: ReporterInfo;
 }
+
+// Photos intentionally not in the schema — operators drop them into the
+// GitHub issue comment after submit using GitHub's native attachment UI. The
+// harness doesn't host, upload, or carry photo bytes.

@@ -10,7 +10,6 @@ export type {
   PatternResult,
   ProposedRung,
   ReporterInfo,
-  ReportPhoto,
   TransportReport,
 } from './hardware-report.js';
 
