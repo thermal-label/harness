@@ -3,16 +3,33 @@ import { DEVICES, MEDIA } from '@thermal-label/labelwriter-core';
 import { buildDiagnosticBitmap, encodeBitmap } from '../diagnostic-print.js';
 
 describe('labelwriter diagnostic-print encoder', () => {
-  it('builds a bitmap whose width matches the head dot count', () => {
+  it('builds a bitmap whose width matches the LOADED LABEL, not the full head', () => {
     const bitmap = buildDiagnosticBitmap({
       device: DEVICES.LW_330_TURBO,
       media: MEDIA.ADDRESS_STANDARD,
       harnessVersion: '0.0.0',
       driverVersion: '0.0.0',
     });
-    // LW 330 Turbo declares headDots=672 in the registry.
-    expect(bitmap.widthPx).toBe(672);
+    // ADDRESS_STANDARD is 28 mm wide × 300 dpi / 25.4 ≈ 331 dots.
+    // LW 330 Turbo head is 672 dots — using the full head width on a
+    // 28 mm label prints ~2× the expected width.
+    expect(bitmap.widthPx).toBe(Math.round((28 * 300) / 25.4));
+    expect(bitmap.widthPx).toBeLessThan(672);
     expect(bitmap.heightPx).toBeGreaterThan(50);
+  });
+
+  it('caps bitmap width at the head when the media overstates', () => {
+    // Synthetic edge case: if a media entry claims a width wider than
+    // the head, the bitmap should clamp to the head's actual dot count.
+    const bitmap = buildDiagnosticBitmap({
+      device: DEVICES.LW_330_TURBO,
+      // SHIPPING_LARGE is 59 mm wide → 697 dots, which exceeds the
+      // 672-dot head. Bitmap should clamp to 672.
+      media: MEDIA.SHIPPING_LARGE,
+      harnessVersion: '0.0.0',
+      driverVersion: '0.0.0',
+    });
+    expect(bitmap.widthPx).toBeLessThanOrEqual(672);
   });
 
   it('respects the smaller media height when the diagnostic content overflows', () => {

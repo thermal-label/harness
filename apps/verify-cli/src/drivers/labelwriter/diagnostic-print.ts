@@ -84,7 +84,12 @@ const CONTINUOUS_DEFAULT_HEIGHT_PX = 1200; // 4 inches at 300 dpi.
  * dimensions without going through the full `encodeLabel` pipeline.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap {
-  const headDots = primaryHeadDots(input.device);
+  // Bitmap width should match the LOADED LABEL's printable width, not the
+  // printer's full head dot count. LW heads are 672 dots wide (~57 mm)
+  // but a 36 mm ADDRESS_LARGE label only uses ~425 of them; sending
+  // a 672-dot bitmap to a 36 mm label gives ~2× the expected width.
+  // Cap at headDots defensively in case a media entry overstates.
+  const headDots = Math.min(mediaWidthPx(input.media), primaryHeadDots(input.device));
   const labelHeight = mediaHeightPx(input.media);
   const trailingProbeOffsetDots = trailingEdgeProbeDots(input.device);
 
@@ -194,6 +199,17 @@ function primaryHeadDots(device: LabelWriterDevice): number {
     throw new Error(`Device ${device.key} has no engines declared.`);
   }
   return engine.headDots;
+}
+
+/**
+ * Printable width across the head, derived from the loaded label's
+ * `widthMm`. The driver-core's `encodeLabel` aligns the bitmap on the
+ * head per the engine's offset rules; the bitmap width should match the
+ * label's actual printable width to avoid the "fills full head, label
+ * sees only half" misalignment.
+ */
+function mediaWidthPx(media: LabelWriterMedia): number {
+  return Math.round((media.widthMm * DPI) / 25.4);
 }
 
 function mediaHeightPx(media: LabelWriterMedia): number | undefined {
