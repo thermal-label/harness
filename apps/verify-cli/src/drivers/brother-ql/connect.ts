@@ -37,6 +37,27 @@ const STATUS_RESPONSE_BYTES = 32;
 const STATUS_POLL_INTERVAL_MS = 150;
 const STATUS_POLL_ATTEMPTS = 10;
 
+/**
+ * Brother QL preamble — 200 zero bytes ("invalidate") + `ESC @`
+ * ("initialize"). Standard sequence the production node adapter
+ * embeds at the start of every print job; we send it ahead of the
+ * status request too so the printer is in a known state and reports
+ * media detection on the response. Without it, a freshly-opened
+ * connection often returns a stale or no-detected-media status —
+ * which was breaking media auto-detection in the wizard.
+ *
+ * Built inline because `buildInvalidate` / `buildInitialize` aren't
+ * re-exported from `brother-ql-core/index.ts`. Trivial bytes; not
+ * worth a driver-core export round-trip.
+ */
+const QL_PREAMBLE = (() => {
+  const buf = new Uint8Array(202);
+  // Bytes 0..199 stay zero. ESC @ at 200..201.
+  buf[200] = 0x1b;
+  buf[201] = 0x40;
+  return buf;
+})();
+
 export interface ConnectedSession {
   transport: Transport;
   identity: IdentitySnapshot;
@@ -102,9 +123,15 @@ export async function connectBrotherQlTcp(options: TcpConnectOptions): Promise<C
 }
 
 /**
- * Send `ESC i S`, poll for 32 bytes, parse. Best-effort: on no-reply,
- * returns `undefined` and the orchestrator surfaces the gap on the
- * identity snapshot's `extra.statusProbeError`.
+ * Reset the printer with the QL preamble, then send `ESC i S` and poll
+ * for the 32-byte status response. Best-effort: on no-reply, returns
+ * `undefined` and the orchestrator surfaces the gap on the identity
+ * snapshot's `extra.statusProbeError`.
+ *
+ * The preamble is what makes media auto-detection reliable on a
+ * cold-opened connection — without it the printer returns either no
+ * data or a stale/incomplete frame and the detected-media field is
+ * empty. With it, we get a clean status frame on the first try.
  */
 async function probeStatus(
   transport: Transport,
@@ -113,6 +140,7 @@ async function probeStatus(
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- every brother-ql device has at least one engine
   const engine = device.engines[0]!;
   try {
+    await transport.write(QL_PREAMBLE);
     await transport.write(STATUS_REQUEST);
     for (let attempt = 0; attempt < STATUS_POLL_ATTEMPTS; attempt += 1) {
       await sleep(STATUS_POLL_INTERVAL_MS);
