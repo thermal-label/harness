@@ -124,7 +124,7 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
       return;
     case 'clipboard-fallback':
       console.log(
-        'Prefill URL would exceed GitHub\'s limit. Copy the JSON below into a new issue ' +
+        "Prefill URL would exceed GitHub's limit. Copy the JSON below into a new issue " +
           `at https://github.com/${TARGET_REPO}/issues/new manually, or email it to ` +
           `${result.detail ?? FALLBACK_EMAIL}:`,
       );
@@ -133,12 +133,14 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
       // Surface the raw prefill URL too in case it works despite our
       // length guard — GitHub's actual limit varies per browser.
       console.log('');
-      console.log(`(prefill URL, may exceed limits: ${buildPrefillUrl({
-        repo: TARGET_REPO,
-        title,
-        body,
-        fallbackEmail: FALLBACK_EMAIL,
-      })})`);
+      console.log(
+        `(prefill URL, may exceed limits: ${buildPrefillUrl({
+          repo: TARGET_REPO,
+          title,
+          body,
+          fallbackEmail: FALLBACK_EMAIL,
+        })})`,
+      );
       return;
     default: {
       const _exhaustive: never = result.path;

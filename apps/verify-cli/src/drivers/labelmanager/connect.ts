@@ -9,7 +9,11 @@
  * transport is a release bug for the transport repo, not a matrix
  * nuance for the harness.
  */
-import { parseStatus, STATUS_REQUEST, type LabelManagerDevice } from '@thermal-label/labelmanager-core';
+import {
+  parseStatus,
+  STATUS_REQUEST,
+  type LabelManagerDevice,
+} from '@thermal-label/labelmanager-core';
 import { UsbTransport } from '@thermal-label/transport/node';
 import type { IdentitySnapshot } from '@thermal-label/harness-core/shared';
 

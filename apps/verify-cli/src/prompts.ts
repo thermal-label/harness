@@ -15,9 +15,7 @@ import { confirm, input, select } from '@inquirer/prompts';
 
 export class NoPromptError extends Error {
   constructor(field: string) {
-    super(
-      `--no-prompt was set, but ${field} is missing. Pass it via the corresponding flag.`,
-    );
+    super(`--no-prompt was set, but ${field} is missing. Pass it via the corresponding flag.`);
     this.name = 'NoPromptError';
   }
 }

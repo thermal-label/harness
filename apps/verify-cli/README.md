@@ -13,9 +13,9 @@ and is not intended for end users.
 
 ## Drivers covered today
 
-| Driver        | Transports | Notes                                    |
-| ------------- | ---------- | ---------------------------------------- |
-| labelmanager  | `usb`      | First MVP per plan 05 §sequencing.       |
+| Driver       | Transports | Notes                              |
+| ------------ | ---------- | ---------------------------------- |
+| labelmanager | `usb`      | First MVP per plan 05 §sequencing. |
 
 Subsequent drivers (labelwriter 4xx, brother-ql, niimbot, marklife, ...)
 land as separate PRs.
@@ -63,17 +63,17 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
   --reporter "@mannes"
 ```
 
-| Flag                       | Effect                                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------- |
-| `<driver>` (positional)    | Driver key. Today: `labelmanager`.                                                      |
-| `[model]` (positional)     | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.               |
-| `-t, --transport <type>`   | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.    |
-| `-r, --rung <rung>`        | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.               |
-| `-n, --notes <notes>`      | Pre-fill the operator notes field.                                                      |
-| `--no-prompt`              | Fail fast if any further prompt would be needed (useful in scripts/CI).                 |
-| `--dry-run`                | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**       |
-| `--reporter <handle>`      | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                   |
-| `--tape-width <mm>`        | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                       |
+| Flag                     | Effect                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                   |
+| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.            |
+| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect. |
+| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.            |
+| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                   |
+| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).              |
+| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**    |
+| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                |
+| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                    |
 
 ## Dry-run output
 
@@ -92,11 +92,11 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 
 Expected stdout (timestamp varies):
 
-```markdown
-Driver:    labelmanager (core 0.5.1, harness 0.0.0)
-Model:     LabelManager PnP  [LM_PNP]
+````markdown
+Driver: labelmanager (core 0.5.1, harness 0.0.0)
+Model: LabelManager PnP [LM_PNP]
 Transport: usb
-Tape:      12 mm
+Tape: 12 mm
 
 Plug the printer in over USB and click "Connect" — ...
 
@@ -145,6 +145,7 @@ diagnostic [pass] — bench self-validation
 
 </details>
 ```
+````
 
 ## Diagnostic-print layout (labelmanager)
 

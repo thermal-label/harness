@@ -28,7 +28,7 @@ so the per-package boilerplate isn't worth it.
 Drivers stay completely unaware of the harness. Harness apps consume drivers'
 existing public exports (encoders, device metadata); the dependency direction is
 one-way (harness apps → driver `-core` packages). Test patterns and identity
-probes are *harness concerns* and live in the harness apps that exercise them
+probes are _harness concerns_ and live in the harness apps that exercise them
 — never in the drivers, never in `@thermal-label/contracts`.
 
 See [`plans/backlog/03-harness-shared.md`](../plans/backlog/03-harness-shared.md)

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEVICES } from '@thermal-label/labelmanager-core';
-import {
-  buildDiagnosticBitmap,
-  encodeDiagnosticPrint,
-} from '../diagnostic-print.js';
+import { buildDiagnosticBitmap, encodeDiagnosticPrint } from '../diagnostic-print.js';
 
 describe('labelmanager diagnostic-print encoder', () => {
   const device = DEVICES.LM_PNP;
