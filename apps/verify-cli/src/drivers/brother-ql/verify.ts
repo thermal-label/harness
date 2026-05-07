@@ -127,7 +127,8 @@ export async function runBrotherQlVerify(options: VerifyOptions): Promise<void> 
   // same media for subsequent runs (the user re-runs to swap rolls).
   // For dry-run, we resolve from the flag or hard-fail with a useful
   // listing.
-  const media = await resolveMedia(options, ctx);
+  const detected = await probeForDetectedMedia(device, firstTransport, options);
+  const media = await resolveMedia(options, ctx, detected);
 
   printSessionHeader(device, firstTransport, media);
 
@@ -486,6 +487,45 @@ async function resolveTransport(
 
 function hasTransport(device: BrotherQLDevice, transport: TransportType): boolean {
   return device.transports[transport] !== undefined;
+}
+
+/**
+ * Best-effort detection probe ahead of `resolveMedia`. Opens the first
+ * transport just long enough to read the printer's status response,
+ * then closes — `resolveMedia` then has a `detected` candidate to
+ * default to.
+ *
+ * Skipped when:
+ *   - `--dry-run` (no hardware access)
+ *   - `--media <sku>` was passed (the flag wins; no point probing)
+ *   - first transport is TCP (host isn't known until `runTransportPass`
+ *     prompts for it; TCP detection happens implicitly during the
+ *     real connect later, but media has to be resolved before the
+ *     bitmap is built — pass `--media` for TCP-only setups)
+ *
+ * Failures are silent: if the probe throws, returns undefined and
+ * `resolveMedia` falls through to its prompt / hard-fail path.
+ */
+async function probeForDetectedMedia(
+  device: BrotherQLDevice,
+  transport: TransportType,
+  options: VerifyOptions,
+): Promise<BrotherQLMedia | undefined> {
+  if (options.dryRun) return undefined;
+  if (options.media !== undefined) return undefined;
+  if (transport !== 'usb') return undefined;
+  try {
+    const session = await connectBrotherQlUsb({ device });
+    // `BrotherQLStatus.detectedMedia` is typed as the upstream's
+    // `MediaDescriptor`; the brother-ql core's MEDIA registry hits the
+    // same shape with the structural `BrotherQLMedia` extension. Same
+    // cast pattern as connect.ts uses internally.
+    const detected = session.status?.detectedMedia as BrotherQLMedia | undefined;
+    await session.transport.close();
+    return detected;
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveMedia(
