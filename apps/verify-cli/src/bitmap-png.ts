@@ -31,8 +31,8 @@ for (let n = 0; n < 256; n += 1) {
 
 function crc32(buf: Buffer): number {
   let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i += 1) {
-    c = (CRC_TABLE[(c ^ buf[i]!) & 0xff]! ^ (c >>> 8)) >>> 0;
+  for (const byte of buf) {
+    c = ((CRC_TABLE[(c ^ byte) & 0xff] ?? 0) ^ (c >>> 8)) >>> 0;
   }
   return (c ^ 0xffffffff) >>> 0;
 }
