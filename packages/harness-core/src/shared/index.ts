@@ -15,3 +15,6 @@ export type {
 } from './hardware-report.js';
 
 export type { TestPattern } from './test-pattern.js';
+
+export { computeRung } from './rung.js';
+export { renderIssueBody } from './issue-body.js';
