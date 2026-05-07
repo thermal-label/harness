@@ -1,0 +1,44 @@
+{
+  "name": "verify-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Node-side hardware-reporting harness CLI for the thermal-label drivers (plan 05). Local dev only; never published.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mannes Brak",
+  "bin": {
+    "verify-cli": "./bin/verify-cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "verify": "tsx src/index.ts verify",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "@thermal-label/contracts": "^0.5.0",
+    "@thermal-label/harness-core": "workspace:*",
+    "@thermal-label/labelmanager-core": "^0.5.0",
+    "@thermal-label/transport": "^0.5.0",
+    "commander": "^12.0.0",
+    "usb": "^2.14.0"
+  },
+  "devDependencies": {
+    "@mbtech-nl/eslint-config": "^1.1.0",
+    "@mbtech-nl/tsconfig": "^1.1.0",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "~5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
