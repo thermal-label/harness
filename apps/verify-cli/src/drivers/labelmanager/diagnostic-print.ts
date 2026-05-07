@@ -105,12 +105,12 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
 
   // Stitch with a small white gap between sections.
   const gapped: LabelBitmap[] = [];
-  for (let i = 0; i < sections.length; i += 1) {
-    gapped.push(sections[i]!);
-    if (i < sections.length - 1) {
-      gapped.push(createBitmap(headDots, ROW_GAP_PX));
-    }
+  for (const section of sections) {
+    gapped.push(section);
+    gapped.push(createBitmap(headDots, ROW_GAP_PX));
   }
+  // Drop the trailing gap so the print ends exactly on the last section.
+  gapped.pop();
 
   return stackBitmaps(gapped, 'vertical');
 }
@@ -168,7 +168,7 @@ function edgeProbeSection(headDots: number, edge: 'left' | 'right'): LabelBitmap
         const px = edge === 'left' ? x : headDots - 1 - x;
         const byteIdx = y * bytesPerLine + Math.floor(px / 8);
         const bitIdx = 7 - (px % 8);
-        bitmap.data[byteIdx]! |= 1 << bitIdx;
+        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
       }
     }
   }
@@ -187,7 +187,7 @@ function fillStripes(headDots: number, heightPx: number): LabelBitmap {
       if (x % 2 === 0) {
         const byteIdx = y * bytesPerLine + Math.floor(x / 8);
         const bitIdx = 7 - (x % 8);
-        bitmap.data[byteIdx]! |= 1 << bitIdx;
+        bitmap.data[byteIdx] = (bitmap.data[byteIdx] ?? 0) | (1 << bitIdx);
       }
     }
   }
@@ -202,10 +202,10 @@ function cropToWidth(bitmap: LabelBitmap, targetWidth: number): LabelBitmap {
     for (let x = 0; x < targetWidth; x += 1) {
       const srcByteIdx = y * srcBpr + Math.floor(x / 8);
       const srcBitIdx = 7 - (x % 8);
-      if ((bitmap.data[srcByteIdx]! >> srcBitIdx) & 1) {
+      if (((bitmap.data[srcByteIdx] ?? 0) >> srcBitIdx) & 1) {
         const dstByteIdx = y * dstBpr + Math.floor(x / 8);
         const dstBitIdx = 7 - (x % 8);
-        cropped.data[dstByteIdx]! |= 1 << dstBitIdx;
+        cropped.data[dstByteIdx] = (cropped.data[dstByteIdx] ?? 0) | (1 << dstBitIdx);
       }
     }
   }

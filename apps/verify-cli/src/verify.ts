@@ -23,16 +23,9 @@ export interface VerifyOptions {
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {
-  switch (options.driver) {
-    case 'labelmanager':
-      await runLabelmanagerVerify(options);
-      return;
-    default: {
-      // Exhaustiveness guard — TypeScript narrows `options.driver` to never
-      // here, so adding a new driver above without handling it is a compile
-      // error rather than a runtime surprise.
-      const _exhaustive: never = options.driver;
-      throw new Error(`Unsupported driver: ${String(_exhaustive)}`);
-    }
-  }
+  // Single supported driver today; the second driver's MVP grows this
+  // into a real switch with the exhaustiveness guard. Keeping the
+  // dispatch flat per plan 05 §hard rules ("don't try to abstract for
+  // other drivers in this PR").
+  await runLabelmanagerVerify(options);
 }

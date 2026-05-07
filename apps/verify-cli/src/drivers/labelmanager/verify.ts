@@ -268,8 +268,9 @@ async function resolveTransport(
     return options.transport;
   }
 
-  if (SUPPORTED_TRANSPORTS.length === 1) {
-    return SUPPORTED_TRANSPORTS[0]!;
+  const [only, ...rest] = SUPPORTED_TRANSPORTS;
+  if (only !== undefined && rest.length === 0) {
+    return only;
   }
 
   return promptSelect<TransportType>(

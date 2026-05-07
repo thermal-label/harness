@@ -45,8 +45,8 @@ function runCli(args: readonly string[]): Promise<RunResult> {
 }
 
 function extractJsonReport(body: string): HardwareReport {
-  const match = body.match(/```json\n([\s\S]*?)\n```/);
-  if (!match || match[1] === undefined) {
+  const match = /```json\n([\s\S]*?)\n```/.exec(body);
+  if (match?.[1] === undefined) {
     throw new Error(`No JSON block found in body:\n${body}`);
   }
   return JSON.parse(match[1]) as HardwareReport;

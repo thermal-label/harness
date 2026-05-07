@@ -24,6 +24,17 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
 const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'unsupported'];
 const SUPPORTED_DRIVERS = ['labelmanager'] as const;
 
+interface VerifyCommandOptions {
+  transport?: TransportType;
+  rung?: ProposedRung;
+  notes?: string;
+  /** Inverted by commander from `--no-prompt`; `true` (default) = wizard. */
+  prompt?: boolean;
+  dryRun?: boolean;
+  reporter?: string;
+  tapeWidth?: 6 | 9 | 12 | 19;
+}
+
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
   return (value: string): T => {
     if (!(allowed as readonly string[]).includes(value)) {
@@ -64,15 +75,15 @@ program
   .option(
     '--tape-width <mm>',
     'Tape width in millimetres (6, 9, 12, 19). Labelmanager-only; defaults to 12.',
-    value => {
+    (value): 6 | 9 | 12 | 19 => {
       const n = Number(value);
-      if (![6, 9, 12, 19].includes(n)) {
+      if (n !== 6 && n !== 9 && n !== 12 && n !== 19) {
         throw new Error(`Invalid --tape-width ${value}; expected 6, 9, 12, or 19.`);
       }
       return n;
     },
   )
-  .action(async (driver: string, model: string | undefined, options) => {
+  .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
         `Unsupported driver "${driver}". Supported: ${SUPPORTED_DRIVERS.join(', ')}.\n` +
@@ -84,15 +95,15 @@ program
       await runVerify({
         driver: driver as (typeof SUPPORTED_DRIVERS)[number],
         model,
-        transport: options.transport as TransportType | undefined,
-        rung: options.rung as ProposedRung | undefined,
-        notes: options.notes as string | undefined,
+        transport: options.transport,
+        rung: options.rung,
+        notes: options.notes,
         // commander turns `--no-prompt` into `prompt: false` and the default
         // (no flag) is `prompt: true`. Map it to a positive `wizard` boolean.
         wizard: options.prompt !== false,
         dryRun: options.dryRun === true,
-        reporter: options.reporter as string | undefined,
-        tapeWidth: options.tapeWidth as 6 | 9 | 12 | 19 | undefined,
+        reporter: options.reporter,
+        tapeWidth: options.tapeWidth,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
