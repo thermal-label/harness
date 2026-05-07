@@ -119,4 +119,116 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/labelmanager only speaks usb today/);
   }, 30_000);
+
+  it('renders a valid HardwareReport for labelwriter LW_330_TURBO usb', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_330_TURBO',
+      '--transport',
+      'usb',
+      '--label',
+      'ADDRESS_STANDARD',
+      '--rung',
+      'verified',
+      '--notes',
+      'bench self-validation',
+      '--no-prompt',
+      '--dry-run',
+      '--reporter',
+      '@mannes',
+    ]);
+
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+
+    expect(report.schemaVersion).toBe(1);
+    expect(report.driver).toBe('labelwriter');
+    expect(report.device.confirmed.model).toBe('LabelWriter 330 Turbo');
+    expect(report.device.detected.vid).toBe(0x0922);
+    expect(report.device.detected.pid).toBe(0x0008);
+    expect(report.transports).toHaveLength(1);
+    expect(report.transports[0]?.name).toBe('usb');
+    expect(report.transports[0]?.rung).toBe('verified');
+    expect(report.transports[0]?.notes).toBe('bench self-validation');
+    expect(report.device.confirmed.overrides?.label).toBe('address-standard');
+    expect(report.reporter?.handle).toBe('@mannes');
+    expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
+  }, 30_000);
+
+  it('accepts a SKU as --label for labelwriter', async () => {
+    // 30252 → ADDRESS_STANDARD (89×28mm).
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_330_TURBO',
+      '--transport',
+      'usb',
+      '--label',
+      '30252',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+    expect(report.device.confirmed.overrides?.label).toBe('address-standard');
+  }, 30_000);
+
+  it('rejects unknown labels with a useful list', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_330_TURBO',
+      '--transport',
+      'usb',
+      '--label',
+      'NOT_A_REAL_LABEL',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/Unknown labelwriter label/);
+    expect(result.stderr).toMatch(/Known labels:/);
+    expect(result.stderr).toMatch(/address-standard/);
+  }, 30_000);
+
+  it('requires --label for labelwriter under --no-prompt', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_330_TURBO',
+      '--transport',
+      'usb',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/--no-prompt was set, but label is missing/);
+  }, 30_000);
+
+  it('rejects a TCP transport on a USB-only labelwriter model', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_330_TURBO',
+      '--transport',
+      'tcp',
+      '--label',
+      'ADDRESS_STANDARD',
+      '--host',
+      '10.0.0.1',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/Device declares no tcp transport/);
+  }, 30_000);
 });
