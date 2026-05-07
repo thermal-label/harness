@@ -13,12 +13,13 @@ and is not intended for end users.
 
 ## Drivers covered today
 
-| Driver       | Transports | Notes                              |
-| ------------ | ---------- | ---------------------------------- |
-| labelmanager | `usb`      | First MVP per plan 05 §sequencing. |
+| Driver       | Transports   | Notes                                                                                                              |
+| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| labelmanager | `usb`        | First MVP per plan 05 §sequencing.                                                                                 |
+| labelwriter  | `usb`, `tcp` | Multi-transport: USB on every model, TCP-9100 on Wi-Fi-capable models (LW Wireless, LW 4xx Wi-Fi, 550 Turbo, 5XL). |
 
-Subsequent drivers (labelwriter 4xx, brother-ql, niimbot, marklife, ...)
-land as separate PRs.
+Subsequent drivers (brother-ql, niimbot, marklife, ...) land as
+separate PRs.
 
 ## Wizard flow
 
@@ -67,20 +68,22 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
   --reporter "@mannes"
 ```
 
-| Flag                     | Effect                                                                                                                                   |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                                                                       |
-| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                                |
-| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                     |
-| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                                |
-| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                                                                       |
-| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).                                                                  |
-| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**                                                        |
-| `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing.     |
-| `--preview`              | Print the diagnostic bitmap as Braille to stdout before sending bytes. Combine with `--dry-run` for a hardware-free preview.             |
-| `--preview-png`          | Write the diagnostic bitmap as a PNG to a tmp file and auto-open in your default image viewer. Most accurate "what you're sending" view. |
-| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                    |
-| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                        |
+| Flag                     | Effect                                                                                                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<driver>` (positional)  | Driver key. Today: `labelmanager`, `labelwriter`.                                                                                                                                                                                           |
+| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                                                                                                                                   |
+| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                                                                                                                        |
+| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                                                                                                                                   |
+| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                                                                                                                                                                          |
+| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).                                                                                                                                                                     |
+| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**                                                                                                                                                           |
+| `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing.                                                                                                        |
+| `--preview`              | Print the diagnostic bitmap as Braille to stdout before sending bytes. Combine with `--dry-run` for a hardware-free preview.                                                                                                                |
+| `--preview-png`          | Write the diagnostic bitmap as a PNG to a tmp file and auto-open in your default image viewer. Most accurate "what you're sending" view.                                                                                                    |
+| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                                                                                                                       |
+| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                                                                                                                           |
+| `--label <key>`          | Labelwriter-only. Media key (e.g. `ADDRESS_STANDARD`) or SKU (e.g. `30252`, `30334`). **Mandatory** — different labels have wildly different dimensions and the diagnostic print needs this to size correctly. Wizard prompts when omitted. |
+| `--host <host>`          | Labelwriter-only. TCP-9100 host (IP or hostname). Required when `--transport tcp`. Wizard prompts when omitted.                                                                                                                             |
 
 ## Dry-run output
 
@@ -176,8 +179,97 @@ vertically:
 
 **Cutter-offset probe is omitted** for labelmanager: the family has no
 auto-cut (manual lever), so there's no head-to-cutter dead zone worth
-probing. ESC G is form-feed-only on this driver. The convention will
-surface with the next driver (labelwriter 4xx) which does auto-cut.
+probing. ESC G is form-feed-only on this driver. The trailing-edge
+probe analogue surfaces in the next driver section.
+
+## Labelwriter
+
+Multi-transport driver: USB on every model in the registry, TCP-9100
+on the Wi-Fi-capable subset (LW Wireless, LW 4xx Wi-Fi, 550 Turbo,
+5XL). The wizard reads the device's `transports` map from
+`@thermal-label/labelwriter-core`'s `DEVICES` registry, so adding a
+new transport to a model upstream is automatically picked up.
+
+The maintainer's local hardware is **LW 330 Turbo** and **LW 400** —
+both USB-only, lw-450 protocol, 672-dot heads.
+
+### `--label <key>` is mandatory
+
+Labelwriter labels span a wide range of dimensions
+(`RETURN_ADDRESS` 19×51 mm at 602 feed-dots vs. `SHIPPING_LARGE`
+102×59 mm at 1205 feed-dots). The diagnostic-print encoder needs the
+chosen media to size sections correctly and not overshoot the
+trailing edge. Pass either the registry key or any SKU on the label
+roll:
+
+```sh
+# By media key:
+pnpm --filter verify-cli verify labelwriter LW_330_TURBO --label ADDRESS_STANDARD --transport usb
+
+# By SKU printed on the box:
+pnpm --filter verify-cli verify labelwriter LW_330_TURBO --label 30334 --transport usb
+```
+
+Unknown values are rejected with a printed list of every valid key
+and SKU. `--no-prompt` without `--label` fails fast with a
+`NoPromptError`.
+
+### Multi-transport flow
+
+After the first transport's submit, the wizard asks "test another
+transport on `<key>`? (remaining: `tcp`)". On a Wi-Fi model:
+
+1. Run USB leg → submit.
+2. Wizard prompts: another transport? → yes.
+3. Pick `tcp` → wizard prompts for host (or `--host` skips it).
+4. Connect over TCP-9100, print the diagnostic, assess, submit.
+5. Both legs land in `transports[]` of the report (a single
+   `HardwareReport` carries both rungs).
+
+USB-only models (LW 330 Turbo, LW 400) skip the prompt because the
+remaining-transports list is empty after the first iteration.
+
+### Diagnostic-print layout (labelwriter)
+
+Stitches head-aligned sections vertically across the active head dot
+count (672 for the 300-series, 1248 for the 4XL / 5XL):
+
+1. **Header** — `v<harness-version>`, the device key, and the media
+   ID (e.g. `ADDRESS-STANDARD`). 1x scale; short strings sized to fit
+   the narrowest stock in the registry (return-address 19 mm).
+2. **Orientation marker (top)** — `TOP>` at 2x scale.
+3. **Edge probes** — left and right, 32 steps × 2 dots each = 64
+   dots of probe coverage from each head edge. The first row whose
+   bar didn't print reveals the printable margin.
+4. **Sample text** — `TXT 1X SAMPLE` and `TXT 2X` for legibility +
+   dot-uniformity eyeball at both scales.
+5. **Fill region** — 1-dot alternating stripes for density check.
+6. **Trailing-edge probe** — `TRAIL+N` text label, then a centred
+   24-dot × 4-row bar placed `N` dots above the trailing-edge
+   dead-zone. `N` is derived from the engine's
+   `capabilities.trailingEdgeOffsetMm` when present (LW 330 Turbo
+   declares 4.2 mm = 50 dots), or a 20-dot fallback otherwise. The
+   operator reads the bar's position in the photo to confirm the
+   dead-zone matches what the registry claims — the same probe
+   captures the auto-cut boundary on a future cutter model (LW 450
+   SE / Twin Turbo).
+7. **Orientation marker (bottom)** — `B` at 2x scale.
+
+Sections are stacked with a 6-px white gap and trimmed to the media's
+`lengthDots` so we never overshoot the label.
+
+### Hardware-required step
+
+```sh
+pnpm --filter verify-cli verify labelwriter LW_330_TURBO \
+  --label 30334 --transport usb --rung verified --no-prompt
+```
+
+Drop `--dry-run` and the flow opens the USB device, runs the `ESC A`
+status probe (1 byte for lw-450, 32 bytes for lw-550), sends the
+diagnostic-print bytes, then submits via `gh` or the prefilled URL.
+For Wi-Fi models, `--transport tcp --host <ip>` exercises the
+TCP-9100 leg.
 
 ## Local commands
 
