@@ -5,8 +5,10 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@thermal-label/brother-ql-core': link:../brother-ql/packages/core
   '@thermal-label/contracts': link:../contracts
   '@thermal-label/labelmanager-core': link:../labelmanager/packages/core
+  '@thermal-label/labelwriter-core': link:../labelwriter/packages/core
   '@thermal-label/transport': link:../transport
 
 importers:
@@ -54,6 +56,9 @@ importers:
       '@thermal-label/labelmanager-core':
         specifier: link:../../../labelmanager/packages/core
         version: link:../../../labelmanager/packages/core
+      '@thermal-label/labelwriter-core':
+        specifier: link:../../../labelwriter/packages/core
+        version: link:../../../labelwriter/packages/core
       '@thermal-label/transport':
         specifier: link:../../../transport
         version: link:../../../transport

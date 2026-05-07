@@ -22,7 +22,7 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
   'bluetooth-gatt',
 ];
 const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'unsupported'];
-const SUPPORTED_DRIVERS = ['labelmanager'] as const;
+const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter'] as const;
 
 interface VerifyCommandOptions {
   transport?: TransportType;
@@ -37,6 +37,10 @@ interface VerifyCommandOptions {
   previewPng?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
+  /** Labelwriter-only: media (label SKU/key) for the diagnostic print. */
+  label?: string;
+  /** Labelwriter TCP-9100 host (Wi-Fi models); required when transport=tcp. */
+  host?: string;
 }
 
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
@@ -102,6 +106,14 @@ program
       return n;
     },
   )
+  .option(
+    '--label <key>',
+    'Labelwriter-only: media key or SKU for the loaded label (e.g. ADDRESS_STANDARD or 30334). Mandatory for labelwriter; the diagnostic print needs the label dimensions.',
+  )
+  .option(
+    '--host <host>',
+    'Labelwriter TCP-9100 host (IP or hostname). Required when --transport tcp.',
+  )
   .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
@@ -128,6 +140,8 @@ program
         previewPng: options.previewPng === true,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
+        label: options.label,
+        host: options.host,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

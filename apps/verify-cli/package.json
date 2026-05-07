@@ -29,6 +29,7 @@
     "@thermal-label/contracts": "^0.5.0",
     "@thermal-label/harness-core": "workspace:*",
     "@thermal-label/labelmanager-core": "^0.5.0",
+    "@thermal-label/labelwriter-core": "^0.5.0",
     "@thermal-label/transport": "^0.5.0",
     "commander": "^12.0.0",
     "usb": "^2.14.0"
