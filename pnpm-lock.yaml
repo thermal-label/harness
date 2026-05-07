@@ -43,6 +43,9 @@ importers:
       '@inquirer/prompts':
         specifier: ^7.0.0
         version: 7.10.1(@types/node@22.19.17)
+      '@mbtech-nl/bitmap':
+        specifier: ^1.3.0
+        version: 1.3.0
       '@thermal-label/contracts':
         specifier: link:../../../contracts
         version: link:../../../contracts
@@ -716,6 +719,10 @@ packages:
 
   '@manypkg/get-packages@1.1.3':
     resolution: {integrity: sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A==}
+
+  '@mbtech-nl/bitmap@1.3.0':
+    resolution: {integrity: sha512-vkYfGg3oLsl5o7W2kTTlivfP4HJL7Q1C08TDpMBd4SykD0vOiA7Fzgim9ctMRH4bU09i204traTSAFyhJw1AnQ==}
+    engines: {node: '>=20.9.0', pnpm: '>=9.0.0'}
 
   '@mbtech-nl/eslint-config@1.1.0':
     resolution: {integrity: sha512-N3UcfVkrV9726JYIN6WjV1U9PpIbQ6g/D2hrpN9R3tZ0QRJNq1Qn0fJj0kEk/i//2gcKpwrOsbM8JY67hmVjZg==}
@@ -2763,6 +2770,8 @@ snapshots:
       fs-extra: 8.1.0
       globby: 11.1.0
       read-yaml-file: 1.1.0
+
+  '@mbtech-nl/bitmap@1.3.0': {}
 
   '@mbtech-nl/eslint-config@1.1.0(@typescript-eslint/utils@8.59.2(eslint@9.39.4)(typescript@5.5.4))(eslint@9.39.4)(typescript@5.5.4)':
     dependencies:
