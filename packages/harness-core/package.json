@@ -19,6 +19,10 @@
     "./cli": {
       "types": "./src/cli/index.ts",
       "import": "./src/cli/index.ts"
+    },
+    "./labelwriter": {
+      "types": "./src/labelwriter/index.ts",
+      "import": "./src/labelwriter/index.ts"
     }
   },
   "scripts": {
@@ -29,7 +33,8 @@
   },
   "dependencies": {
     "@mbtech-nl/bitmap": "^1.3.0",
-    "@thermal-label/contracts": "^0.5.0"
+    "@thermal-label/contracts": "^0.5.0",
+    "@thermal-label/labelwriter-core": "^0.5.0"
   },
   "devDependencies": {
     "@mbtech-nl/tsconfig": "^1.1.0",
