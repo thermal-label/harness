@@ -13,12 +13,13 @@ and is not intended for end users.
 
 ## Drivers covered today
 
-| Driver       | Transports   | Notes                                                                                                              |
-| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------ |
-| labelmanager | `usb`        | First MVP per plan 05 §sequencing.                                                                                 |
-| labelwriter  | `usb`, `tcp` | Multi-transport: USB on every model, TCP-9100 on Wi-Fi-capable models (LW Wireless, LW 4xx Wi-Fi, 550 Turbo, 5XL). |
+| Driver       | Transports          | Notes                                                                                                                      |
+| ------------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| labelmanager | `usb`               | First MVP per plan 05 §sequencing.                                                                                         |
+| labelwriter  | `usb`, `tcp` (9100) | Multi-transport: USB on every model, TCP-9100 on Wi-Fi-capable models (LW Wireless, LW 4xx Wi-Fi, 550 Turbo, 5XL).         |
+| brother-ql   | `usb`, `tcp` (9100) | QL-820NWB / QL-820NWBc reference target. Bluetooth-SPP supported by the production node adapter; not wired in the CLI yet. |
 
-Subsequent drivers (brother-ql, niimbot, marklife, ...) land as
+Subsequent drivers (niimbot, marklife, ...) land as
 separate PRs.
 
 ## Wizard flow
@@ -70,7 +71,7 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 
 | Flag                     | Effect                                                                                                                                                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<driver>` (positional)  | Driver key. Today: `labelmanager`, `labelwriter`.                                                                                                                                                                                           |
+| `<driver>` (positional)  | Driver key. One of: `labelmanager`, `labelwriter`, `brother-ql`.                                                                                                                                                                            |
 | `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                                                                                                                                   |
 | `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                                                                                                                        |
 | `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                                                                                                                                   |
@@ -83,7 +84,9 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 | `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                                                                                                                       |
 | `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                                                                                                                           |
 | `--label <key>`          | Labelwriter-only. Media key (e.g. `ADDRESS_STANDARD`) or SKU (e.g. `30252`, `30334`). **Mandatory** — different labels have wildly different dimensions and the diagnostic print needs this to size correctly. Wizard prompts when omitted. |
-| `--host <host>`          | Labelwriter-only. TCP-9100 host (IP or hostname). Required when `--transport tcp`. Wizard prompts when omitted.                                                                                                                             |
+| `--media <key>`          | **Brother-ql-only and mandatory.** Tape SKU from the brother-ql-core media catalog (e.g. `DK-22205`, `DK-22251`, `DK-11201`).                                                                                                               |
+| `--host <host>`          | TCP-9100 host (IP or hostname). Required for labelwriter `--transport tcp` and brother-ql `--transport tcp`. Wizard prompts when omitted.                                                                                                   |
+| `--port <port>`          | TCP-9100 port (default `9100`). Brother-ql `tcp` transport only.                                                                                                                                                                            |
 
 ## Dry-run output
 
@@ -271,6 +274,105 @@ diagnostic-print bytes, then submits via `gh` or the prefilled URL.
 For Wi-Fi models, `--transport tcp --host <ip>` exercises the
 TCP-9100 leg.
 
+## Brother-QL — model + media + transport
+
+Reference target: **QL-820NWB / QL-820NWBc** (`QL_820NWBc` registry
+key — both share PID 0x209d and one entry covers both marketing
+names). The model has the widest transport surface in the brother-ql
+family and is the maintainer's bench unit.
+
+| Aspect          | Coverage                                                                                                                                                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transports      | `usb`, `tcp` (port 9100 default; `--port` overrides). `bluetooth-spp` is **deferred** — see below.                                                                                                                               |
+| Tape-system     | DK only (QL printers). PT-\* engines (TZe / HSe heat-shrink) are out of scope for this MVP.                                                                                                                                      |
+| Media catalog   | `--media <SKU>` against `@thermal-label/brother-ql-core`'s `MEDIA` registry. Common: `DK-22205` (62 mm cont.), `DK-22251` (62 mm two-color), `DK-11201` (29×90 die-cut).                                                         |
+| Two-color       | **Shipped.** When the chosen media has a `palette` (DK-22251 / DK-44205), the encoder emits both planes — header text + orientation markers in red, edge probes / sample text / fill stripes / cutter probe in black.            |
+| Multi-transport | After submitting one transport's assessment, the wizard suggests the unused supported transports and lets you append another rung to the same report's `transports[]` array. `--no-prompt` mode runs only the flagged transport. |
+| Cutter probe    | Bar ladder at every 8 dots up to ~17 mm. The QL-820NWB head-to-blade distance is ~13 mm (≈156 dots); the first ladder bar visible above the cut tells you the dead zone.                                                         |
+
+The `--media <key>` flag is **mandatory** — DK-22205 (62 mm continuous)
+and DK-11201 (29×90 die-cut) are wildly different dimensions, and the
+diagnostic-print can't be properly dimensioned without it. Status
+detection is best-effort (some QL printers don't report continuous-tape
+SKUs unambiguously); the flag overrides detection in all cases.
+Mismatch between `--media` and what the printer reports is logged but
+not blocking — operator's choice wins.
+
+### Maintainer one-liner (USB, mono)
+
+```sh
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22205 \
+  --transport usb \
+  --rung verified \
+  --notes "bench self-validation" \
+  --no-prompt \
+  --reporter "@mannes"
+```
+
+### Two-color self-validation (USB, DK-22251)
+
+```sh
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22251 \
+  --transport usb \
+  --rung verified \
+  --notes "two-colour ribbon, header reads red as expected" \
+  --no-prompt \
+  --reporter "@mannes"
+```
+
+The diagnostic print's header strings (harness version, model key) and
+both orientation markers (`TOP>` / `B`) print in red; everything else
+in black. If you see the header in black on DK-22251, two-color
+emission silently dropped — file a bug against `brother-ql/packages/core`.
+
+### TCP-9100 self-validation
+
+```sh
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22205 \
+  --transport tcp --host 192.168.1.42 \
+  --rung verified \
+  --no-prompt
+```
+
+Default wizard mode prompts for the host if absent.
+
+### Bluetooth-SPP (deferred)
+
+The production node adapter (`brother-ql/packages/node`) supports the
+QL-820NWB's classic Bluetooth SPP via `SerialTransport` over OS-paired
+RFCOMM. The verify-cli does **not** wire it yet — the platform-setup
+story (`rfcomm bind` / `rfcomm-bind.service` on Linux, OS pairing on
+Windows; macOS dropped classic BT SPP entirely) is its own PR.
+`--transport bluetooth-spp` throws a useful error pointing at the gap.
+
+### Diagnostic-print layout (brother-ql)
+
+The bitmap stitches several head-aligned sections vertically. Width
+matches the loaded media's `printAreaDots` (e.g. 696 dots for 62 mm
+DK; 306 dots for 29 mm DK).
+
+1. **Headers** — harness + driver-core version, then model key. Red
+   on two-color media; black on mono.
+2. **Top orientation marker** — `TOP>` at 2x. Red on two-color.
+3. **Edge probes** — left then right. Bars step in 4-dot increments
+   along the chosen edge; the first row whose bar didn't print marks
+   the printable margin in dots. Always black.
+4. **Sample text** — `TXT 1X SAMPLE` at 1x and `2X` at 2x. Always
+   black.
+5. **Fill stripes** — alternating 1-dot stripes for density
+   uniformity. Always black.
+6. **Cutter ladder** — bars at every 8th dot row up to ~17 mm.
+   QL-820NWB head-to-blade is ~13 mm (~156 dots); the first bar
+   visible above the cut tells the operator the dead zone.
+7. **Bottom orientation marker** — `B` at 2x. Red on two-color.
+
+`flipHorizontal` runs before encode so input x-axis matches the
+printed x-axis (QL pin 0 sits on the right side of the printed face).
+Same convention as the production node adapter.
+
 ## Local commands
 
 ```sh
@@ -287,10 +389,24 @@ The agent that scaffolded this app cannot exercise the live-printer
 path. The maintainer runs the real-hardware leg with:
 
 ```sh
+# labelmanager
 pnpm --filter verify-cli verify labelmanager LM_PNP \
   --transport usb --rung verified --no-prompt
+
+# brother-ql (QL-820NWB / NWBc) — USB, mono
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22205 --transport usb --rung verified --no-prompt
+
+# brother-ql — TCP-9100
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22205 --transport tcp --host 192.168.1.42 \
+  --rung verified --no-prompt
+
+# brother-ql — two-color (DK-22251)
+pnpm --filter verify-cli verify brother-ql QL_820NWBc \
+  --media DK-22251 --transport usb --rung verified --no-prompt
 ```
 
-Drop `--dry-run` and the flow opens the USB device, runs the status
-probe, sends the diagnostic-print bytes, then submits via `gh` or the
-prefilled URL.
+Drop `--no-prompt` to walk the wizard. Drop `--dry-run` (when present)
+and the flow opens the device, runs the status probe, sends the
+diagnostic-print bytes, then submits via `gh` or the prefilled URL.

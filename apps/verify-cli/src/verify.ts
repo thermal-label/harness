@@ -1,23 +1,27 @@
 /**
  * Top-level orchestration for `verify-cli verify <driver> [model]`.
  *
- * Two drivers today: labelmanager (USB-only) and labelwriter (USB +
- * TCP-9100, plus the multi-transport "test another transport" loop).
- * The dispatcher is a real switch with an exhaustiveness guard; plan 05
- * §sequencing nominates the second driver as the moment to grow it
- * from a flat if-tree.
+ * Three drivers today: labelmanager (USB-only), labelwriter (USB + TCP-9100,
+ * plus the multi-transport "test another transport" loop), and brother-ql
+ * (USB + TCP-9100, multi-transport too; Bluetooth-SPP deferred). The
+ * dispatcher is a real `switch` with an exhaustiveness guard; plan 05
+ * §sequencing nominated the second driver as the moment to grow it from a
+ * flat if-tree.
  *
  * Per-driver options live behind an opaque `VerifyOptions` shape rather
- * than a discriminated union — every flag is optional at the type
- * level, and each driver's orchestrator validates the subset it cares
- * about. Adding a third driver is one more `case` here.
+ * than a discriminated union — every flag is optional at the type level,
+ * and each driver's orchestrator validates the subset it cares about
+ * (driver-irrelevant fields like `tapeWidth` for brother-ql, or `media`
+ * for labelmanager, are simply ignored). Adding a fourth driver is one
+ * more `case` here.
  */
 import type { TransportType } from '@thermal-label/contracts';
 import type { ProposedRung } from '@thermal-label/harness-core/shared';
 import { runLabelmanagerVerify } from './drivers/labelmanager/verify.js';
 import { runLabelwriterVerify } from './drivers/labelwriter/verify.js';
+import { runBrotherQlVerify } from './drivers/brother-ql/verify.js';
 
-export type SupportedDriver = 'labelmanager' | 'labelwriter';
+export type SupportedDriver = 'labelmanager' | 'labelwriter' | 'brother-ql';
 
 export interface VerifyOptions {
   driver: SupportedDriver;
@@ -38,8 +42,12 @@ export interface VerifyOptions {
   tapeWidth: 6 | 9 | 12 | 19 | undefined;
   /** Labelwriter-specific. Media key (e.g. ADDRESS_STANDARD) or SKU (e.g. 30334). Mandatory for labelwriter. */
   label: string | undefined;
-  /** Labelwriter-specific. TCP-9100 host. Required when transport=tcp. */
+  /** Brother-ql-specific. Tape SKU from brother-ql-core's media catalog (e.g. DK-22205). Mandatory for brother-ql. */
+  media: string | undefined;
+  /** TCP-9100 host. Labelwriter (Wi-Fi) or brother-ql tcp transport. */
   host: string | undefined;
+  /** TCP-9100 port (default 9100). Brother-ql tcp transport only. */
+  port: number | undefined;
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {
@@ -49,6 +57,9 @@ export async function runVerify(options: VerifyOptions): Promise<void> {
       return;
     case 'labelwriter':
       await runLabelwriterVerify(options);
+      return;
+    case 'brother-ql':
+      await runBrotherQlVerify(options);
       return;
     default: {
       const _exhaustive: never = options.driver;

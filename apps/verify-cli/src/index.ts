@@ -6,8 +6,8 @@
  * submit. Wizard prompts by default; expert flags bypass for
  * known-good-hardware one-liners.
  *
- * Single-driver scope today (labelmanager); subsequent drivers land as
- * separate PRs and grow `--driver` into a real dispatcher.
+ * Drivers covered today: labelmanager, brother-ql. Subsequent drivers
+ * land as separate PRs.
  */
 import { Command } from 'commander';
 import { runVerify } from './verify.js';
@@ -22,7 +22,7 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
   'bluetooth-gatt',
 ];
 const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'unsupported'];
-const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter'] as const;
+const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter', 'brother-ql'] as const;
 
 interface VerifyCommandOptions {
   transport?: TransportType;
@@ -39,8 +39,12 @@ interface VerifyCommandOptions {
   tapeWidth?: 6 | 9 | 12 | 19;
   /** Labelwriter-only: media (label SKU/key) for the diagnostic print. */
   label?: string;
-  /** Labelwriter TCP-9100 host (Wi-Fi models); required when transport=tcp. */
+  /** Brother-ql-only: tape SKU from the brother-ql-core media catalog (e.g. `DK-22205`). */
+  media?: string;
+  /** TCP-9100 host (IP or hostname). Labelwriter Wi-Fi or brother-ql TCP. */
   host?: string;
+  /** TCP-9100 port (default 9100). Brother-ql TCP only. */
+  port?: number;
 }
 
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
@@ -111,8 +115,15 @@ program
     'Labelwriter-only: media key or SKU for the loaded label (e.g. ADDRESS_STANDARD or 30334). Mandatory for labelwriter; the diagnostic print needs the label dimensions.',
   )
   .option(
+    '--media <key>',
+    'Brother-ql-only: tape SKU (e.g. DK-22205, DK-22251, DK-11201). Mandatory for brother-ql; the diagnostic-print needs the dimensions. Detection from the printer status response is best-effort; this flag overrides it.',
+  )
+  .option(
     '--host <host>',
-    'Labelwriter TCP-9100 host (IP or hostname). Required when --transport tcp.',
+    'TCP-9100 host (IP or hostname). Required for labelwriter tcp transport and brother-ql tcp transport.',
+  )
+  .option('--port <port>', 'TCP-9100 port (default 9100). Brother-ql tcp transport only.', v =>
+    Number.parseInt(v, 10),
   )
   .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
@@ -141,7 +152,9 @@ program
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
         label: options.label,
+        media: options.media,
         host: options.host,
+        port: options.port,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
