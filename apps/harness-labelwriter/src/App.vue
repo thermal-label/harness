@@ -8,7 +8,9 @@
  */
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
+import ConnectSection from './components/ConnectSection.vue';
 import SectionCard from './components/SectionCard.vue';
+import { isConnected } from './state/session';
 </script>
 
 <template>
@@ -24,18 +26,9 @@ import SectionCard from './components/SectionCard.vue';
       </p>
     </section>
 
-    <SectionCard :step="1" title="Connect to your printer" state="active">
-      <p>
-        Plug the printer in over USB and click <em>Connect</em> when this section is wired. First
-        time on Linux? You may need a one-line udev rule — see the README.
-      </p>
-      <p class="muted">(Connect controls land in the next commit.)</p>
-      <template #advanced>
-        <p class="muted">Manual VID/PID entry will live here.</p>
-      </template>
-    </SectionCard>
+    <ConnectSection />
 
-    <SectionCard :step="2" title="Confirm what we see" state="pending">
+    <SectionCard :step="2" title="Confirm what we see" :state="isConnected ? 'active' : 'pending'">
       <p>
         Once connected, we'll show you the model we detected and let you correct it if the guess is
         off.
