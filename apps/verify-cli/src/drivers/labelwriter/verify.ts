@@ -69,7 +69,7 @@ import {
   probeLabelwriterMedia,
   writeDiagnosticPrint,
 } from './connect.js';
-import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp } from '../../bitmap-png.js';
