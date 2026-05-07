@@ -9,8 +9,10 @@
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
+import IdentitySection from './components/IdentitySection.vue';
+import MediaSection from './components/MediaSection.vue';
 import SectionCard from './components/SectionCard.vue';
-import { isConnected } from './state/session';
+import { hasMedia } from './state/session';
 </script>
 
 <template>
@@ -27,22 +29,10 @@ import { isConnected } from './state/session';
     </section>
 
     <ConnectSection />
+    <IdentitySection />
+    <MediaSection />
 
-    <SectionCard :step="2" title="Confirm what we see" :state="isConnected ? 'active' : 'pending'">
-      <p>
-        Once connected, we'll show you the model we detected and let you correct it if the guess is
-        off.
-      </p>
-    </SectionCard>
-
-    <SectionCard :step="3" title="Pick the loaded label" state="pending">
-      <p>
-        LW 3xx and 4xx don't auto-detect their roll, so this is mandatory. LW 5xx prefills from the
-        NFC SKU on the roll.
-      </p>
-    </SectionCard>
-
-    <SectionCard :step="4" title="Print the diagnostic" state="pending">
+    <SectionCard :step="4" title="Print the diagnostic" :state="hasMedia ? 'active' : 'pending'">
       <p>
         One comprehensive print (not a battery of seven). Header, edge probes, fill region,
         trailing-edge marker. Whatever comes out is what we ask you about next.
