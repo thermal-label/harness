@@ -1,18 +1,17 @@
 <script setup lang="ts">
 /**
- * Top-level shell. Sections are placeholders in this commit; each one
- * grows into a fully-wired component over the following commits.
- *
- * Single-page guided UX: sections stack vertically and stay visible
- * once reached. No stepper, no next/back. Operator scrolls.
+ * Top-level shell. Single-page guided UX: sections stack vertically
+ * and stay visible once reached. No stepper, no next/back — the
+ * operator scrolls.
  */
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
 import IdentitySection from './components/IdentitySection.vue';
 import MediaSection from './components/MediaSection.vue';
-import SectionCard from './components/SectionCard.vue';
-import { hasMedia } from './state/session';
+import PrintSection from './components/PrintSection.vue';
+import AssessmentSection from './components/AssessmentSection.vue';
+import SubmitSection from './components/SubmitSection.vue';
 </script>
 
 <template>
@@ -31,27 +30,9 @@ import { hasMedia } from './state/session';
     <ConnectSection />
     <IdentitySection />
     <MediaSection />
-
-    <SectionCard :step="4" title="Print the diagnostic" :state="hasMedia ? 'active' : 'pending'">
-      <p>
-        One comprehensive print (not a battery of seven). Header, edge probes, fill region,
-        trailing-edge marker. Whatever comes out is what we ask you about next.
-      </p>
-    </SectionCard>
-
-    <SectionCard :step="5" title="What does it look like?" state="pending">
-      <p>
-        Three radios — <em>verified</em>, <em>partial</em>, <em>unsupported</em> — and an optional
-        one-liner if you want to add detail.
-      </p>
-    </SectionCard>
-
-    <SectionCard :step="6" title="Submit the report" state="pending">
-      <p>
-        Opens a prefilled GitHub issue in a new tab. If GitHub is unreachable or the URL gets too
-        long, we drop a copyable JSON payload here as a fallback.
-      </p>
-    </SectionCard>
+    <PrintSection />
+    <AssessmentSection />
+    <SubmitSection />
   </main>
   <AppFooter />
 </template>

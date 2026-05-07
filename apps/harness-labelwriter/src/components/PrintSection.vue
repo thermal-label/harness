@@ -1,0 +1,166 @@
+<script setup lang="ts">
+/**
+ * Print-the-diagnostic section.
+ *
+ * Builds the bitmap via the shared encoder
+ * (`@thermal-label/harness-core/labelwriter`), encodes to wire bytes,
+ * pushes them out the active transport. Disabled until media is
+ * confirmed. After a successful write, exposes the byte count and
+ * "print again" affordance — operators sometimes want a second copy
+ * before assessing.
+ *
+ * The Advanced drawer surfaces the wire-byte length + a few hex
+ * preview lines for triage.
+ */
+import { computed, ref } from 'vue';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
+import { connection, device, hasMedia, hasPrinted, media, submitState } from '../state/session';
+import { writeDiagnosticPrint } from '../transport/connect';
+import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
+import SectionCard from './SectionCard.vue';
+
+const sectionState = computed<'pending' | 'active' | 'done'>(() => {
+  if (!hasMedia.value) return 'pending';
+  if (!hasPrinted.value) return 'active';
+  return 'done';
+});
+
+const printing = ref(false);
+const lastError = ref<string | null>(null);
+const lastByteCount = ref(0);
+const lastBytesPreview = ref<string>('');
+
+async function doPrint(): Promise<void> {
+  if (!device.value || !media.value || !connection.transport) return;
+  lastError.value = null;
+  printing.value = true;
+  try {
+    const bitmap = buildDiagnosticBitmap({
+      device: device.value,
+      media: media.value,
+      harnessVersion: HARNESS_VERSION,
+      driverVersion: DRIVER_VERSION,
+    });
+    const bytes = encodeBitmap(bitmap, device.value);
+    lastByteCount.value = bytes.byteLength;
+    lastBytesPreview.value = formatHexPreview(bytes);
+    await writeDiagnosticPrint(connection.transport, bytes);
+    submitState.printed = true;
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    printing.value = false;
+  }
+}
+
+function formatHexPreview(bytes: Uint8Array): string {
+  const lines: string[] = [];
+  const lineLen = 16;
+  const maxLines = 4;
+  for (let i = 0; i < Math.min(bytes.byteLength, lineLen * maxLines); i += lineLen) {
+    const slice = bytes.subarray(i, Math.min(bytes.byteLength, i + lineLen));
+    const offset = i.toString(16).padStart(6, '0');
+    const hex = Array.from(slice)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ');
+    lines.push(`${offset}  ${hex}`);
+  }
+  if (bytes.byteLength > lineLen * maxLines) {
+    lines.push(`…  (${(bytes.byteLength - lineLen * maxLines).toString()} more bytes)`);
+  }
+  return lines.join('\n');
+}
+</script>
+
+<template>
+  <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
+    <p v-if="!hasMedia" class="muted">
+      Pick a label first — the bitmap dimensions come from there.
+    </p>
+
+    <template v-else>
+      <p>
+        We send one comprehensive print: identifying header, asymmetric orientation markers, edge
+        probes, sample text at two scales, a fill region, and a trailing-edge probe. One photo of
+        the printed label answers most of the diagnostic questions.
+      </p>
+
+      <div class="actions">
+        <button class="primary" :disabled="printing" type="button" @click="doPrint">
+          {{ printing ? 'Sending…' : hasPrinted ? 'Print again' : 'Print diagnostic' }}
+        </button>
+        <span v-if="hasPrinted && !printing" class="ok-tag">
+          Sent {{ lastByteCount.toLocaleString() }} bytes
+        </span>
+      </div>
+
+      <p v-if="hasPrinted && !lastError" class="muted small">
+        Take a quick look at what came out — you'll need it for the next section. Snap a photo if
+        you want; you'll have a chance to drop it into the GitHub issue after submit.
+      </p>
+
+      <p v-if="lastError" class="error">
+        {{ lastError }}
+      </p>
+    </template>
+
+    <template v-if="hasMedia" #advanced>
+      <p class="muted small">
+        Last encoded payload: <strong>{{ lastByteCount.toLocaleString() }}</strong> bytes.
+      </p>
+      <pre v-if="lastBytesPreview">{{ lastBytesPreview }}</pre>
+      <p v-else class="muted small">(Print once to see the byte preview here.)</p>
+    </template>
+  </SectionCard>
+</template>
+
+<style scoped>
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-5);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.ok-tag {
+  font-size: 0.85rem;
+  color: var(--ok);
+  background: var(--ok-bg);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-top: var(--space-3);
+  font-size: 0.92rem;
+}
+
+pre {
+  font-size: 0.78rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+</style>
