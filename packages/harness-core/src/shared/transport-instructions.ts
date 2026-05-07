@@ -23,9 +23,7 @@ export interface TransportInstruction {
  * scrolling. Anything longer goes behind `docsLink`. Update this registry
  * here, not by patching driver repos — drivers stay unaware of the harness.
  */
-export const transportInstructions: Readonly<
-  Record<TransportType, TransportInstruction>
-> = {
+export const transportInstructions: Readonly<Record<TransportType, TransportInstruction>> = {
   usb: {
     inline:
       'Plug the printer in over USB and click "Connect" — the browser prompt picks the device. Linux may need a udev rule or sudo for first-time access.',

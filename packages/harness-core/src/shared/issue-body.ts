@@ -40,7 +40,7 @@ export function renderIssueBody(report: HardwareReport): string {
 
 function renderHeadline(report: HardwareReport): string {
   const model = report.device.confirmed.model;
-  const transports = report.transports.map((t) => t.name).join(', ');
+  const transports = report.transports.map(t => t.name).join(', ');
   const overallRung = pickHeadlineRung(report);
   return `## ${model} on ${transports} — ${RUNG_LABEL[overallRung]}`;
 }
@@ -52,7 +52,7 @@ function renderHeadline(report: HardwareReport): string {
  * one broke" at a glance.
  */
 function pickHeadlineRung(report: HardwareReport): TransportReport['rung'] {
-  const rungs = new Set(report.transports.map((t) => t.rung));
+  const rungs = new Set(report.transports.map(t => t.rung));
   if (rungs.has('unsupported')) return 'unsupported';
   if (rungs.has('partial')) return 'partial';
   return 'verified';
@@ -60,22 +60,18 @@ function pickHeadlineRung(report: HardwareReport): TransportReport['rung'] {
 
 function renderTransportLine(transport: TransportReport): string {
   const patternEntries = Object.entries(transport.patterns);
-  const glyphs = patternEntries
-    .map(([id, result]) => `${id} ${RESULT_GLYPH[result]}`)
-    .join('  ');
+  const glyphs = patternEntries.map(([id, result]) => `${id} ${RESULT_GLYPH[result]}`).join('  ');
   const head = `**${transport.name}** — ${RUNG_LABEL[transport.rung]}`;
   const note = transport.notes ? ` — ${transport.notes}` : '';
   return `${head}\n\n${glyphs}${note}`;
 }
 
 function renderOperatorNotes(report: HardwareReport): string | undefined {
-  const notes = report.transports
-    .map((t) => t.notes)
-    .filter((n): n is string => Boolean(n));
+  const notes = report.transports.map(t => t.notes).filter((n): n is string => Boolean(n));
   if (notes.length === 0) return undefined;
   // Reporter attribution is intentionally light — plan 03 keeps PII opt-in.
   const reporter = report.reporter?.handle ? ` — ${report.reporter.handle}` : '';
-  const quoted = notes.map((n) => `> ${n}`).join('\n');
+  const quoted = notes.map(n => `> ${n}`).join('\n');
   return `${quoted}${reporter}`;
 }
 

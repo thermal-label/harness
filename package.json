@@ -11,8 +11,8 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
-    "lint": "eslint packages apps",
-    "format": "prettier --write packages apps",
+    "lint": "eslint packages --no-error-on-unmatched-pattern",
+    "format": "prettier --write packages",
     "typecheck": "pnpm -r run typecheck",
     "changeset": "changeset"
   },

@@ -27,9 +27,7 @@ describe('computeRung', () => {
   });
 
   it('throws on an all-skipped pattern set (no signal — submit must be blocked)', () => {
-    expect(() => computeRung({ T1: 'skipped', T2: 'skipped' })).toThrow(
-      /all-skip/,
-    );
+    expect(() => computeRung({ T1: 'skipped', T2: 'skipped' })).toThrow(/all-skip/);
   });
 
   it('throws on an empty pattern map (no signal)', () => {

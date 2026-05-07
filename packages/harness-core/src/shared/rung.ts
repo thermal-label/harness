@@ -16,9 +16,7 @@ import type { PatternResult, ProposedRung } from './hardware-report.js';
  * Computed in the harness and stored on `TransportReport.rung` so plan 04's
  * parser doesn't re-derive — the wire format is the single source of truth.
  */
-export function computeRung(
-  patterns: Readonly<Record<string, PatternResult>>,
-): ProposedRung {
+export function computeRung(patterns: Readonly<Record<string, PatternResult>>): ProposedRung {
   const values = Object.values(patterns);
   let passCount = 0;
   let failCount = 0;
