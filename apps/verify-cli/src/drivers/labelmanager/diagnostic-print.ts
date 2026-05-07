@@ -77,12 +77,12 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
 
   const sections: LabelBitmap[] = [];
 
-  // 1. Header block — driver name, model key, harness version. Three
-  //    short lines at 1x. Truncated to fit the head; readers see "what
-  //    is this print of?" at a glance.
+  // 1. Header block — model key + harness version. Two short lines at
+  //    1x; both fit the 64-dot head used by 12 mm and 19 mm tape. The
+  //    issue title carries the "what is this print of?" framing — no
+  //    need to repeat "LM-DIAG" on the print itself.
   sections.push(textSection(`v${input.harnessVersion}`, headDots, 1));
   sections.push(textSection(input.device.key, headDots, 1));
-  sections.push(textSection('LM-DIAG', headDots, 2));
 
   // 2. Asymmetric orientation marker — top.
   sections.push(textSection('TOP>', headDots, 1));
@@ -93,9 +93,10 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   sections.push(edgeProbeSection(headDots, 'left'));
   sections.push(edgeProbeSection(headDots, 'right'));
 
-  // 4. Sample text at two sizes for legibility eyeball.
-  sections.push(textSection('Sample 1x', headDots, 1));
-  sections.push(textSection('SAMP 2x', headDots, 2));
+  // 4. Sample text at two sizes for legibility eyeball. Strings sized
+  //    to fit a 64-dot head (12 mm tape) at the requested scale.
+  sections.push(textSection('TXT 1X', headDots, 1));
+  sections.push(textSection('2X', headDots, 2));
 
   // 5. Fill region — alternating stripes for density uniformity.
   sections.push(fillStripes(headDots, 12));
