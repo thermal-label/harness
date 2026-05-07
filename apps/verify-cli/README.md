@@ -67,19 +67,20 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
   --reporter "@mannes"
 ```
 
-| Flag                     | Effect                                                                                                                                 |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                                                                     |
-| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                              |
-| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                   |
-| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                              |
-| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                                                                     |
-| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).                                                                |
-| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**                                                      |
-| `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing.   |
-| `--preview`              | Print the diagnostic bitmap as Unicode block art to stdout before sending bytes. Combine with `--dry-run` for a hardware-free preview. |
-| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                  |
-| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                      |
+| Flag                     | Effect                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `<driver>` (positional)  | Driver key. Today: `labelmanager`.                                                                                                       |
+| `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                                |
+| `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                     |
+| `-r, --rung <rung>`      | One of `verified`, `partial`, `unsupported`. Skips the assessment prompt.                                                                |
+| `-n, --notes <notes>`    | Pre-fill the operator notes field.                                                                                                       |
+| `--no-prompt`            | Fail fast if any further prompt would be needed (useful in scripts/CI).                                                                  |
+| `--dry-run`              | Render the `IssueBody` to stdout instead of submitting. **No hardware required.**                                                        |
+| `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing.     |
+| `--preview`              | Print the diagnostic bitmap as Braille to stdout before sending bytes. Combine with `--dry-run` for a hardware-free preview.             |
+| `--preview-png`          | Write the diagnostic bitmap as a PNG to a tmp file and auto-open in your default image viewer. Most accurate "what you're sending" view. |
+| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                    |
+| `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                        |
 
 ## Dry-run output
 

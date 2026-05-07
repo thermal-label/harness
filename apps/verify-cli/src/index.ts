@@ -34,6 +34,7 @@ interface VerifyCommandOptions {
   /** Inverted by commander from `--no-submit`; `true` (default) = submit. */
   submit?: boolean;
   preview?: boolean;
+  previewPng?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
 }
@@ -80,7 +81,11 @@ program
   )
   .option(
     '--preview',
-    'Print the diagnostic bitmap as ASCII to stdout before sending bytes (or alone, with --dry-run).',
+    'Print the diagnostic bitmap as Braille to stdout before sending bytes (or alone, with --dry-run).',
+  )
+  .option(
+    '--preview-png',
+    'Write the diagnostic bitmap as a PNG to a tmp file and auto-open it in your default image viewer.',
   )
   .option(
     '--reporter <handle>',
@@ -120,6 +125,7 @@ program
         // default, treated as wanting submit.
         noSubmit: options.submit === false,
         preview: options.preview === true,
+        previewPng: options.previewPng === true,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
       });

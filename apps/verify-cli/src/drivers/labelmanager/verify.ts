@@ -43,6 +43,7 @@ import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
 import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
+import { writeBitmapPngToTmp } from '../../bitmap-png.js';
 import type { LabelBitmap } from '@mbtech-nl/bitmap';
 
 const DRIVER_KEY = 'labelmanager';
@@ -93,6 +94,16 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
 
   if (options.preview) {
     console.log(renderBitmapPreview(bitmap));
+    console.log('');
+  }
+
+  if (options.previewPng) {
+    const pngPath = writeBitmapPngToTmp(bitmap, `verify-${device.key}`);
+    console.log(`Wrote PNG preview: ${pngPath}`);
+    const launcher = openInBrowser(pngPath);
+    if (launcher) {
+      console.log(`(Opening with ${launcher}; if nothing appeared, open the path above manually.)`);
+    }
     console.log('');
   }
 
