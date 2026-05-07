@@ -1,0 +1,35 @@
+{
+  "name": "harness",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=9.0.0"
+  },
+  "prettier": "@mbtech-nl/prettier-config",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
+    "lint": "eslint packages apps",
+    "format": "prettier --write packages apps",
+    "typecheck": "pnpm -r run typecheck",
+    "changeset": "changeset"
+  },
+  "pnpm": {
+    "overrides": {
+      "@thermal-label/contracts": "link:../contracts"
+    }
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.0.0",
+    "@mbtech-nl/eslint-config": "^1.0.1",
+    "@mbtech-nl/prettier-config": "^1.0.1",
+    "@mbtech-nl/tsconfig": "^1.0.1",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "~5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "version": "0.0.0"
+}
