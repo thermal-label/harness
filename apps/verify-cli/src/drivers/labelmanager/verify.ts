@@ -6,24 +6,31 @@
  * typically lands on the all-flags one-liner; community-style runs use
  * the wizard.
  *
- * Steps:
+ * Flow:
  *   1. Resolve model (flag or pick-from-registry prompt).
- *   2. Resolve transport — labelmanager today is USB-only; if the user
- *      passes anything else we error out early.
- *   3. Connect (wired in step 4 of plan 05's commit ordering).
- *   4. Identity confirm.
- *   5. "Print diagnostic now?" + send bytes.
- *   6. Operator assessment (rung + notes).
- *   7. Submit (or dry-run print).
+ *   2. Resolve transport — labelmanager today is USB-only.
+ *   3. Connect via `UsbTransport` + identity probe (status query).
+ *   4. Build the diagnostic-print bitmap, encode bytes, write to the
+ *      bulk OUT endpoint.
+ *   5. Operator inspects what came out, picks the rung + free-text
+ *      notes (skipped under flags).
+ *   6. Render `IssueBody`. Submit lands in the next commit; today the
+ *      rendered body is printed to stdout regardless of `--dry-run`.
  */
 import { DEVICES, type LabelManagerDevice } from '@thermal-label/labelmanager-core';
-import type { TransportType } from '@thermal-label/contracts';
-import type {
-  HardwareReport,
-  ProposedRung,
-  TransportReport,
+import {
+  DeviceNotFoundError,
+  TransportClosedError,
+  type TransportType,
+} from '@thermal-label/contracts';
+import {
+  renderIssueBody,
+  transportInstructions,
+  type HardwareReport,
+  type IdentitySnapshot,
+  type ProposedRung,
+  type TransportReport,
 } from '@thermal-label/harness-core/shared';
-import { transportInstructions } from '@thermal-label/harness-core/shared';
 import type { VerifyOptions } from '../../verify.js';
 import {
   NoPromptError,
@@ -32,16 +39,13 @@ import {
   promptSelect,
   type PromptContext,
 } from '../../prompts.js';
+import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
+import { encodeDiagnosticPrint } from './diagnostic-print.js';
 
 const DRIVER_KEY = 'labelmanager';
-// Pinned harness-app version — bumped manually as the verify-cli evolves.
-// Surfaces in the issue body so triage can correlate output to the harness
-// build that produced it.
 const HARNESS_VERSION = '0.0.0';
-// Read once from the labelmanager core's `package.json` at runtime would be
-// nicer, but adding a JSON import for one field isn't worth it; bump on
-// driver-core upgrades. The matching version is in `package.json` deps.
 const DRIVER_VERSION = '0.5.1';
+const DEFAULT_TAPE_WIDTH = 12 as const;
 
 const SUPPORTED_TRANSPORTS: readonly TransportType[] = ['usb'];
 
@@ -68,42 +72,97 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
 
   const device = await resolveDevice(options, ctx);
   const transport = await resolveTransport(options, ctx);
+  const tapeWidth = options.tapeWidth ?? DEFAULT_TAPE_WIDTH;
 
-  console.log('');
-  console.log(`Driver:    ${DRIVER_KEY} (core ${DRIVER_VERSION}, harness ${HARNESS_VERSION})`);
-  console.log(`Model:     ${device.name}  [${device.key}]`);
-  console.log(`Transport: ${transport}`);
-  console.log('');
-  console.log(transportInstructions[transport].inline);
-  console.log('');
+  printSessionHeader(device, transport, tapeWidth);
 
-  // Connect step lands in the next commit. Today the wizard stops here
-  // unless --dry-run was passed — dry-run mode renders an IssueBody with
-  // mock probe data so the smoke test of plan 05 step 6 has something to
-  // exercise.
-  if (!options.dryRun) {
-    throw new Error(
-      'Transport wiring lands in plan 05 step 4. ' +
-        'For now run with `--dry-run` to exercise the wizard end-to-end.',
-    );
-  }
+  const identity = await runConnect(device, options, tapeWidth);
 
   const rung = await resolveRung(options, ctx);
   const notes = await resolveNotes(options, ctx);
 
-  const report = buildMockReport({
+  const report = buildReport({
     device,
+    detectedIdentity: identity,
     transport,
     rung,
     notes,
     reporter: options.reporter,
   });
 
-  // Submit flow + actual `gh issue create` path land in plan 05 step 5.
-  // For now `--dry-run` prints the rendered body. A non-dry-run code path
-  // does not exist yet; the throw above guards it.
-  const { renderIssueBody } = await import('@thermal-label/harness-core/shared');
+  // Submit-flow path lands in plan 05 step 5; for now both modes print
+  // the rendered body to stdout. `--dry-run` is the explicit signal
+  // that this is the test path.
   process.stdout.write(renderIssueBody(report));
+}
+
+function printSessionHeader(
+  device: LabelManagerDevice,
+  transport: TransportType,
+  tapeWidth: 6 | 9 | 12 | 19,
+): void {
+  console.log('');
+  console.log(`Driver:    ${DRIVER_KEY} (core ${DRIVER_VERSION}, harness ${HARNESS_VERSION})`);
+  console.log(`Model:     ${device.name}  [${device.key}]`);
+  console.log(`Transport: ${transport}`);
+  console.log(`Tape:      ${String(tapeWidth)} mm`);
+  console.log('');
+  console.log(transportInstructions[transport].inline);
+  console.log('');
+}
+
+async function runConnect(
+  device: LabelManagerDevice,
+  options: VerifyOptions,
+  tapeWidth: 6 | 9 | 12 | 19,
+): Promise<IdentitySnapshot> {
+  if (options.dryRun) {
+    return synthesiseIdentity(device);
+  }
+
+  console.log('Connecting over USB...');
+  let session;
+  try {
+    session = await connectLabelmanager(device);
+  } catch (err) {
+    if (err instanceof DeviceNotFoundError) {
+      throw new Error(
+        `No USB device found matching ${device.key} (vid=0x${device.transports.usb?.vid ?? '?'} ` +
+          `pid=0x${device.transports.usb?.pid ?? '?'}). Plug it in or pass --dry-run to ` +
+          `exercise the rendering path without hardware.`,
+      );
+    }
+    throw err;
+  }
+
+  console.log(
+    `Connected. vid=0x${session.identity.vid?.toString(16) ?? '?'} ` +
+      `pid=0x${session.identity.pid?.toString(16) ?? '?'}`,
+  );
+
+  console.log('Encoding diagnostic print...');
+  const bytes = encodeDiagnosticPrint({
+    device,
+    tapeWidth,
+    harnessVersion: HARNESS_VERSION,
+    driverVersion: DRIVER_VERSION,
+  });
+  console.log(`Sending ${String(bytes.length)} bytes to printer...`);
+  try {
+    await writeDiagnosticPrint(session.transport, bytes);
+  } catch (err) {
+    if (err instanceof TransportClosedError) {
+      throw new Error(
+        'USB transport closed mid-write. Check the cable / device power; ' +
+          'no bytes were buffered, so re-running is safe.',
+      );
+    }
+    throw err;
+  }
+  console.log('Diagnostic print sent.');
+
+  await session.transport.close();
+  return session.identity;
 }
 
 async function resolveDevice(
@@ -126,16 +185,15 @@ async function resolveDevice(
 
   if (ctx.noPrompt) throw new NoPromptError('model');
 
-  return promptSelect<string>(
+  const key = await promptSelect<string>(
     ctx,
     'model',
     'Pick a labelmanager model:',
     known.map(d => ({ value: d.key, name: `${d.name}  [${d.key}]` })),
-  ).then(key => {
-    const found = known.find(d => d.key === key);
-    if (!found) throw new Error(`Picked unknown key ${key}`);
-    return found;
-  });
+  );
+  const found = known.find(d => d.key === key);
+  if (!found) throw new Error(`Picked unknown key ${key}`);
+  return found;
 }
 
 async function resolveTransport(
@@ -152,8 +210,6 @@ async function resolveTransport(
     return options.transport;
   }
 
-  // Single-transport driver — no point prompting if there's only one
-  // option. Document it in stdout for transparency.
   if (SUPPORTED_TRANSPORTS.length === 1) {
     return SUPPORTED_TRANSPORTS[0]!;
   }
@@ -176,7 +232,10 @@ async function resolveRung(options: VerifyOptions, ctx: PromptContext): Promise<
   );
 }
 
-async function resolveNotes(options: VerifyOptions, ctx: PromptContext): Promise<string | undefined> {
+async function resolveNotes(
+  options: VerifyOptions,
+  ctx: PromptContext,
+): Promise<string | undefined> {
   if (options.notes !== undefined) return options.notes;
   if (ctx.noPrompt) return undefined;
   const confirmAdd = await promptConfirm(
@@ -190,29 +249,26 @@ async function resolveNotes(options: VerifyOptions, ctx: PromptContext): Promise
   return text.trim() || undefined;
 }
 
-interface MockReportInput {
+interface BuildReportInput {
   device: LabelManagerDevice;
+  detectedIdentity: IdentitySnapshot;
   transport: TransportType;
   rung: ProposedRung;
   notes: string | undefined;
   reporter: string | undefined;
 }
 
-/**
- * For `--dry-run` we don't actually connect, so detected identity is
- * synthesised from the registry entry (vid/pid + advertisedName from the
- * model name). This lets plan 05 step 6's smoke test render a complete
- * `HardwareReport` without hardware in the loop.
- *
- * The real flow (plan 05 step 4) replaces this with values pulled from
- * the live `UsbTransport` + identity probe.
- */
-function buildMockReport(input: MockReportInput): HardwareReport {
-  const usb = input.device.transports.usb;
-  const detected = {
-    advertisedName: input.device.name,
+function synthesiseIdentity(device: LabelManagerDevice): IdentitySnapshot {
+  const usb = device.transports.usb;
+  return {
+    advertisedName: device.name,
     ...(usb ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) } : {}),
+    extra: { synthesised: true, source: 'dry-run-fallback' },
   };
+}
+
+function buildReport(input: BuildReportInput): HardwareReport {
+  const usb = input.device.transports.usb;
 
   const transportReport: TransportReport = {
     name: input.transport,
@@ -227,7 +283,7 @@ function buildMockReport(input: MockReportInput): HardwareReport {
     driverVersion: DRIVER_VERSION,
     harnessVersion: HARNESS_VERSION,
     device: {
-      detected,
+      detected: input.detectedIdentity,
       confirmed: {
         model: input.device.name,
         ...(usb ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) } : {}),

@@ -61,6 +61,17 @@ program
     '--reporter <handle>',
     'Optional reporter handle (e.g. @mannes); appears in the issue body.',
   )
+  .option(
+    '--tape-width <mm>',
+    'Tape width in millimetres (6, 9, 12, 19). Labelmanager-only; defaults to 12.',
+    value => {
+      const n = Number(value);
+      if (![6, 9, 12, 19].includes(n)) {
+        throw new Error(`Invalid --tape-width ${value}; expected 6, 9, 12, or 19.`);
+      }
+      return n;
+    },
+  )
   .action(async (driver: string, model: string | undefined, options) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
@@ -81,6 +92,7 @@ program
         wizard: options.prompt !== false,
         dryRun: options.dryRun === true,
         reporter: options.reporter as string | undefined,
+        tapeWidth: options.tapeWidth as 6 | 9 | 12 | 19 | undefined,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

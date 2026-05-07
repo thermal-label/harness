@@ -18,6 +18,8 @@ export interface VerifyOptions {
   wizard: boolean;
   dryRun: boolean;
   reporter: string | undefined;
+  /** Labelmanager-specific. Defaults to 12 mm. */
+  tapeWidth: 6 | 9 | 12 | 19 | undefined;
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {
