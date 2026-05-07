@@ -127,7 +127,7 @@ describe('verify-cli --dry-run end-to-end', () => {
       'LW_330_TURBO',
       '--transport',
       'usb',
-      '--label',
+      '--media',
       'ADDRESS_STANDARD',
       '--rung',
       'verified',
@@ -156,7 +156,7 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
   }, 30_000);
 
-  it('accepts a SKU as --label for labelwriter', async () => {
+  it('accepts a SKU as --media for labelwriter', async () => {
     // 30252 → ADDRESS_STANDARD (89×28mm).
     const result = await runCli([
       'verify',
@@ -164,7 +164,7 @@ describe('verify-cli --dry-run end-to-end', () => {
       'LW_330_TURBO',
       '--transport',
       'usb',
-      '--label',
+      '--media',
       '30252',
       '--rung',
       'verified',
@@ -183,7 +183,7 @@ describe('verify-cli --dry-run end-to-end', () => {
       'LW_330_TURBO',
       '--transport',
       'usb',
-      '--label',
+      '--media',
       'NOT_A_REAL_LABEL',
       '--rung',
       'verified',
@@ -196,7 +196,8 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(result.stderr).toMatch(/address-standard/);
   }, 30_000);
 
-  it('requires --label for labelwriter under --no-prompt', async () => {
+  it('requires --media for non-detecting labelwriter under --no-prompt', async () => {
+    // LW_330_TURBO has no media detection — flag is mandatory in --no-prompt.
     const result = await runCli([
       'verify',
       'labelwriter',
@@ -209,7 +210,8 @@ describe('verify-cli --dry-run end-to-end', () => {
       '--dry-run',
     ]);
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/--no-prompt was set, but label is missing/);
+    expect(result.stderr).toMatch(/--media is required for labelwriter/);
+    expect(result.stderr).toMatch(/no media detection/);
   }, 30_000);
 
   it('rejects a TCP transport on a USB-only labelwriter model', async () => {
@@ -219,7 +221,7 @@ describe('verify-cli --dry-run end-to-end', () => {
       'LW_330_TURBO',
       '--transport',
       'tcp',
-      '--label',
+      '--media',
       'ADDRESS_STANDARD',
       '--host',
       '10.0.0.1',

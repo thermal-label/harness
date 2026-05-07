@@ -19,10 +19,14 @@
  * a friendly stdout message but does not retry.
  */
 import {
+  build550GetSku,
   buildStatusRequest,
+  parseSkuInfo,
   parseStatus,
+  SKU_INFO_BYTE_COUNT,
   statusByteCount,
   type LabelWriterDevice,
+  type SkuInfo,
 } from '@thermal-label/labelwriter-core';
 import { TcpTransport, UsbTransport } from '@thermal-label/transport/node';
 import type { Transport } from '@thermal-label/contracts';
@@ -114,6 +118,41 @@ export async function writeDiagnosticPrint(transport: Transport, bytes: Uint8Arr
     return;
   }
   await transport.write(bytes);
+}
+
+/**
+ * Lightweight one-shot SKU probe over USB for `--media` auto-detection.
+ *
+ * Only attempted when the device's primary engine declares
+ * `capabilities.mediaDetection: true` (LW 5xx family). Opens, sends
+ * `ESC U`, reads the 63-byte SKU dump, and closes — all best-effort.
+ * Caller proceeds without detection if the probe throws or the device
+ * isn't capable.
+ *
+ * Run before the full connect-and-print flow so `resolveMedia` can use
+ * the detected SKU as a default. The user's `--media` flag (if passed)
+ * always wins regardless of what's detected.
+ */
+export async function probeLabelwriterMedia(
+  device: LabelWriterDevice,
+): Promise<SkuInfo | undefined> {
+  const usb = device.transports.usb;
+  const detects = device.engines[0]?.capabilities?.mediaDetection === true;
+  if (!usb || !detects) return undefined;
+  const vid = parseInt(usb.vid, 16);
+  const pid = parseInt(usb.pid, 16);
+
+  let transport: UsbTransport | undefined;
+  try {
+    transport = await UsbTransport.open(vid, pid);
+    await transport.write(build550GetSku());
+    const response = await transport.read(SKU_INFO_BYTE_COUNT, STATUS_TIMEOUT_MS);
+    return parseSkuInfo(response);
+  } catch {
+    return undefined;
+  } finally {
+    await transport?.close();
+  }
 }
 
 async function runStatusProbe(

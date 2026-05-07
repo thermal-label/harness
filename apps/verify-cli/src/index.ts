@@ -37,9 +37,7 @@ interface VerifyCommandOptions {
   previewPng?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
-  /** Labelwriter-only: media (label SKU/key) for the diagnostic print. */
-  label?: string;
-  /** Brother-ql-only: tape SKU from the brother-ql-core media catalog (e.g. `DK-22205`). */
+  /** Loaded label / tape SKU. Optional when the printer auto-detects (LW 5xx, brother-ql). */
   media?: string;
   /** TCP-9100 host (IP or hostname). Labelwriter Wi-Fi or brother-ql TCP. */
   host?: string;
@@ -111,12 +109,8 @@ program
     },
   )
   .option(
-    '--label <key>',
-    'Labelwriter-only: media key or SKU for the loaded label (e.g. ADDRESS_STANDARD or 30334). Mandatory for labelwriter; the diagnostic print needs the label dimensions.',
-  )
-  .option(
     '--media <key>',
-    'Brother-ql-only: tape SKU (e.g. DK-22205, DK-22251, DK-11201). Mandatory for brother-ql; the diagnostic-print needs the dimensions. Detection from the printer status response is best-effort; this flag overrides it.',
+    'Loaded label / tape (e.g. ADDRESS_STANDARD or 30334 for labelwriter; DK-22205, DK-22251 for brother-ql). Optional when the printer auto-detects (LW 5xx, brother-ql); required for LW 3xx/4xx and labelmanager-via-tape-width. Wizard prompts when it cannot be detected and no flag is passed.',
   )
   .option(
     '--host <host>',
@@ -151,7 +145,6 @@ program
         previewPng: options.previewPng === true,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
-        label: options.label,
         media: options.media,
         host: options.host,
         port: options.port,

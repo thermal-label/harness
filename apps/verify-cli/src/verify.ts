@@ -40,9 +40,11 @@ export interface VerifyOptions {
   reporter: string | undefined;
   /** Labelmanager-specific. Defaults to 12 mm. */
   tapeWidth: 6 | 9 | 12 | 19 | undefined;
-  /** Labelwriter-specific. Media key (e.g. ADDRESS_STANDARD) or SKU (e.g. 30334). Mandatory for labelwriter. */
-  label: string | undefined;
-  /** Brother-ql-specific. Tape SKU from brother-ql-core's media catalog (e.g. DK-22205). Mandatory for brother-ql. */
+  /**
+   * Loaded label / tape. Labelwriter accepts a media key (e.g. `ADDRESS_STANDARD`) or SKU
+   * (`30334`); brother-ql accepts a DK SKU (`DK-22205`). Optional when the printer auto-detects
+   * (LW 5xx, brother-ql); required for LW 3xx/4xx; labelmanager uses `tapeWidth` instead.
+   */
   media: string | undefined;
   /** TCP-9100 host. Labelwriter (Wi-Fi) or brother-ql tcp transport. */
   host: string | undefined;

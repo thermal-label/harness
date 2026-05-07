@@ -63,7 +63,12 @@ import {
   promptSelect,
   type PromptContext,
 } from '../../prompts.js';
-import { connectLabelwriterTcp, connectLabelwriterUsb, writeDiagnosticPrint } from './connect.js';
+import {
+  connectLabelwriterTcp,
+  connectLabelwriterUsb,
+  probeLabelwriterMedia,
+  writeDiagnosticPrint,
+} from './connect.js';
 import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
@@ -414,15 +419,15 @@ async function resolveDevice(
 }
 
 /**
- * Resolve `--label` to a media descriptor.
+ * Resolve `--media` to a media descriptor.
  *
- * Accepts either a media key (e.g. `ADDRESS_STANDARD`) or a SKU
- * (e.g. `30334`). Mandatory — no default; different labels have wildly
- * different dimensions and the diagnostic print can't be properly
- * sized without one. Wizard prompts when the flag is absent.
+ * Resolution order: explicit flag → printer auto-detection (LW 5xx
+ * `capabilities.mediaDetection`) → wizard prompt → hard-fail in
+ * `--no-prompt`. The flag always wins; a mismatch with detection is
+ * logged as a warning but proceeds.
  *
- * Hard-fails with a useful list of valid keys + SKUs when the flag
- * value is unknown.
+ * Auto-detection skips entirely on `--dry-run` (no hardware contact)
+ * and on devices that don't declare `mediaDetection`.
  */
 async function resolveMedia(
   device: LabelWriterDevice,
@@ -431,15 +436,42 @@ async function resolveMedia(
 ): Promise<LabelWriterMedia> {
   const labelMedia = labelwriterLabelMedia();
 
-  if (options.label !== undefined) {
-    const match = findMediaByKeyOrSku(options.label);
+  if (options.media !== undefined) {
+    const match = findMediaByKeyOrSku(options.media);
     if (!match) {
-      throw new Error(formatUnknownLabel(options.label, labelMedia));
+      throw new Error(formatUnknownLabel(options.media, labelMedia));
     }
     return match;
   }
 
-  if (ctx.noPrompt) throw new NoPromptError('label');
+  // Try printer auto-detection on capable models. Skip on dry-run —
+  // synthesised identity, no hardware contact.
+  const detectsMedia = device.engines[0]?.capabilities?.mediaDetection === true;
+  if (detectsMedia && !options.dryRun) {
+    const detected = await probeLabelwriterMedia(device);
+    if (detected) {
+      const match = findMediaByKeyOrSku(detected.sku);
+      if (match) {
+        console.log(
+          `[labelwriter] Detected media from printer NFC: ${detected.sku} (${match.name}).`,
+        );
+        return match;
+      }
+      console.warn(
+        `[labelwriter] Printer reports SKU "${detected.sku}" but it isn't in the labelwriter-core MEDIA registry. Pass --media explicitly.`,
+      );
+    }
+  }
+
+  if (ctx.noPrompt) {
+    const reason = detectsMedia
+      ? `${device.key} has media detection but the probe returned nothing usable`
+      : `${device.key} has no media detection`;
+    throw new Error(
+      `--media is required for labelwriter (${reason}). ` +
+        `Pass --media <key|sku> (e.g. --media ADDRESS_STANDARD or --media 30334).`,
+    );
+  }
 
   // Filter to media compatible with the device's primary engine
   // (rough cut: `targetModels` overlaps `mediaCompatibility`).
@@ -452,12 +484,12 @@ async function resolveMedia(
 
   const picked = await promptSelect<string>(
     ctx,
-    'label',
+    'media',
     'Pick the loaded label:',
     choices.length > 0 ? choices : labelMedia.map(m => ({ value: String(m.id), name: m.name })),
   );
   const found = labelMedia.find(m => String(m.id) === picked);
-  if (!found) throw new Error(`Picked unknown label ${picked}`);
+  if (!found) throw new Error(`Picked unknown media ${picked}`);
   return found;
 }
 
