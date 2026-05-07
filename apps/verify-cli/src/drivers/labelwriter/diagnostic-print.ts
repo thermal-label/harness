@@ -86,39 +86,41 @@ const CONTINUOUS_DEFAULT_HEIGHT_PX = 1200; // 4 inches at 300 dpi.
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap {
   const headDots = primaryHeadDots(input.device);
   const labelHeight = mediaHeightPx(input.media);
-
-  const sections: LabelBitmap[] = [];
-
-  // 1. Header — version + device key. Two short lines at 1x.
-  sections.push(textSection(`v${input.harnessVersion}`, headDots, 1));
-  sections.push(textSection(input.device.key, headDots, 1));
-  sections.push(textSection(String(input.media.id).toUpperCase(), headDots, 1));
-
-  // 2. Asymmetric orientation marker — leading edge.
-  sections.push(textSection('TOP>', headDots, 2));
-
-  // 3. Edge probes. Bars step in 2-dot increments along the chosen
-  //    edge; the first row whose bar didn't print reveals the
-  //    printable margin.
-  sections.push(edgeProbeSection(headDots, 'left', 32));
-  sections.push(edgeProbeSection(headDots, 'right', 32));
-
-  // 4. Sample text at two sizes.
-  sections.push(textSection('TXT 1X SAMPLE', headDots, 1));
-  sections.push(textSection('TXT 2X', headDots, 2));
-
-  // 5. Fill region — 1-dot stripes for density uniformity.
-  sections.push(fillStripes(headDots, 16));
-
-  // 6. Trailing-edge probe + bottom orientation marker. A short bar
-  //    ~24 dots wide is placed N dots above the trailing-edge
-  //    dead-zone (per `capabilities.trailingEdgeOffsetMm`, default
-  //    20 dots when not declared). The bar's offset is documented
-  //    inline so the operator can compare against the photo.
   const trailingProbeOffsetDots = trailingEdgeProbeDots(input.device);
-  sections.push(textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, headDots, 1));
-  sections.push(trailingProbeMarker(headDots));
-  sections.push(textSection('B', headDots, 2));
+
+  // "Head" sections — fixed-height content that should appear at the
+  // leading edge regardless of label length. Identifying header,
+  // orientation marker, edge probes, sample text.
+  const headSections: LabelBitmap[] = [
+    textSection(`v${input.harnessVersion}`, headDots, 1),
+    textSection(input.device.key, headDots, 1),
+    textSection(String(input.media.id).toUpperCase(), headDots, 1),
+    textSection('TOP>', headDots, 2),
+    edgeProbeSection(headDots, 'left', 32),
+    edgeProbeSection(headDots, 'right', 32),
+    textSection('TXT 1X SAMPLE', headDots, 1),
+    textSection('TXT 2X', headDots, 2),
+  ];
+
+  // "Tail" sections — trailing-edge probe + bottom orientation marker.
+  // Always pinned to the trailing edge of the label so the cut/gap
+  // alignment is comparable across runs.
+  const tailSections: LabelBitmap[] = [
+    textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, headDots, 1),
+    trailingProbeMarker(headDots),
+    textSection('B', headDots, 2),
+  ];
+
+  // Fill region between head and tail. Stretches to fill the available
+  // label height — long labels (e.g. LEVER_ARCH at 190 mm) get a
+  // continuous density check across the whole label rather than a
+  // 26 mm block at the top with the rest blank.
+  const headHeight = sumHeightsWithGaps(headSections);
+  const tailHeight = sumHeightsWithGaps(tailSections);
+  const fillHeight = computeFillHeight(headHeight, tailHeight, labelHeight);
+  const middleSection = fillStripes(headDots, fillHeight);
+
+  const sections = [...headSections, middleSection, ...tailSections];
 
   // Stitch sections with a small white gap.
   const gapped: LabelBitmap[] = [];
@@ -130,12 +132,39 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
 
   const stacked = stackBitmaps(gapped, 'vertical');
 
-  // Trim if we overshot the label height (die-cut). Continuous media
-  // accepts the natural stacked height up to a soft cap.
+  // Belt-and-suspenders trim — adaptive sizing should already hit the
+  // label height exactly, but cap defensively on continuous media or
+  // sizing edge cases.
   if (labelHeight !== undefined && stacked.heightPx > labelHeight) {
     return cropHeight(stacked, labelHeight);
   }
   return stacked;
+}
+
+/** Sum of section heights plus inter-section gaps. */
+function sumHeightsWithGaps(sections: readonly LabelBitmap[]): number {
+  if (sections.length === 0) return 0;
+  const sectionsHeight = sections.reduce((acc, s) => acc + s.heightPx, 0);
+  const gapsHeight = ROW_GAP_PX * (sections.length - 1);
+  return sectionsHeight + gapsHeight;
+}
+
+/**
+ * Pick the fill-region height. Stretches to fill the available label
+ * length on long labels; falls back to a fixed 16-dot strip when the
+ * label is short, the length is unknown (continuous), or the head/tail
+ * already overflows.
+ */
+function computeFillHeight(
+  headHeight: number,
+  tailHeight: number,
+  labelHeight: number | undefined,
+): number {
+  const MIN_FILL = 16;
+  if (labelHeight === undefined) return MIN_FILL;
+  // +2 ROW_GAP_PX for the gaps surrounding the middle section.
+  const remaining = labelHeight - headHeight - tailHeight - ROW_GAP_PX * 2;
+  return remaining > MIN_FILL ? remaining : MIN_FILL;
 }
 
 /**
