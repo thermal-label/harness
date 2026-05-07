@@ -6,8 +6,8 @@
  * submit. Wizard prompts by default; expert flags bypass for
  * known-good-hardware one-liners.
  *
- * Single-driver scope today (labelmanager); subsequent drivers land as
- * separate PRs and grow `--driver` into a real dispatcher.
+ * Drivers covered today: labelmanager, brother-ql. Subsequent drivers
+ * land as separate PRs.
  */
 import { Command } from 'commander';
 import { runVerify } from './verify.js';
@@ -22,7 +22,7 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
   'bluetooth-gatt',
 ];
 const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'unsupported'];
-const SUPPORTED_DRIVERS = ['labelmanager'] as const;
+const SUPPORTED_DRIVERS = ['labelmanager', 'brother-ql'] as const;
 
 interface VerifyCommandOptions {
   transport?: TransportType;
@@ -37,6 +37,12 @@ interface VerifyCommandOptions {
   previewPng?: boolean;
   reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
+  /** brother-ql-only. Tape SKU key from the brother-ql-core media catalog (e.g. `DK-22205`). */
+  media?: string;
+  /** brother-ql tcp transport host (IP / hostname). */
+  host?: string;
+  /** brother-ql tcp transport port (default 9100). */
+  port?: number;
 }
 
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
@@ -102,6 +108,14 @@ program
       return n;
     },
   )
+  .option(
+    '--media <key>',
+    'Brother-ql media SKU (e.g. DK-22205, DK-22251, DK-11201). Mandatory for brother-ql; the diagnostic-print needs the dimensions. Detection from the printer status response is best-effort; this flag overrides it.',
+  )
+  .option('--host <host>', 'TCP transport host (IP or hostname). Brother-ql tcp transport only.')
+  .option('--port <port>', 'TCP transport port (default 9100). Brother-ql tcp transport only.', v =>
+    Number.parseInt(v, 10),
+  )
   .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
@@ -128,6 +142,9 @@ program
         previewPng: options.previewPng === true,
         reporter: options.reporter,
         tapeWidth: options.tapeWidth,
+        media: options.media,
+        host: options.host,
+        port: options.port,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

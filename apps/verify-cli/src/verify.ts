@@ -1,16 +1,25 @@
 /**
  * Top-level orchestration for `verify-cli verify <driver> [model]`.
  *
- * The dispatcher today only knows about labelmanager; the second driver's
- * MVP (plan 05 sequencing: labelwriter 4xx) will surface the right shared
- * abstractions. Until then, an explicit if-tree keeps the dispatch flat.
+ * Dispatcher kept as a flat switch with an exhaustiveness guard. Per-driver
+ * orchestrators live under `./drivers/<driver>/verify.ts` and accept the
+ * full `VerifyOptions` — driver-irrelevant fields (e.g. `tapeWidth` for
+ * brother-ql, or `media` for labelmanager) are simply ignored by the
+ * driver that doesn't use them.
+ *
+ * Mechanical merge note: when sibling driver agents land here in
+ * parallel, each adds one `case` block. Conflicts are resolved by
+ * concatenating the cases — no shared abstraction lives here yet.
  */
 import type { TransportType } from '@thermal-label/contracts';
 import type { ProposedRung } from '@thermal-label/harness-core/shared';
 import { runLabelmanagerVerify } from './drivers/labelmanager/verify.js';
+import { runBrotherQlVerify } from './drivers/brother-ql/verify.js';
+
+export type DriverKey = 'labelmanager' | 'brother-ql';
 
 export interface VerifyOptions {
-  driver: 'labelmanager';
+  driver: DriverKey;
   model: string | undefined;
   transport: TransportType | undefined;
   rung: ProposedRung | undefined;
@@ -26,12 +35,25 @@ export interface VerifyOptions {
   reporter: string | undefined;
   /** Labelmanager-specific. Defaults to 12 mm. */
   tapeWidth: 6 | 9 | 12 | 19 | undefined;
+  /** Brother-ql-specific. Tape SKU key from brother-ql-core's media catalog (e.g. DK-22205). */
+  media: string | undefined;
+  /** Brother-ql tcp transport host (IP / hostname). */
+  host: string | undefined;
+  /** Brother-ql tcp transport port (defaults to 9100). */
+  port: number | undefined;
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {
-  // Single supported driver today; the second driver's MVP grows this
-  // into a real switch with the exhaustiveness guard. Keeping the
-  // dispatch flat per plan 05 §hard rules ("don't try to abstract for
-  // other drivers in this PR").
-  await runLabelmanagerVerify(options);
+  switch (options.driver) {
+    case 'labelmanager':
+      await runLabelmanagerVerify(options);
+      return;
+    case 'brother-ql':
+      await runBrotherQlVerify(options);
+      return;
+    default: {
+      const _exhaustive: never = options.driver;
+      throw new Error(`Unhandled driver: ${String(_exhaustive)}`);
+    }
+  }
 }
