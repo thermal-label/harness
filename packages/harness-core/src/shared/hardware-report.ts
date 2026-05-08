@@ -64,6 +64,56 @@ export interface IdentitySnapshot {
 }
 
 /**
+ * Operator-supplied printable-area / forced-trailing-feed measurements
+ * captured during a verification session (plan 08 §7a).
+ *
+ * The harness exposes optional override inputs for the four
+ * `PrintableArea` edges plus `forcedTrailingFeedMm`, defaulted from
+ * `getPrintableArea(engine, media)`. The operator may dial the values
+ * in to match their specific printer + roll combination, then iterate
+ * print → measure → re-print until the borders look right.
+ *
+ * The override values are NOT persisted into the driver-core registry
+ * from the harness — that would let any reporter mutate the canonical
+ * spec. Instead they ride along on the report as evidence, and the
+ * maintainer triages and folds confirmed measurements back into the
+ * registry via PR.
+ *
+ * Every field is optional and additive. Schema does not bump
+ * `schemaVersion` — older parsers ignore unknown fields. When all
+ * fields are absent or zero the operator did not adjust the defaults.
+ *
+ * Field naming mirrors `PrintableArea` from `@thermal-label/contracts`:
+ * `leading` / `trailing` (feed-direction) and `left` / `right`
+ * (head-axis), all in millimetres.
+ */
+export interface OffsetCalibration {
+  /** Operator override for `PrintableArea.leading`, in mm. */
+  leadingMm?: number;
+  /** Operator override for `PrintableArea.trailing`, in mm. */
+  trailingMm?: number;
+  /** Operator override for `PrintableArea.left`, in mm. */
+  leftMm?: number;
+  /** Operator override for `PrintableArea.right`, in mm. */
+  rightMm?: number;
+  /** Operator override for `PrintEngine.forcedTrailingFeedMm`. */
+  forcedTrailingFeedMm?: number;
+  /**
+   * The default values resolved from `getPrintableArea(engine, media)`
+   * before the operator edited anything. Captured so triage can tell
+   * "operator confirmed the default" apart from "operator typed a
+   * value that happens to equal the default".
+   */
+  defaults?: {
+    leadingMm: number;
+    trailingMm: number;
+    leftMm: number;
+    rightMm: number;
+    forcedTrailingFeedMm: number;
+  };
+}
+
+/**
  * One transport's worth of test results inside a `HardwareReport`.
  *
  * `name` is a `TransportType` from `@thermal-label/contracts` (single source
@@ -72,6 +122,11 @@ export interface IdentitySnapshot {
  * convention is a single entry `{ diagnostic: 'pass' | 'fail' | 'skipped' }`
  * — the diagnostic-print pattern (plan 06). `rung` is the operator's direct
  * assessment of what came out of the printer, not derived from `patterns`.
+ *
+ * `offsetCalibration` (plan 08 §7a) is an additive evidence field —
+ * the operator's per-session printable-area / trailing-feed overrides.
+ * Older parsers ignore it. Absent when the operator did not surface
+ * the calibration drawer or did not change any default.
  */
 export interface TransportReport {
   name: TransportType;
@@ -79,6 +134,12 @@ export interface TransportReport {
   rung: ProposedRung;
   /** Free-form one-liner from the operator (e.g. "cut blade jammed"). */
   notes?: string;
+  /**
+   * Per-session printable-area / trailing-feed overrides supplied by
+   * the operator for calibration (plan 08 §7a). Strictly additive —
+   * absence means "operator did not adjust the defaults".
+   */
+  offsetCalibration?: OffsetCalibration;
 }
 
 /**
