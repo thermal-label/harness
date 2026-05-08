@@ -17,6 +17,7 @@ import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core
 import { connection, device, hasMedia, hasPrinted, media, submitState } from '../state/session';
 import { writeDiagnosticPrint } from '../transport/connect';
 import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
+import BitmapPreview from './BitmapPreview.vue';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
@@ -29,6 +30,27 @@ const printing = ref(false);
 const lastError = ref<string | null>(null);
 const lastByteCount = ref(0);
 const lastBytesPreview = ref<string>('');
+
+/**
+ * Reactive bitmap, recomputed whenever device or media changes. Shown
+ * as a small canvas thumbnail so the operator can compare what we
+ * intended to send against what physically came out of the printer.
+ * Encoder is a pure function of (device, media, version strings) — the
+ * preview matches the bytes sent on the next print exactly.
+ */
+const previewBitmap = computed(() => {
+  if (!device.value || !media.value) return null;
+  try {
+    return buildDiagnosticBitmap({
+      device: device.value,
+      media: media.value,
+      harnessVersion: HARNESS_VERSION,
+      driverVersion: DRIVER_VERSION,
+    });
+  } catch {
+    return null;
+  }
+});
 
 async function doPrint(): Promise<void> {
   if (!device.value || !media.value || !connection.transport) return;
@@ -85,6 +107,15 @@ function formatHexPreview(bytes: Uint8Array): string {
         the printed label answers most of the diagnostic questions.
       </p>
 
+      <div class="preview-row">
+        <BitmapPreview :bitmap="previewBitmap" />
+        <p class="muted small preview-hint">
+          This is what we're about to send. Click to zoom. Compare it with the physical label
+          afterwards — anything missing, shifted, or clipped is a hint about printable margins or
+          the trailing-edge dead zone.
+        </p>
+      </div>
+
       <div class="actions">
         <button class="primary" :disabled="printing" type="button" @click="doPrint">
           {{ printing ? 'Sending…' : hasPrinted ? 'Print again' : 'Print diagnostic' }}
@@ -115,6 +146,20 @@ function formatHexPreview(bytes: Uint8Array): string {
 </template>
 
 <style scoped>
+.preview-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.preview-hint {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+}
+
 .actions {
   display: flex;
   align-items: center;
