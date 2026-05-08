@@ -9,8 +9,10 @@
  * handling rule).
  */
 import { computed, ref } from 'vue';
+import type { OffsetCalibration } from '@thermal-label/harness-core/shared';
 import {
   assessment,
+  calibration,
   connection,
   device,
   hasAssessment,
@@ -44,11 +46,47 @@ const ready = computed(
   () => device.value !== null && media.value !== null && assessment.rung !== null,
 );
 
+/**
+ * Build the `offsetCalibration` field if the operator surfaced the
+ * calibration drawer this run AND something differs from the
+ * engine defaults. Otherwise return undefined so the field is
+ * omitted entirely from the report.
+ */
+function deriveOffsetCalibration(): OffsetCalibration | undefined {
+  if (!calibration.edited) return undefined;
+  const e = {
+    leadingMm: calibration.leadingMm,
+    trailingMm: calibration.trailingMm,
+    leftMm: calibration.leftMm,
+    rightMm: calibration.rightMm,
+    forcedTrailingFeedMm: calibration.forcedTrailingFeedMm,
+  };
+  const d = calibration.defaults;
+  const differs =
+    e.leadingMm !== d.leadingMm ||
+    e.trailingMm !== d.trailingMm ||
+    e.leftMm !== d.leftMm ||
+    e.rightMm !== d.rightMm ||
+    e.forcedTrailingFeedMm !== d.forcedTrailingFeedMm;
+  if (!differs) return undefined;
+  return {
+    ...(e.leadingMm !== d.leadingMm ? { leadingMm: e.leadingMm } : {}),
+    ...(e.trailingMm !== d.trailingMm ? { trailingMm: e.trailingMm } : {}),
+    ...(e.leftMm !== d.leftMm ? { leftMm: e.leftMm } : {}),
+    ...(e.rightMm !== d.rightMm ? { rightMm: e.rightMm } : {}),
+    ...(e.forcedTrailingFeedMm !== d.forcedTrailingFeedMm
+      ? { forcedTrailingFeedMm: e.forcedTrailingFeedMm }
+      : {}),
+    defaults: { ...d },
+  };
+}
+
 async function doSubmit(): Promise<void> {
   errorMessage.value = null;
   fallbackBody.value = null;
   if (!device.value || !media.value || !assessment.rung || !connection.identity) return;
 
+  const offsetCalibration = deriveOffsetCalibration();
   const report = buildReport({
     device: device.value,
     media: media.value,
@@ -57,6 +95,7 @@ async function doSubmit(): Promise<void> {
     notes: assessment.notes,
     ...(reporterHandle.value.trim() ? { reporter: reporterHandle.value.trim() } : {}),
     mocked: connection.mocked,
+    ...(offsetCalibration ? { offsetCalibration } : {}),
   });
 
   try {
@@ -89,6 +128,7 @@ async function copyBodyAgain(): Promise<void> {
 const previewUrlTooLong = computed(() => {
   if (!ready.value || !device.value || !media.value || !assessment.rung || !connection.identity)
     return false;
+  const offsetCalibration = deriveOffsetCalibration();
   const report = buildReport({
     device: device.value,
     media: media.value,
@@ -97,6 +137,7 @@ const previewUrlTooLong = computed(() => {
     notes: assessment.notes,
     ...(reporterHandle.value.trim() ? { reporter: reporterHandle.value.trim() } : {}),
     mocked: connection.mocked,
+    ...(offsetCalibration ? { offsetCalibration } : {}),
   });
   return urlExceedsLimit(buildPrefillUrl(TARGET_REPO, buildIssueTitle(report), renderBody(report)));
 });
@@ -110,7 +151,7 @@ const mailtoFallback = computed(() => {
 </script>
 
 <template>
-  <SectionCard :step="6" title="Submit the report" :state="sectionState">
+  <SectionCard :step="7" title="Submit the report" :state="sectionState">
     <template v-if="!hasAssessment">
       <p class="muted">Pick a verdict in the section above first.</p>
     </template>

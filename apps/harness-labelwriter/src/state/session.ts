@@ -27,6 +27,47 @@ export interface AssessmentState {
   notes: string;
 }
 
+/**
+ * Per-session printable-area / forced-trailing-feed overrides
+ * (plan 08 §7a). Defaults populate from
+ * `getPrintableArea(engine, media)` /
+ * `getForcedTrailingFeedMm(engine)` when the operator opens the
+ * calibration drawer; today those return zero on every LW engine
+ * (phase 1 — no values populated yet). Operator can edit per session
+ * and the values flow into the bitmap pipeline + ride along on the
+ * submitted report.
+ *
+ * `null` for a field means "not yet initialised from defaults" (the
+ * drawer hasn't been opened); `0` is a legitimate operator value.
+ * The encoder layer reads `effective` values via
+ * `useCalibration().override.value` and merges with engine defaults
+ * for the no-touch case.
+ */
+export interface CalibrationState {
+  /** Has the operator surfaced the calibration drawer this run? */
+  drawerOpen: boolean;
+  leadingMm: number;
+  trailingMm: number;
+  leftMm: number;
+  rightMm: number;
+  forcedTrailingFeedMm: number;
+  /**
+   * Snapshot of the engine defaults at drawer-open time. Captured
+   * so the report's `offsetCalibration.defaults` can be filled in
+   * without re-resolving and so the UI can show "default vs.
+   * adjusted" diffs.
+   */
+  defaults: {
+    leadingMm: number;
+    trailingMm: number;
+    leftMm: number;
+    rightMm: number;
+    forcedTrailingFeedMm: number;
+  };
+  /** Whether the operator changed any value away from the default. */
+  edited: boolean;
+}
+
 export interface SubmitState {
   /** Has the print byte stream been written successfully? */
   printed: boolean;
@@ -57,6 +98,23 @@ export const submitState = reactive<SubmitState>({
   issueUrl: null,
 });
 
+export const calibration = reactive<CalibrationState>({
+  drawerOpen: false,
+  leadingMm: 0,
+  trailingMm: 0,
+  leftMm: 0,
+  rightMm: 0,
+  forcedTrailingFeedMm: 0,
+  defaults: {
+    leadingMm: 0,
+    trailingMm: 0,
+    leftMm: 0,
+    rightMm: 0,
+    forcedTrailingFeedMm: 0,
+  },
+  edited: false,
+});
+
 export const isConnected = computed(() => connection.transport !== null);
 export const hasIdentity = computed(() => Boolean(connection.identity && device.value));
 export const hasMedia = computed(() => media.value !== null);
@@ -77,4 +135,11 @@ export function resetForNewRun(): void {
   submitState.printed = false;
   submitState.submitted = false;
   submitState.issueUrl = null;
+  calibration.drawerOpen = false;
+  calibration.leadingMm = calibration.defaults.leadingMm;
+  calibration.trailingMm = calibration.defaults.trailingMm;
+  calibration.leftMm = calibration.defaults.leftMm;
+  calibration.rightMm = calibration.defaults.rightMm;
+  calibration.forcedTrailingFeedMm = calibration.defaults.forcedTrailingFeedMm;
+  calibration.edited = false;
 }
