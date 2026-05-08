@@ -40,7 +40,7 @@ import {
   type PromptContext,
 } from '../../prompts.js';
 import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
-import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelmanager';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp } from '../../bitmap-png.js';
@@ -85,12 +85,19 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
   // Build the bitmap up front so `--preview` can show it before any
   // hardware contact, and so dry-run + preview is a useful combo
   // (see what's about to print without needing a printer).
-  const bitmap = buildDiagnosticBitmap({
+  //
+  // `buildDiagnosticBitmap` returns `{ authored, wire, ... }` per the
+  // shared encoder contract (`harness-core/labelmanager`). For
+  // labelmanager `wire === authored` — the driver-core encoder pads
+  // top/bottom itself — but we destructure both to keep the call
+  // shape symmetric with the labelwriter sibling.
+  const diagnostic = buildDiagnosticBitmap({
     device,
     tapeWidth,
     harnessVersion: HARNESS_VERSION,
     driverVersion: DRIVER_VERSION,
   });
+  const bitmap = diagnostic.wire;
 
   if (options.preview) {
     console.log(renderBitmapPreview(bitmap));
