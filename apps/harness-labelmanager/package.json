@@ -1,0 +1,36 @@
+{
+  "name": "@thermal-label/harness-labelmanager",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser-hosted labelmanager hardware-reporting harness (plan 06). Single-page guided UX, WebUSB connect, diagnostic-print, prefilled GitHub-issue submit. Workspace-internal — released only as zipped static-bundle GitHub Release artifacts.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mannes Brak",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@mbtech-nl/bitmap": "^1.3.0",
+    "@thermal-label/contracts": "^0.6.0",
+    "@thermal-label/harness-core": "workspace:*",
+    "@thermal-label/labelmanager-core": "^0.5.0",
+    "@thermal-label/transport": "^0.5.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@mbtech-nl/eslint-config": "^1.1.0",
+    "@mbtech-nl/tsconfig": "^1.1.0",
+    "@types/node": "^22.0.0",
+    "@types/w3c-web-usb": "^1.0.10",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "typescript": "~5.5.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0",
+    "vue-tsc": "^2.1.0"
+  }
+}
