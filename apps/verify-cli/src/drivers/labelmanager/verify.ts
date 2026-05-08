@@ -251,7 +251,9 @@ async function runConnect(
   );
 
   console.log('Encoding diagnostic print...');
-  const bytes = encodeBitmap(bitmap, tapeWidth);
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- every labelmanager device has at least one engine
+  const engine = device.engines[0]!;
+  const bytes = encodeBitmap(bitmap, engine, tapeWidth);
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
   try {
     await writeDiagnosticPrint(session.transport, bytes);

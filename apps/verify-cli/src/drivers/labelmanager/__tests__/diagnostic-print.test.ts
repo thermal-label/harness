@@ -34,7 +34,7 @@ describe('labelmanager diagnostic-print encoder', () => {
       harnessVersion: '0.0.0',
       driverVersion: '0.5.1',
     });
-    const bytes = encodeBitmap(bitmap, 12);
+    const bytes = encodeBitmap(bitmap, device.engines[0]!, 12);
     // ESC C 0  ESC D 8 — opening sequence from buildPrinterStream for a
     // 64-dot head (8 bytes per line).
     expect(bytes[0]).toBe(0x1b);

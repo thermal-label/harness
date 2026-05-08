@@ -121,9 +121,17 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
  * Split from `buildDiagnosticBitmap` so the orchestrator can preview
  * the bitmap (via `renderBitmapPreview`) before committing bytes to
  * the wire.
+ *
+ * `engine` is required after the plan-08 refactor — the encoder reads
+ * `printableArea` + `forcedTrailingFeedMm` to apply the leading/trailing
+ * pads. Pass `device.engines[0]`.
  */
-export function encodeBitmap(bitmap: LabelBitmap, tapeWidth: TapeWidth): Uint8Array {
-  return buildPrinterStream(bitmap, { tapeWidth, copies: 1 });
+export function encodeBitmap(
+  bitmap: LabelBitmap,
+  engine: LabelManagerDevice['engines'][number],
+  tapeWidth: TapeWidth,
+): Uint8Array {
+  return buildPrinterStream(bitmap, engine, { tapeWidth, copies: 1 });
 }
 
 /**
