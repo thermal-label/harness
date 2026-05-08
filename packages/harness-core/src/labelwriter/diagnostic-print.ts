@@ -360,40 +360,34 @@ function resolveForcedTrailingFeedMm(input: DiagnosticPrintInput): number {
  */
 function composeWireBitmap(
   authored: LabelBitmap,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _headDots: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _printableArea: PrintableArea,
+  printableArea: PrintableArea,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _forcedTrailingFeedMm: number,
 ): LabelBitmap {
-  // Wire IS the authored bitmap.
-  //
-  // The earlier draft of this function skipped `leadingDots` rows from
-  // the top + `trailingDots` rows from the bottom, on the hypothesis
-  // that the LW head sits mechanically past the leading edge after
-  // form-feed. Bench observation by the maintainer (2026-05-08) shows
-  // that's WRONG — LW actually pulls the label *back* before each
-  // print so the head sits at label-row 0. So:
-  //
-  //   - "Send fewer rows" was the wrong correction. With label pulled
-  //     back, sending fewer rows just truncates content from the wire
-  //     stream and (because `buildSetLabelLength` was using the wire
-  //     bitmap height) drove the printer's label-pitch off, causing
-  //     the form-feed offset to compound across consecutive prints.
-  //   - The correct correction is no correction — author content
-  //     within the printable region of a full-label canvas (which
-  //     `buildDiagnosticBitmap` now does), then send the whole canvas
-  //     row-for-row. Dead-zone rows of the authored bitmap stay white;
-  //     the head fires through them but no ink lands.
-  //
-  // The function is kept (vs. inlining the identity) so the
-  // `{ authored, wire, ... }` return shape stays stable for callers
-  // that pattern-match on it. The unused parameters are prefixed `_`
-  // to silence linting; we keep them in the signature so a future
-  // driver with a different mechanical model can opt in without
-  // changing the call site.
-  return authored;
+  // Build a wire bitmap by skipping `leadingDots` rows from the top
+  // of the authored bitmap. Bench observation 2026-05-08: the LW
+  // family DOES sit mechanically past the leading edge after
+  // form-feed (despite a pull-back step). The first raster row fires
+  // at label-row `leadingDots`, so we must NOT send those rows or
+  // the head fires content past the trailing edge (= "bottom falls
+  // off"). Trailing rows are kept (the printer's form-feed/cut
+  // handles the trailing dead zone via the `labelLengthDots` option
+  // on `encodeLabel`, not by truncating raster).
+  const leadingDots = mmToDots(printableArea.leading);
+  if (leadingDots <= 0) return authored;
+
+  const skip = Math.min(leadingDots, authored.heightPx);
+  const wireRows = authored.heightPx - skip;
+  if (wireRows <= 0) return createBitmap(authored.widthPx, 0);
+
+  const wire = createBitmap(authored.widthPx, wireRows);
+  const bpr = bytesPerRow(authored.widthPx);
+  // Plain row-by-row copy: src rows [skip, authored.heightPx) → dst rows
+  // [0, wireRows). Reuses authored's column layout (the diagnostic
+  // encoder already laid out cross-feed dead-zones as blank cols).
+  wire.data.set(authored.data.subarray(skip * bpr, (skip + wireRows) * bpr));
+  return wire;
 }
 
 function mmToDots(mm: number): number {
@@ -438,10 +432,26 @@ function computeFillHeight(
  * Pass `result.wire` (not `result.authored`) — the wire bitmap is
  * what the printer is supposed to receive.
  */
-export function encodeBitmap(bitmap: LabelBitmap, device: LabelWriterDevice): Uint8Array {
+export function encodeBitmap(
+  bitmap: LabelBitmap,
+  device: LabelWriterDevice,
+  labelLengthDots?: number,
+): Uint8Array {
   // copies = 1 implicit; density 'normal'; mode 'graphics' since the
   // diagnostic carries fine 1-dot stripes.
-  const body = encodeLabel(device, bitmap, { copies: 1, mode: 'graphics', compress: false });
+  //
+  // `labelLengthDots` (when supplied by the caller) overrides the
+  // bitmap height in `ESC L` so the printer's form-feed / cut
+  // sequencing uses the actual label pitch. The harness passes
+  // `result.authored.heightPx` here — the wire bitmap may be
+  // shorter (dead-zone rows skipped) but the label pitch is still
+  // the original authored height.
+  const body = encodeLabel(device, bitmap, {
+    copies: 1,
+    mode: 'graphics',
+    compress: false,
+    ...(labelLengthDots === undefined ? {} : { labelLengthDots }),
+  });
   // Optional ESC s job header — `encodeLabel` for lw-550 emits its
   // own job header, so we only prepend on lw-450 when we want a
   // stable job id (1) for triage. Keep it simple: no prepend;

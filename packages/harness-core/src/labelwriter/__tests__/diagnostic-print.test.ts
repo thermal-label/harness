@@ -97,11 +97,24 @@ describe('labelwriter diagnostic-print encoder', () => {
   });
 
   it('produces a wire bitmap that is shorter and head-sized when leading/trailing overrides are populated', () => {
-    // Bench observation 2026-05-08: the LW family pulls the label
-    // back before each print so the head sits at label-row 0 — the
-    // earlier "send fewer rows" mechanism was wrong for LW. Wire IS
-    // the authored bitmap; content layout (within the printable
-    // region of a full-label canvas) handles the dead-zone bands.
+    // Bench-confirmed model 2026-05-08: the LW family does pull the
+    // label back before each print, but the head still sits ~leadingMm
+    // past the label leading edge (the pull-back is partial, the
+    // mechanical offset to the cutter is irreducible). So the wire
+    // bitmap MUST drop `leadingDots` rows from the top of the
+    // authored bitmap — otherwise the head fires content past the
+    // trailing edge of the label.
+    //
+    // The diagnostic encoder lays content WITHIN the printable region
+    // of a full-label authored canvas (top `leadingDots` rows blank
+    // by construction), so the wire-skip removes only blank rows. No
+    // content is lost; the printer fires content rows at the first
+    // reachable label row and lands inside the printable region.
+    //
+    // The actual label feed pitch (= authored.heightPx) is passed
+    // separately to the encoder via `options.labelLengthDots`, so
+    // form-feed/cut sequencing uses the true pitch, not the wire
+    // bitmap height.
     const result = buildDiagnosticBitmap({
       device: DEVICES.LW_330_TURBO,
       media: MEDIA.ADDRESS_LARGE,
@@ -110,8 +123,8 @@ describe('labelwriter diagnostic-print encoder', () => {
       override: { leadingMm: 6, trailingMm: 4 },
     });
 
-    expect(result.wire).toBe(result.authored);
-    expect(result.wire.heightPx).toBe(result.authored.heightPx);
+    const expectedSkip = Math.round((6 * 300) / 25.4);
+    expect(result.wire.heightPx).toBe(result.authored.heightPx - expectedSkip);
     expect(result.printableArea).toEqual({ leading: 6, trailing: 4, left: 0, right: 0 });
 
     // Top `leadingDots` rows of the authored bitmap are blank by
@@ -133,7 +146,7 @@ describe('labelwriter diagnostic-print encoder', () => {
     expect(leadingHasInk).toBe(false);
   });
 
-  it('keeps wire and authored identical for the forced-trailing-feed case (LW)', () => {
+  it('exposes the forced-trailing-feed value back to the caller (LW)', () => {
     // forcedTrailingFeedMm is informational on LW today (variable
     // form-feed handles the trailing-edge advance). The encoder
     // doesn't append rows for it; the value rides on the result so
@@ -147,7 +160,6 @@ describe('labelwriter diagnostic-print encoder', () => {
       override: { leadingMm: 6, trailingMm: 4, forcedTrailingFeedMm: 8 },
     });
 
-    expect(result.wire).toBe(result.authored);
     expect(result.forcedTrailingFeedMm).toBe(8);
   });
 

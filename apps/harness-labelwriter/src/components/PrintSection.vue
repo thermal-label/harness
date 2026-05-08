@@ -92,7 +92,11 @@ async function doPrint(): Promise<void> {
     // Send the WIRE bitmap — that's the head-sized composition that
     // the LW expects. The authored bitmap is for the preview canvas
     // only.
-    const bytes = encodeBitmap(result.wire, device.value);
+    // Pass `result.authored.heightPx` as the label pitch — `result.wire`
+    // may be shorter than the label (the LW mechanical leading offset
+    // is skipped from the raster stream) but the printer still needs
+    // the actual label pitch for form-feed/cut sequencing.
+    const bytes = encodeBitmap(result.wire, device.value, result.authored.heightPx);
     lastByteCount.value = bytes.byteLength;
     lastBytesPreview.value = formatHexPreview(bytes);
     await writeDiagnosticPrint(connection.transport, bytes);

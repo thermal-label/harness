@@ -240,7 +240,18 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
     console.log('');
   }
 
-  const identity = await runConnectAndPrint(device, transport, host, options, result.wire);
+  // Pass `result.authored.heightPx` as the label pitch — `result.wire`
+  // may be shorter than the label (the LW mechanical leading offset
+  // is skipped from the raster stream) but the printer still needs
+  // the actual label pitch for form-feed/cut sequencing.
+  const identity = await runConnectAndPrint(
+    device,
+    transport,
+    host,
+    options,
+    result.wire,
+    result.authored.heightPx,
+  );
 
   const rung = await resolveRung(options, ctx);
 
@@ -367,6 +378,7 @@ async function runConnectAndPrint(
   host: string | undefined,
   options: VerifyOptions,
   bitmap: LabelBitmap,
+  labelLengthDots: number,
 ): Promise<IdentitySnapshot> {
   if (options.dryRun) {
     return synthesiseIdentity(device, transport, host);
@@ -403,7 +415,7 @@ async function runConnectAndPrint(
   );
 
   console.log('Encoding diagnostic print...');
-  const bytes = encodeBitmap(bitmap, device);
+  const bytes = encodeBitmap(bitmap, device, labelLengthDots);
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
   try {
     await writeDiagnosticPrint(session.transport, bytes);
