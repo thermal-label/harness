@@ -120,12 +120,11 @@ function formatHexPreview(bytes: Uint8Array): string {
         <BitmapPreview
           :bitmap="previewResult?.authored ?? null"
           :printable-area="previewResult?.printableArea ?? null"
-          :forced-trailing-feed-mm="previewResult?.forcedTrailingFeedMm ?? 0"
           :dpi="previewDpi"
         />
         <p class="muted small preview-hint">
-          This is what we're about to send. Click to zoom. Striped bands show the dead-zone regions
-          your printer can't reach (top, bottom) plus the forced trailing feed below the bitmap.
+          This is what we're about to send. Click to zoom. Striped bands, when shown, mark dead-zone
+          regions the head can't reach.
         </p>
       </div>
 

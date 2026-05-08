@@ -13,12 +13,11 @@
  * **Dead-zone overlays (plan 08 §7).** When `printableArea` is
  * non-zero, four diagonal-stripe rectangles sit on top of the
  * bitmap covering the leading / trailing / left / right dead-zone
- * edges. When `forcedTrailingFeedMm` is non-zero, an additional
- * striped strip extends below the bitmap rectangle representing the
- * post-print blank tape. The operator sees one continuous "won't
- * print" region collapsed across both phenomena (head can't reach +
- * forced post-print feed); the figure caption discloses the
- * mechanism distinction for triage.
+ * edges. The post-print trailing feed is intentionally not
+ * visualised here — on labelmanager it advances the next strip's
+ * leading whitespace (centring math), not the current strip, so
+ * showing it inside this canvas would misrepresent what comes off
+ * the cutter.
  *
  * Edge case: when no engine / media is resolved, `printableArea`
  * is `null` and no overlays render — same as today's behaviour.
@@ -31,10 +30,9 @@ const props = withDefaults(
   defineProps<{
     bitmap: LabelBitmap | null;
     printableArea?: PrintableArea | null;
-    forcedTrailingFeedMm?: number;
     dpi?: number;
   }>(),
-  { printableArea: null, forcedTrailingFeedMm: 0, dpi: 300 },
+  { printableArea: null, dpi: 300 },
 );
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -55,13 +53,12 @@ const overlayDots = computed(() => {
     trailing: area ? mmToDots(area.trailing) : 0,
     left: area ? mmToDots(area.left) : 0,
     right: area ? mmToDots(area.right) : 0,
-    forcedFeed: mmToDots(props.forcedTrailingFeedMm),
   };
 });
 
 const hasOverlay = computed(() => {
   const o = overlayDots.value;
-  return o.leading > 0 || o.trailing > 0 || o.left > 0 || o.right > 0 || o.forcedFeed > 0;
+  return o.leading > 0 || o.trailing > 0 || o.left > 0 || o.right > 0;
 });
 
 const overlayCaption = computed(() => {
@@ -76,39 +73,30 @@ const overlayCaption = computed(() => {
   if (area && (area.left > 0 || area.right > 0)) {
     parts.push(`left ${String(area.left)}mm / right ${String(area.right)}mm unprintable`);
   }
-  if (props.forcedTrailingFeedMm > 0) {
-    parts.push(`+${String(props.forcedTrailingFeedMm)}mm forced trailing feed (post-print)`);
-  }
   return parts.join('; ') + '.';
 });
 
 /**
- * Draw the 1-bit bitmap. We allocate the canvas a bit taller than
- * the bitmap when `forcedTrailingFeedMm > 0` so the post-print-feed
- * extension is visible as part of the same canvas; the extra rows
- * stay all-white but get the striped overlay on top.
+ * Draw the 1-bit bitmap. Canvas matches the bitmap dimensions
+ * exactly — the post-print trailing feed isn't visualised here
+ * (it advances the next strip's leading whitespace, not this one's).
  */
 function draw(): void {
   const bitmap = props.bitmap;
   const canvas = canvasRef.value;
   if (!bitmap || !canvas) return;
-  const extraRows = overlayDots.value.forcedFeed;
-  const totalHeight = bitmap.heightPx + extraRows;
   canvas.width = bitmap.widthPx;
-  canvas.height = totalHeight;
+  canvas.height = bitmap.heightPx;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
   // Bitmap → 1-bit white/black.
-  const img = ctx.createImageData(bitmap.widthPx, totalHeight);
+  const img = ctx.createImageData(bitmap.widthPx, bitmap.heightPx);
   const bpr = Math.ceil(bitmap.widthPx / 8);
-  for (let y = 0; y < totalHeight; y += 1) {
+  for (let y = 0; y < bitmap.heightPx; y += 1) {
     for (let x = 0; x < bitmap.widthPx; x += 1) {
-      let bit = 0;
-      if (y < bitmap.heightPx) {
-        const byte = bitmap.data[y * bpr + (x >> 3)] ?? 0;
-        bit = (byte >> (7 - (x & 7))) & 1;
-      }
+      const byte = bitmap.data[y * bpr + (x >> 3)] ?? 0;
+      const bit = (byte >> (7 - (x & 7))) & 1;
       const idx = (y * bitmap.widthPx + x) * 4;
       const v = bit === 1 ? 0 : 255;
       img.data[idx] = v;
@@ -119,11 +107,11 @@ function draw(): void {
   }
   ctx.putImageData(img, 0, 0);
 
-  // Diagonal-stripe overlays for the four dead-zone edges + the
-  // post-print-feed extension. Drawn semi-transparently so the
-  // user can still see what they authored in the dead zone.
+  // Diagonal-stripe overlays for the four dead-zone edges. Drawn
+  // semi-transparently so the user can still see what they authored
+  // in the dead zone.
   if (hasOverlay.value) {
-    drawStripedOverlays(ctx, bitmap.widthPx, bitmap.heightPx, totalHeight);
+    drawStripedOverlays(ctx, bitmap.widthPx, bitmap.heightPx);
   }
 }
 
@@ -131,7 +119,6 @@ function drawStripedOverlays(
   ctx: CanvasRenderingContext2D,
   widthPx: number,
   bitmapHeight: number,
-  totalHeight: number,
 ): void {
   const o = overlayDots.value;
 
@@ -177,18 +164,11 @@ function drawStripedOverlays(
     const left = Math.max(0, widthPx - o.right);
     ctx.fillRect(left, 0, widthPx - left, bitmapHeight);
   }
-  // Forced trailing feed — striped extension below the bitmap.
-  if (o.forcedFeed > 0 && totalHeight > bitmapHeight) {
-    ctx.fillRect(0, bitmapHeight, widthPx, totalHeight - bitmapHeight);
-  }
-
   ctx.restore();
 }
 
 onMounted(draw);
-watch(() => [props.bitmap, props.printableArea, props.forcedTrailingFeedMm] as const, draw, {
-  deep: true,
-});
+watch(() => [props.bitmap, props.printableArea] as const, draw, { deep: true });
 </script>
 
 <template>
