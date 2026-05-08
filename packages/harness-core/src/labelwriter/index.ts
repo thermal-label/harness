@@ -7,5 +7,9 @@
 // behind keeping a driver-named subpath inside otherwise-agnostic
 // harness-core rather than spinning a new workspace package.
 
-export type { DiagnosticPrintInput } from './diagnostic-print.js';
+export type {
+  DiagnosticBitmapResult,
+  DiagnosticPrintInput,
+  PrintableAreaOverride,
+} from './diagnostic-print.js';
 export { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';

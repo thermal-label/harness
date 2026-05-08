@@ -61,6 +61,30 @@
  * (`heightMm` undefined) falls back to a fixed feed length (we use 4
  * inches @ 300 dpi = 1200 dots — enough to fit the diagnostic on a
  * 57 mm tape).
+ *
+ * **Authored bitmap vs. wire bitmap (plan 08 §6 / §7).**
+ *
+ * The encoder produces two artefacts from the same authored content:
+ *
+ *   - `authored` — full label-sized bitmap (`mediaWidthDots ×
+ *     mediaLengthDots`). Today's behaviour. The harness's preview
+ *     canvas renders this and overlays the dead-zone bands so the
+ *     operator sees the complete authored layout AND where it won't
+ *     print.
+ *   - `wire` — head-sized bitmap with `leadingDots` rows skipped from
+ *     the top and `trailingDots` rows skipped from the bottom (the
+ *     LW family's "send fewer rows" leading-edge convention; per
+ *     plan 08 §6, after the form-feed positions the label, the LW
+ *     head is already past the leading dead-zone, so the first wire
+ *     row fires at the first reachable label row). Cross-feed: white
+ *     padding on the left for `leftDots` columns; the right edge
+ *     fires harmlessly past the label.
+ *
+ * When `printableArea` is `{0,0,0,0}` and `forcedTrailingFeedMm` is
+ * 0 (today's phase-1 default — no values populated on any LW engine
+ * yet), `wire` equals `authored` byte-for-byte. The override flow
+ * in the harness lets operators dial in per-session values that
+ * surface the difference; populated registry values come later.
  */
 import {
   buildJobHeader,
@@ -69,14 +93,81 @@ import {
   type LabelWriterDevice,
   type LabelWriterMedia,
 } from '@thermal-label/labelwriter-core';
-import { createBitmap, padBitmap, stackBitmaps, type LabelBitmap } from '@mbtech-nl/bitmap';
+import {
+  bytesPerRow,
+  createBitmap,
+  padBitmap,
+  stackBitmaps,
+  type LabelBitmap,
+} from '@mbtech-nl/bitmap';
+import {
+  getPrintableArea,
+  getForcedTrailingFeedMm,
+  ZERO_PRINTABLE_AREA,
+  type PrintableArea,
+} from '@thermal-label/contracts';
 import { cropHeight, cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.js';
+
+/**
+ * Per-session overrides supplied by the harness operator (plan 08
+ * §7a). Each field is optional in millimetres; when present, it
+ * replaces the matching value resolved from `getPrintableArea` /
+ * `getForcedTrailingFeedMm`. Used by the diagnostic encoder to
+ * compose the wire bitmap and by the harness UI to drive the
+ * dead-zone overlays in the preview canvas.
+ */
+export interface PrintableAreaOverride {
+  leadingMm?: number;
+  trailingMm?: number;
+  leftMm?: number;
+  rightMm?: number;
+  forcedTrailingFeedMm?: number;
+}
 
 export interface DiagnosticPrintInput {
   device: LabelWriterDevice;
   media: LabelWriterMedia;
   harnessVersion: string;
   driverVersion: string;
+  /**
+   * Optional per-session override for the printable-area / forced-
+   * trailing-feed values. Merged on top of
+   * `getPrintableArea(engine, media)` /
+   * `getForcedTrailingFeedMm(engine)`. Phase-1 defaults are zero on
+   * every engine, so this is currently the only way to exercise the
+   * dead-zone pipeline.
+   */
+  override?: PrintableAreaOverride;
+}
+
+/**
+ * Result of `buildDiagnosticBitmap` — both artefacts plus the
+ * resolved printable-area metadata so the caller can render overlays
+ * (browser harness preview, CLI summary line) without re-resolving.
+ */
+export interface DiagnosticBitmapResult {
+  /**
+   * Full label-sized bitmap (`mediaWidthDots × mediaLengthDots`) —
+   * what the harness preview renders. Includes the leading / trailing
+   * dead-zone rows so the operator sees the authored layout in full;
+   * the harness overlays the dead-zone bands as striped overlays per
+   * plan 08 §7.
+   */
+  authored: LabelBitmap;
+  /**
+   * Head-sized wire bitmap with the LW family's "send fewer rows"
+   * leading-edge convention applied: `leadingDots` rows skipped from
+   * the top, `trailingDots` rows skipped from the bottom, white-pad
+   * on the left for `leftDots` columns, right edge unbounded (the
+   * head fires harmlessly past the label). When the resolved
+   * `PrintableArea` is `{0,0,0,0}` and `forcedTrailingFeedMm` is 0,
+   * `wire === authored` byte-for-byte (today's behaviour).
+   */
+  wire: LabelBitmap;
+  /** The resolved printable area, in mm. */
+  printableArea: PrintableArea;
+  /** The resolved forced-trailing-feed, in mm. */
+  forcedTrailingFeedMm: number;
 }
 
 const ROW_GAP_PX = 6;
@@ -84,12 +175,12 @@ const DPI = 300;
 const CONTINUOUS_DEFAULT_HEIGHT_PX = 1200; // 4 inches at 300 dpi.
 
 /**
- * Build the head-aligned diagnostic bitmap.
+ * Build the head-aligned diagnostic bitmap pair.
  *
- * The bitmap's `widthPx` is the active head-dot count for the
- * device's primary engine; `heightPx` is constrained by the chosen
- * media's feed-direction length (the registry stores it as
- * `lengthDots`).
+ * The `authored` bitmap is the full media-sized canvas (today's
+ * behaviour) — the operator's design view, what the harness preview
+ * renders. The `wire` bitmap is the head-sized composition derived
+ * from authored per the LW "send fewer rows" pipeline (plan 08 §6).
  *
  * Sections are stacked with a small white gap, then the result is
  * trimmed to the available label height so we never overflow the
@@ -99,14 +190,15 @@ const CONTINUOUS_DEFAULT_HEIGHT_PX = 1200; // 4 inches at 300 dpi.
  * preview the bitmap before printing, and tests can snapshot bitmap
  * dimensions without going through the full `encodeLabel` pipeline.
  */
-export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap {
+export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBitmapResult {
   // Bitmap width should match the LOADED LABEL's printable width, not
   // the printer's full head dot count. LW heads are 672 dots wide
   // (~57 mm) but a 36 mm ADDRESS_LARGE label only uses ~425 of them;
   // sending a 672-dot bitmap to a 36 mm label gives ~2× the expected
   // width. Cap at headDots defensively in case a media entry
   // overstates.
-  const headDots = Math.min(mediaWidthPx(input.media), primaryHeadDots(input.device));
+  const headDots = primaryHeadDots(input.device);
+  const labelWidthDots = Math.min(mediaWidthPx(input.media), headDots);
   const labelHeight = mediaHeightPx(input.media);
   const trailingProbeOffsetDots = trailingEdgeProbeDots(input.device);
 
@@ -114,23 +206,23 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   // leading edge regardless of label length. Identifying header,
   // orientation marker, edge probes, sample text.
   const headSections: LabelBitmap[] = [
-    textSection(`v${input.harnessVersion}`, headDots, 1),
-    textSection(input.device.key, headDots, 1),
-    textSection(String(input.media.id).toUpperCase(), headDots, 1),
-    textSection('TOP>', headDots, 2),
-    edgeProbeSection(headDots, 'left', { stepCount: 32 }),
-    edgeProbeSection(headDots, 'right', { stepCount: 32 }),
-    textSection('TXT 1X SAMPLE', headDots, 1),
-    textSection('TXT 2X', headDots, 2),
+    textSection(`v${input.harnessVersion}`, labelWidthDots, 1),
+    textSection(input.device.key, labelWidthDots, 1),
+    textSection(String(input.media.id).toUpperCase(), labelWidthDots, 1),
+    textSection('TOP>', labelWidthDots, 2),
+    edgeProbeSection(labelWidthDots, 'left', { stepCount: 32 }),
+    edgeProbeSection(labelWidthDots, 'right', { stepCount: 32 }),
+    textSection('TXT 1X SAMPLE', labelWidthDots, 1),
+    textSection('TXT 2X', labelWidthDots, 2),
   ];
 
   // "Tail" sections — trailing-edge probe + bottom orientation
   // marker. Always pinned to the trailing edge of the label so the
   // cut/gap alignment is comparable across runs.
   const tailSections: LabelBitmap[] = [
-    textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, headDots, 1),
-    trailingProbeMarker(headDots),
-    textSection('B', headDots, 2),
+    textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, labelWidthDots, 1),
+    trailingProbeMarker(labelWidthDots),
+    textSection('B', labelWidthDots, 2),
   ];
 
   // Fill region between head and tail. Stretches to fill the
@@ -140,7 +232,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   const headHeight = sumHeightsWithGaps(headSections);
   const tailHeight = sumHeightsWithGaps(tailSections);
   const fillHeight = computeFillHeight(headHeight, tailHeight, labelHeight);
-  const middleSection = diagonalStripes(headDots, fillHeight);
+  const middleSection = diagonalStripes(labelWidthDots, fillHeight);
 
   const sections = [...headSections, middleSection, ...tailSections];
 
@@ -148,7 +240,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   const gapped: LabelBitmap[] = [];
   for (const section of sections) {
     gapped.push(section);
-    gapped.push(createBitmap(headDots, ROW_GAP_PX));
+    gapped.push(createBitmap(labelWidthDots, ROW_GAP_PX));
   }
   gapped.pop();
 
@@ -157,10 +249,135 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): LabelBitmap 
   // Belt-and-suspenders trim — adaptive sizing should already hit
   // the label height exactly, but cap defensively on continuous
   // media or sizing edge cases.
-  if (labelHeight !== undefined && stacked.heightPx > labelHeight) {
-    return cropHeight(stacked, labelHeight);
+  const authored =
+    labelHeight !== undefined && stacked.heightPx > labelHeight
+      ? cropHeight(stacked, labelHeight)
+      : stacked;
+
+  const printableArea = resolvePrintableArea(input);
+  const forcedTrailingFeedMm = resolveForcedTrailingFeedMm(input);
+
+  const wire = composeWireBitmap(authored, headDots, printableArea, forcedTrailingFeedMm);
+
+  return { authored, wire, printableArea, forcedTrailingFeedMm };
+}
+
+/**
+ * Resolve the effective printable area for this session. Starts from
+ * `getPrintableArea(engine, media)` (zeros today, populated values
+ * later) and overlays any per-session operator overrides on top.
+ */
+function resolvePrintableArea(input: DiagnosticPrintInput): PrintableArea {
+  const engine = input.device.engines[0];
+  if (!engine) return ZERO_PRINTABLE_AREA;
+  const base = getPrintableArea(engine, input.media);
+  const ov = input.override;
+  if (!ov) return base;
+  return {
+    leading: ov.leadingMm ?? base.leading,
+    trailing: ov.trailingMm ?? base.trailing,
+    left: ov.leftMm ?? base.left,
+    right: ov.rightMm ?? base.right,
+  };
+}
+
+function resolveForcedTrailingFeedMm(input: DiagnosticPrintInput): number {
+  const engine = input.device.engines[0];
+  if (!engine) return 0;
+  const base = getForcedTrailingFeedMm(engine);
+  return input.override?.forcedTrailingFeedMm ?? base;
+}
+
+/**
+ * Build the wire bitmap from the authored bitmap per plan 08 §6.
+ *
+ * For LW: head-sized × `(authoredHeight - leadingDots - trailingDots)`
+ * rows; the authored content is pasted at wire row 0, column
+ * `leftDots` (LW labels are left-aligned — `labelLeftEdgeDot = 0`).
+ * The wire bitmap is shorter than the label by `leadingDots +
+ * trailingDots` rows — that's the "send fewer rows" mechanism.
+ *
+ * When `printableArea` is all zeros AND `forcedTrailingFeedMm` is
+ * zero AND the authored bitmap is already head-sized (i.e. matches
+ * `headDots`), we return the authored bitmap unchanged so today's
+ * byte stream is preserved exactly. This is the phase-1 invariant.
+ *
+ * Note: today's authored bitmap is `labelWidthDots`-wide, not
+ * `headDots`-wide. The `encodeLabel` driver pipeline pads the bitmap
+ * to head width before emitting — so even in the no-override path
+ * the wire stream the printer sees is identical regardless of
+ * whether we widen here or downstream. We widen here when we need to
+ * apply a `leftDots` offset, and pass through narrow when we don't,
+ * so byte-identity holds for the no-override case.
+ */
+function composeWireBitmap(
+  authored: LabelBitmap,
+  headDots: number,
+  printableArea: PrintableArea,
+  forcedTrailingFeedMm: number,
+): LabelBitmap {
+  const leadingDots = mmToDots(printableArea.leading);
+  const trailingDots = mmToDots(printableArea.trailing);
+  const leftDots = mmToDots(printableArea.left);
+  const rightDots = mmToDots(printableArea.right);
+  const trailingFeedDots = mmToDots(forcedTrailingFeedMm);
+
+  // Phase-1 fast path: nothing to do, return the authored bitmap
+  // verbatim so the wire stream stays byte-identical to today's.
+  if (
+    leadingDots === 0 &&
+    trailingDots === 0 &&
+    leftDots === 0 &&
+    rightDots === 0 &&
+    trailingFeedDots === 0
+  ) {
+    return authored;
   }
-  return stacked;
+
+  // Compute wire dimensions. LW skips leading and trailing rows;
+  // forcedTrailingFeedMm is 0 for LW today (variable form-feed) so
+  // the trailing-feed pad is harmless if a future engine populates
+  // it.
+  const skipTop = Math.min(leadingDots, authored.heightPx);
+  const skipBottom = Math.min(trailingDots, Math.max(0, authored.heightPx - skipTop));
+  const wireRows = Math.max(0, authored.heightPx - skipTop - skipBottom) + trailingFeedDots;
+  const wire = createBitmap(headDots, Math.max(1, wireRows));
+
+  if (wireRows === 0) return wire;
+
+  // Cross-feed paste: copy authored cols [leftDots, labelWidthDots -
+  // rightDots) into wire cols [leftDots, labelWidthDots - rightDots).
+  // LW labels are left-aligned, so labelLeftEdgeDot = 0.
+  const labelWidthDots = authored.widthPx;
+  const srcColStart = Math.min(leftDots, labelWidthDots);
+  const srcColEnd = Math.max(srcColStart, labelWidthDots - rightDots);
+  const dstColStart = srcColStart;
+
+  const srcBpr = bytesPerRow(authored.widthPx);
+  const dstBpr = bytesPerRow(wire.widthPx);
+  const contentRows = authored.heightPx - skipTop - skipBottom;
+
+  for (let y = 0; y < contentRows; y += 1) {
+    const srcY = y + skipTop;
+    const dstY = y;
+    for (let x = srcColStart; x < srcColEnd; x += 1) {
+      const srcByteIdx = srcY * srcBpr + (x >> 3);
+      const srcBit = (((authored.data[srcByteIdx] ?? 0) >> (7 - (x & 7))) & 1) === 1;
+      if (!srcBit) continue;
+      const dstX = dstColStart + (x - srcColStart);
+      if (dstX >= wire.widthPx) break;
+      const dstByteIdx = dstY * dstBpr + (dstX >> 3);
+      wire.data[dstByteIdx] = (wire.data[dstByteIdx] ?? 0) | (1 << (7 - (dstX & 7)));
+    }
+  }
+
+  // forcedTrailingFeedMm rows are already allocated all-white by
+  // createBitmap — no extra work needed.
+  return wire;
+}
+
+function mmToDots(mm: number): number {
+  return Math.round((mm * DPI) / 25.4);
 }
 
 /** Sum of section heights plus inter-section gaps. */
@@ -197,6 +414,9 @@ function computeFillHeight(
  *
  * Split from `buildDiagnosticBitmap` so the orchestrator can preview
  * the bitmap before committing bytes to the wire.
+ *
+ * Pass `result.wire` (not `result.authored`) — the wire bitmap is
+ * what the printer is supposed to receive.
  */
 export function encodeBitmap(bitmap: LabelBitmap, device: LabelWriterDevice): Uint8Array {
   // copies = 1 implicit; density 'normal'; mode 'graphics' since the
