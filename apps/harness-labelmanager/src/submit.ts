@@ -11,7 +11,6 @@ import {
   renderIssueBody,
   type HardwareReport,
   type IdentitySnapshot,
-  type OffsetCalibration,
   type ProposedRung,
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
@@ -38,13 +37,6 @@ export interface BuildReportInput {
   reporter?: string;
   /** True if the run used the mock transport. */
   mocked: boolean;
-  /**
-   * Per-session calibration overrides (plan 08 §7a). When present
-   * AND the operator edited any field, this rides along on the
-   * `TransportReport.offsetCalibration` field as evidence for the
-   * maintainer to triage.
-   */
-  offsetCalibration?: OffsetCalibration;
 }
 
 export function buildReport(input: BuildReportInput): HardwareReport {
@@ -54,7 +46,6 @@ export function buildReport(input: BuildReportInput): HardwareReport {
     patterns: { diagnostic: 'pass' },
     rung: input.rung,
     ...(input.notes.trim() ? { notes: input.notes.trim() } : {}),
-    ...(input.offsetCalibration ? { offsetCalibration: input.offsetCalibration } : {}),
   };
 
   const detected: IdentitySnapshot = {

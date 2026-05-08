@@ -8,7 +8,7 @@
  * leave it empty; that's fine.
  */
 import { computed } from 'vue';
-import { assessment, calibration, hasAssessment, hasPrinted } from '../state/session';
+import { assessment, hasAssessment, hasPrinted } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
@@ -28,40 +28,29 @@ const choices = [
     title: 'Works but with caveats',
     blurb:
       'Something the printer itself produces wrong — faint output, dropped rows, jammed cuts. ' +
-      "An empty border at the top or bottom is NOT partial: that's the head's mechanical reach. " +
-      'Use the calibration section above to dial in offsets, then re-print.',
+      "An empty border at the top or bottom is NOT partial: that's the head's mechanical reach " +
+      "(the preview shows where it lands). Authoring around it is the user's job, not the driver's.",
   },
   {
     value: 'unsupported',
     title: 'Not usable',
     blurb:
-      'Bytes went out, but the printer produced nothing the user could ship. Same caveat as ' +
-      'partial — empty borders are calibration, not a defect.',
+      'Bytes went out, but the printer produced nothing the user could ship. Empty borders are ' +
+      'expected chassis geometry — not a defect.',
   },
 ] as const;
-
-/**
- * Soft check (plan 08 §7a): the operator picked partial /
- * unsupported AND adjusted the calibration overrides this run. Show
- * an inline FYI prompting them to confirm the rung reflects an
- * actual defect, not a calibration mismatch. Easy to dismiss;
- * visible enough to catch the noisy case.
- */
-const showCalibrationFyi = computed(
-  () => calibration.edited && (assessment.rung === 'partial' || assessment.rung === 'unsupported'),
-);
 </script>
 
 <template>
-  <SectionCard :step="6" title="What does it look like?" :state="sectionState">
+  <SectionCard :step="5" title="What does it look like?" :state="sectionState">
     <p v-if="!hasPrinted" class="muted">Print the diagnostic first, then come back here.</p>
 
     <template v-else>
       <p>Pick the option that best matches the print you're holding.</p>
 
       <p class="assist small">
-        If the only thing wrong is empty space at the edges, your printer is fine — adjust the
-        offsets in the calibration section above and print again before submitting.
+        Empty space at the top, bottom, or sides of every print is normal — that's the head's
+        mechanical reach, shown as the striped overlay in the preview. It's not a defect.
       </p>
 
       <div class="radios">
@@ -73,13 +62,6 @@ const showCalibrationFyi = computed(
           </span>
         </label>
       </div>
-
-      <p v-if="showCalibrationFyi" class="fyi small">
-        FYI: you adjusted offset values in the calibration section — confirm the chosen rung
-        reflects an actual printer defect (faint output, dropped rows, jammed cuts), not a
-        calibration mismatch (empty borders or content shifted off an edge). Margin-only complaints
-        belong on the calibration loop.
-      </p>
 
       <label class="notes">
         Notes (optional)
@@ -154,13 +136,5 @@ const showCalibrationFyi = computed(
   padding: var(--space-2) var(--space-3);
   margin: var(--space-3) 0;
   color: var(--fg-muted, var(--muted));
-}
-
-.fyi {
-  background: var(--warn-bg, var(--bg-elevated, var(--bg)));
-  border-left: 3px solid var(--warn, var(--accent));
-  color: var(--warn, var(--fg));
-  padding: var(--space-2) var(--space-3);
-  margin-top: var(--space-3);
 }
 </style>

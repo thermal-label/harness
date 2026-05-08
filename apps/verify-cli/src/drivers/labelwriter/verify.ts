@@ -51,11 +51,9 @@ import {
   transportInstructions,
   type HardwareReport,
   type IdentitySnapshot,
-  type OffsetCalibration,
   type ProposedRung,
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
-import { getForcedTrailingFeedMm, getPrintableArea } from '@thermal-label/contracts';
 import type { LabelBitmap } from '@mbtech-nl/bitmap';
 import type { VerifyOptions } from '../../verify.js';
 import {
@@ -71,11 +69,7 @@ import {
   probeLabelwriterMedia,
   writeDiagnosticPrint,
 } from './connect.js';
-import {
-  buildDiagnosticBitmap,
-  encodeBitmap,
-  type PrintableAreaOverride,
-} from '@thermal-label/harness-core/labelwriter';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp } from '../../bitmap-png.js';
@@ -100,15 +94,14 @@ const RUNG_CHOICES: readonly { value: ProposedRung; name: string; description: s
     description:
       'Something the printer produces wrong: faint output, dropped rows, jammed cuts. ' +
       "Empty borders / missing top or bottom strips are NOT partial — that is the head's " +
-      'mechanical reach. Use --leading / --trailing / --left / --right to dial in your ' +
-      "printer's offsets, then re-print.",
+      'mechanical reach (chassis geometry, automatically respected by the driver).',
   },
   {
     value: 'unsupported',
     name: 'unsupported — known-broken on this build',
     description:
-      'Bytes go out but the printer produces nothing usable. Same caveat as partial — ' +
-      'an empty top / bottom strip is calibration, not a defect.',
+      'Bytes go out but the printer produces nothing usable. Empty borders are expected ' +
+      'chassis geometry, not a defect.',
   },
 ];
 
@@ -205,20 +198,16 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
   console.log(transportInstructions[transport].inline);
   console.log('');
 
-  // Resolve the per-session printable-area / forced-trailing-feed
-  // overrides. CLI flags win over wizard prompts win over engine
-  // defaults (zero in phase 1). The values flow into the bitmap
-  // pipeline and ride along on the submitted report.
-  const calibration = await resolveCalibration(device, media, options, ctx);
-  reportCalibrationSummary(calibration);
-
   // Build the bitmap up front so `--preview` works hardware-free.
+  // The diagnostic encoder reads chassis-mechanical dead zones from
+  // `engine.printableArea` (registry-resolved) — no operator-facing
+  // override surface; the maintainer revises registry values per
+  // bench measurement.
   const result = buildDiagnosticBitmap({
     device,
     media,
     harnessVersion: HARNESS_VERSION,
     driverVersion: DRIVER_VERSION,
-    override: calibrationToOverride(calibration),
   });
 
   if (options.preview) {
@@ -255,23 +244,13 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
 
   const rung = await resolveRung(options, ctx);
 
-  // Soft check (plan 08 §7a): if the operator picked partial /
-  // unsupported AND adjusted any override away from the default,
-  // print a one-line FYI prompting them to confirm the rung
-  // reflects an actual defect rather than the calibration. Easy to
-  // ignore; visible enough to catch the noisy case.
-  maybeSoftCheckRungVsCalibration(rung, calibration);
-
   const notes = await resolveNotes(options, ctx);
-
-  const offsetCalibration = buildOffsetCalibrationField(calibration);
 
   const transportReport: TransportReport = {
     name: transport,
     patterns: { diagnostic: 'pass' },
     rung,
     ...(notes ? { notes } : {}),
-    ...(offsetCalibration ? { offsetCalibration } : {}),
   };
 
   input.runs.push(transportReport);
@@ -641,241 +620,12 @@ async function resolveHost(options: VerifyOptions, ctx: PromptContext): Promise<
   return promptInput(ctx, 'host', "Printer's IP address or hostname:");
 }
 
-/**
- * Resolved per-session calibration values plus the engine defaults
- * they were derived from. Both sets ride along on the submitted
- * report so triage can tell "operator confirmed the default" apart
- * from "operator typed the same value as the default".
- */
-interface CalibrationSession {
-  effective: {
-    leadingMm: number;
-    trailingMm: number;
-    leftMm: number;
-    rightMm: number;
-    forcedTrailingFeedMm: number;
-  };
-  defaults: {
-    leadingMm: number;
-    trailingMm: number;
-    leftMm: number;
-    rightMm: number;
-    forcedTrailingFeedMm: number;
-  };
-  /** Whether the operator touched any field (CLI flag or wizard input). */
-  edited: boolean;
-}
-
-/**
- * Resolve the per-session printable-area / forced-trailing-feed
- * overrides for this transport run.
- *
- * Resolution order, per field:
- *  1. CLI flag (`--leading`, `--trailing`, `--left`, `--right`,
- *     `--trailing-feed`).
- *  2. Wizard prompt (when `wizard` mode and no flag for the field).
- *     The prompt offers the engine default; pressing Enter accepts it.
- *  3. Engine default (`getPrintableArea(engine, media)` /
- *     `getForcedTrailingFeedMm(engine)` — zero in phase 1).
- *
- * `--no-prompt` mode skips the wizard and uses defaults for unset
- * fields, so headless runs always succeed without operator input.
- */
-async function resolveCalibration(
-  device: LabelWriterDevice,
-  media: LabelWriterMedia,
-  options: VerifyOptions,
-  ctx: PromptContext,
-): Promise<CalibrationSession> {
-  const engine = device.engines[0];
-  const defaultPrintableArea = engine
-    ? getPrintableArea(engine, media)
-    : { leading: 0, trailing: 0, left: 0, right: 0 };
-  const defaultForcedFeed = engine ? getForcedTrailingFeedMm(engine) : 0;
-  const defaults = {
-    leadingMm: defaultPrintableArea.leading,
-    trailingMm: defaultPrintableArea.trailing,
-    leftMm: defaultPrintableArea.left,
-    rightMm: defaultPrintableArea.right,
-    forcedTrailingFeedMm: defaultForcedFeed,
-  };
-
-  const flagsTouched =
-    options.leadingMm !== undefined ||
-    options.trailingMm !== undefined ||
-    options.leftMm !== undefined ||
-    options.rightMm !== undefined ||
-    options.forcedTrailingFeedMm !== undefined;
-
-  // Headless / no-prompt: defaults everywhere unless flags override.
-  if (ctx.noPrompt || !options.wizard) {
-    const effective = {
-      leadingMm: options.leadingMm ?? defaults.leadingMm,
-      trailingMm: options.trailingMm ?? defaults.trailingMm,
-      leftMm: options.leftMm ?? defaults.leftMm,
-      rightMm: options.rightMm ?? defaults.rightMm,
-      forcedTrailingFeedMm: options.forcedTrailingFeedMm ?? defaults.forcedTrailingFeedMm,
-    };
-    return { effective, defaults, edited: flagsTouched };
-  }
-
-  // Wizard mode: ask whether to adjust at all. If yes, prompt each
-  // field with the default pre-filled. Per-field flag short-circuits
-  // the prompt for that field.
-  const wantsAdjust = flagsTouched
-    ? true
-    : await promptConfirm(
-        ctx,
-        'calibration',
-        'Adjust printable-area overrides for this run? (default: use engine values, all zero in phase 1)',
-        false,
-      );
-
-  if (!wantsAdjust) {
-    return { effective: { ...defaults }, defaults, edited: false };
-  }
-
-  const leadingMm =
-    options.leadingMm ?? (await promptMm(ctx, 'leading', 'Leading edge (mm):', defaults.leadingMm));
-  const trailingMm =
-    options.trailingMm ??
-    (await promptMm(ctx, 'trailing', 'Trailing edge (mm):', defaults.trailingMm));
-  const leftMm =
-    options.leftMm ?? (await promptMm(ctx, 'left', 'Left edge (mm):', defaults.leftMm));
-  const rightMm =
-    options.rightMm ?? (await promptMm(ctx, 'right', 'Right edge (mm):', defaults.rightMm));
-  const forcedTrailingFeedMm =
-    options.forcedTrailingFeedMm ??
-    (await promptMm(
-      ctx,
-      'trailing-feed',
-      'Forced trailing feed (mm):',
-      defaults.forcedTrailingFeedMm,
-    ));
-
-  return {
-    effective: { leadingMm, trailingMm, leftMm, rightMm, forcedTrailingFeedMm },
-    defaults,
-    edited: true,
-  };
-}
-
-async function promptMm(
-  ctx: PromptContext,
-  key: string,
-  label: string,
-  defaultValue: number,
-): Promise<number> {
-  const text = await promptInput(ctx, key, `${label} [default: ${String(defaultValue)}]`);
-  if (text.trim() === '') return defaultValue;
-  const parsed = Number(text);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`Invalid ${key} value "${text}" — expected a non-negative number in mm.`);
-  }
-  return parsed;
-}
-
-function calibrationToOverride(calibration: CalibrationSession): PrintableAreaOverride {
-  return {
-    leadingMm: calibration.effective.leadingMm,
-    trailingMm: calibration.effective.trailingMm,
-    leftMm: calibration.effective.leftMm,
-    rightMm: calibration.effective.rightMm,
-    forcedTrailingFeedMm: calibration.effective.forcedTrailingFeedMm,
-  };
-}
-
-/**
- * Build the `offsetCalibration` field for `TransportReport` if (and
- * only if) the operator surfaced the calibration drawer (via flags
- * or by accepting the wizard prompt) OR any field's effective value
- * differs from the engine default. Returns `undefined` to omit the
- * field entirely from the report when there's nothing useful to
- * record.
- */
-function buildOffsetCalibrationField(
-  calibration: CalibrationSession,
-): OffsetCalibration | undefined {
-  const e = calibration.effective;
-  const d = calibration.defaults;
-  const differs =
-    e.leadingMm !== d.leadingMm ||
-    e.trailingMm !== d.trailingMm ||
-    e.leftMm !== d.leftMm ||
-    e.rightMm !== d.rightMm ||
-    e.forcedTrailingFeedMm !== d.forcedTrailingFeedMm;
-  if (!calibration.edited && !differs) return undefined;
-
-  return {
-    ...(e.leadingMm !== d.leadingMm ? { leadingMm: e.leadingMm } : {}),
-    ...(e.trailingMm !== d.trailingMm ? { trailingMm: e.trailingMm } : {}),
-    ...(e.leftMm !== d.leftMm ? { leftMm: e.leftMm } : {}),
-    ...(e.rightMm !== d.rightMm ? { rightMm: e.rightMm } : {}),
-    ...(e.forcedTrailingFeedMm !== d.forcedTrailingFeedMm
-      ? { forcedTrailingFeedMm: e.forcedTrailingFeedMm }
-      : {}),
-    defaults: { ...d },
-  };
-}
-
-function maybeSoftCheckRungVsCalibration(
-  rung: ProposedRung,
-  calibration: CalibrationSession,
-): void {
-  if (rung !== 'partial' && rung !== 'unsupported') return;
-  const e = calibration.effective;
-  const d = calibration.defaults;
-  const differs =
-    e.leadingMm !== d.leadingMm ||
-    e.trailingMm !== d.trailingMm ||
-    e.leftMm !== d.leftMm ||
-    e.rightMm !== d.rightMm ||
-    e.forcedTrailingFeedMm !== d.forcedTrailingFeedMm;
-  if (!differs) return;
-  console.log('');
-  console.log(
-    `FYI: you adjusted offset values from the engine defaults — confirm the "${rung}" rung ` +
-      'reflects an actual printer defect (faint output, dropped rows, jammed cuts), not a ' +
-      'calibration mismatch (empty borders / margin off). Margin-only complaints belong on ' +
-      'the calibration loop, not the rung.',
-  );
-  console.log('');
-}
-
-function reportCalibrationSummary(calibration: CalibrationSession): void {
-  const e = calibration.effective;
-  const d = calibration.defaults;
-  const allZero =
-    e.leadingMm === 0 &&
-    e.trailingMm === 0 &&
-    e.leftMm === 0 &&
-    e.rightMm === 0 &&
-    e.forcedTrailingFeedMm === 0;
-  const matchesDefault =
-    e.leadingMm === d.leadingMm &&
-    e.trailingMm === d.trailingMm &&
-    e.leftMm === d.leftMm &&
-    e.rightMm === d.rightMm &&
-    e.forcedTrailingFeedMm === d.forcedTrailingFeedMm;
-  if (allZero && matchesDefault) {
-    console.log('Printable area: defaults (no overrides). All zero — phase-1 framework.');
-  } else {
-    console.log(
-      `Printable area: leading=${String(e.leadingMm)}mm trailing=${String(e.trailingMm)}mm ` +
-        `left=${String(e.leftMm)}mm right=${String(e.rightMm)}mm; ` +
-        `forced trailing feed=${String(e.forcedTrailingFeedMm)}mm.`,
-    );
-  }
-  console.log('');
-}
-
 async function resolveRung(options: VerifyOptions, ctx: PromptContext): Promise<ProposedRung> {
   if (options.rung !== undefined) return options.rung;
   if (!ctx.noPrompt) {
     console.log(
-      "FYI: empty space at the top or bottom is the head's mechanical reach, not a defect. " +
-        'Use --leading / --trailing (or the wizard prompt above) to dial in offsets, then re-print ' +
-        'before picking partial / unsupported.',
+      "FYI: empty space at the top or bottom is the head's mechanical reach (chassis " +
+        'geometry, automatically respected by the driver), not a defect.',
     );
     console.log('');
   }

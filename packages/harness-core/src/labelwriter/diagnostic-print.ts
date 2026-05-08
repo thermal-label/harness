@@ -45,9 +45,9 @@
  *     uniformity. Stretches to fill long labels.
  *   - Trailing-edge probe: a known marker placed N dots above where
  *     the trailing-edge dead-zone is expected to begin (per the
- *     registry's `trailingEdgeOffsetMm`, when present). The operator
- *     reads from the photo whether the marker landed where expected,
- *     which validates the head-to-cut/tear geometry.
+ *     registry's `printableArea.trailing`, when present). The
+ *     operator reads from the photo whether the marker landed where
+ *     expected, which validates the head-to-cut/tear geometry.
  *
  * Bitmap orientation contract (`labelwriter-core/src/protocol.ts`):
  *   - `widthPx` is the head-perpendicular dimension (across the head)
@@ -62,29 +62,28 @@
  * inches @ 300 dpi = 1200 dots — enough to fit the diagnostic on a
  * 57 mm tape).
  *
- * **Authored bitmap vs. wire bitmap (plan 08 §6 / §7).**
+ * **Authored bitmap vs. wire bitmap (plan 08 §6).**
  *
  * The encoder produces two artefacts from the same authored content:
  *
  *   - `authored` — full label-sized bitmap (`mediaWidthDots ×
- *     mediaLengthDots`). Today's behaviour. The harness's preview
- *     canvas renders this and overlays the dead-zone bands so the
- *     operator sees the complete authored layout AND where it won't
- *     print.
+ *     mediaLengthDots`). What the harness's preview canvas renders.
+ *     The leading dead-zone rows stay blank by construction so the
+ *     operator sees the full authored layout including what the head
+ *     can't reach.
  *   - `wire` — head-sized bitmap with `leadingDots` rows skipped from
- *     the top and `trailingDots` rows skipped from the bottom (the
- *     LW family's "send fewer rows" leading-edge convention; per
- *     plan 08 §6, after the form-feed positions the label, the LW
- *     head is already past the leading dead-zone, so the first wire
- *     row fires at the first reachable label row). Cross-feed: white
- *     padding on the left for `leftDots` columns; the right edge
- *     fires harmlessly past the label.
+ *     the top (the LW family's "send fewer rows" leading-edge
+ *     convention; per plan 08 §6, after form-feed positions the
+ *     label, the LW head is already past the leading dead-zone, so
+ *     the first wire row fires at the first reachable label row).
+ *     Cross-feed: white padding on the left for `leftDots` columns;
+ *     the right edge fires harmlessly past the label.
  *
- * When `printableArea` is `{0,0,0,0}` and `forcedTrailingFeedMm` is
- * 0 (today's phase-1 default — no values populated on any LW engine
- * yet), `wire` equals `authored` byte-for-byte. The override flow
- * in the harness lets operators dial in per-session values that
- * surface the difference; populated registry values come later.
+ * Dead-zone values come from `getPrintableArea(engine, media)` /
+ * `getForcedTrailingFeedMm(engine)` — chassis-mechanical metadata,
+ * read from the registry. There's no operator-facing override surface
+ * in this layer; the maintainer revises registry values per bench
+ * measurement.
  */
 import {
   buildJobHeader,
@@ -108,36 +107,11 @@ import {
 } from '@thermal-label/contracts';
 import { cropHeight, cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.js';
 
-/**
- * Per-session overrides supplied by the harness operator (plan 08
- * §7a). Each field is optional in millimetres; when present, it
- * replaces the matching value resolved from `getPrintableArea` /
- * `getForcedTrailingFeedMm`. Used by the diagnostic encoder to
- * compose the wire bitmap and by the harness UI to drive the
- * dead-zone overlays in the preview canvas.
- */
-export interface PrintableAreaOverride {
-  leadingMm?: number;
-  trailingMm?: number;
-  leftMm?: number;
-  rightMm?: number;
-  forcedTrailingFeedMm?: number;
-}
-
 export interface DiagnosticPrintInput {
   device: LabelWriterDevice;
   media: LabelWriterMedia;
   harnessVersion: string;
   driverVersion: string;
-  /**
-   * Optional per-session override for the printable-area / forced-
-   * trailing-feed values. Merged on top of
-   * `getPrintableArea(engine, media)` /
-   * `getForcedTrailingFeedMm(engine)`. Phase-1 defaults are zero on
-   * every engine, so this is currently the only way to exercise the
-   * dead-zone pipeline.
-   */
-  override?: PrintableAreaOverride;
 }
 
 /**
@@ -149,19 +123,14 @@ export interface DiagnosticBitmapResult {
   /**
    * Full label-sized bitmap (`mediaWidthDots × mediaLengthDots`) —
    * what the harness preview renders. Includes the leading / trailing
-   * dead-zone rows so the operator sees the authored layout in full;
-   * the harness overlays the dead-zone bands as striped overlays per
-   * plan 08 §7.
+   * dead-zone rows so the operator sees the authored layout in full.
    */
   authored: LabelBitmap;
   /**
    * Head-sized wire bitmap with the LW family's "send fewer rows"
    * leading-edge convention applied: `leadingDots` rows skipped from
-   * the top, `trailingDots` rows skipped from the bottom, white-pad
-   * on the left for `leftDots` columns, right edge unbounded (the
-   * head fires harmlessly past the label). When the resolved
-   * `PrintableArea` is `{0,0,0,0}` and `forcedTrailingFeedMm` is 0,
-   * `wire === authored` byte-for-byte (today's behaviour).
+   * the top, white-pad on the left for `leftDots` columns, right edge
+   * unbounded (the head fires harmlessly past the label).
    */
   wire: LabelBitmap;
   /** The resolved printable area, in mm. */
@@ -270,8 +239,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
   // Position the content stack inside a full-label-sized canvas. The
   // top `leadingDots` rows + bottom `trailingDots` rows + left/right
   // `leftDots`/`rightDots` cols stay white. This is the authored
-  // bitmap the preview displays (with dead-zone overlays striped on
-  // top per §7) and that the wire encoder consumes.
+  // bitmap the preview displays and that the wire encoder consumes.
   const authoredHeight = labelHeight ?? contentTrimmed.heightPx + leadingDots + trailingDots;
   const authored = createBitmap(labelWidthDots, authoredHeight);
   pasteBitmap(authored, contentTrimmed, leadingDots, leftDots);
@@ -311,52 +279,43 @@ function pasteBitmap(
 }
 
 /**
- * Resolve the effective printable area for this session. Starts from
- * `getPrintableArea(engine, media)` (zeros today, populated values
- * later) and overlays any per-session operator overrides on top.
+ * Resolve the effective printable area for this session. Reads
+ * `getPrintableArea(engine, media)` directly — chassis-mechanical
+ * registry value (with per-roll media-tag override applied for LW 5xx
+ * NFC-tag media) is the single source of truth. No operator-facing
+ * override surface.
  */
 function resolvePrintableArea(input: DiagnosticPrintInput): PrintableArea {
   const engine = input.device.engines[0];
   if (!engine) return ZERO_PRINTABLE_AREA;
-  const base = getPrintableArea(engine, input.media);
-  const ov = input.override;
-  if (!ov) return base;
-  return {
-    leading: ov.leadingMm ?? base.leading,
-    trailing: ov.trailingMm ?? base.trailing,
-    left: ov.leftMm ?? base.left,
-    right: ov.rightMm ?? base.right,
-  };
+  return getPrintableArea(engine, input.media);
 }
 
 function resolveForcedTrailingFeedMm(input: DiagnosticPrintInput): number {
   const engine = input.device.engines[0];
   if (!engine) return 0;
-  const base = getForcedTrailingFeedMm(engine);
-  return input.override?.forcedTrailingFeedMm ?? base;
+  return getForcedTrailingFeedMm(engine);
 }
 
 /**
  * Build the wire bitmap from the authored bitmap per plan 08 §6.
  *
- * For LW: head-sized × `(authoredHeight - leadingDots - trailingDots)`
- * rows; the authored content is pasted at wire row 0, column
- * `leftDots` (LW labels are left-aligned — `labelLeftEdgeDot = 0`).
- * The wire bitmap is shorter than the label by `leadingDots +
- * trailingDots` rows — that's the "send fewer rows" mechanism.
+ * For LW: head-sized × `(authoredHeight - leadingDots)` rows; the
+ * authored content is pasted at wire row 0, column `leftDots` (LW
+ * labels are left-aligned — `labelLeftEdgeDot = 0`). The wire bitmap
+ * is shorter than the label by `leadingDots` rows — that's the "send
+ * fewer rows" mechanism.
  *
- * When `printableArea` is all zeros AND `forcedTrailingFeedMm` is
- * zero AND the authored bitmap is already head-sized (i.e. matches
- * `headDots`), we return the authored bitmap unchanged so today's
- * byte stream is preserved exactly. This is the phase-1 invariant.
+ * When `printableArea.leading` is zero, returns the authored bitmap
+ * unchanged so the wire stream is byte-identical to the authored
+ * canvas.
  *
  * Note: today's authored bitmap is `labelWidthDots`-wide, not
  * `headDots`-wide. The `encodeLabel` driver pipeline pads the bitmap
- * to head width before emitting — so even in the no-override path
- * the wire stream the printer sees is identical regardless of
- * whether we widen here or downstream. We widen here when we need to
- * apply a `leftDots` offset, and pass through narrow when we don't,
- * so byte-identity holds for the no-override case.
+ * to head width before emitting — so even in the no-skip path the
+ * wire stream the printer sees is identical regardless of whether we
+ * widen here or downstream. We pass through narrow when leadingDots
+ * is zero so byte-identity holds for the legacy case.
  */
 function composeWireBitmap(
   authored: LabelBitmap,
@@ -379,7 +338,7 @@ function composeWireBitmap(
 
   const skip = Math.min(leadingDots, authored.heightPx);
   const wireRows = authored.heightPx - skip;
-  if (wireRows <= 0) return createBitmap(authored.widthPx, 0);
+  if (wireRows <= 0) return createBitmap(authored.widthPx, 1);
 
   const wire = createBitmap(authored.widthPx, wireRows);
   const bpr = bytesPerRow(authored.widthPx);
@@ -486,15 +445,18 @@ function mediaHeightPx(media: LabelWriterMedia): number | undefined {
   return CONTINUOUS_DEFAULT_HEIGHT_PX;
 }
 
+/**
+ * Trailing-edge probe offset in dots, derived from the engine's
+ * `printableArea.trailing` (mm). LW family typically leaves trailing
+ * at 0 — variable form-feed handles the trailing-edge advance — so we
+ * fall back to a conservative 20-dot offset that lands inside the
+ * printable area on every LW model in the registry.
+ */
 function trailingEdgeProbeDots(device: LabelWriterDevice): number {
   const engine = device.engines[0];
-  const caps = engine?.capabilities as
-    | { trailingEdgeOffsetMm?: number; leadingEdgeOffsetMm?: number }
-    | undefined;
-  const mm = caps?.trailingEdgeOffsetMm;
-  if (mm !== undefined) return Math.round((mm * DPI) / 25.4);
-  // Fallback: a conservative 20-dot offset is enough to land inside
-  // the printable area on every LW model in the registry.
+  if (!engine) return 20;
+  const { trailing } = getPrintableArea(engine);
+  if (trailing > 0) return Math.round((trailing * DPI) / 25.4);
   return 20;
 }
 

@@ -43,16 +43,6 @@ interface VerifyCommandOptions {
   host?: string;
   /** TCP-9100 port (default 9100). Brother-ql TCP only. */
   port?: number;
-  /** Printable-area override: leading edge, in mm (labelwriter only). */
-  leading?: number;
-  /** Printable-area override: trailing edge, in mm (labelwriter only). */
-  trailing?: number;
-  /** Printable-area override: left edge, in mm (labelwriter only). */
-  left?: number;
-  /** Printable-area override: right edge, in mm (labelwriter only). */
-  right?: number;
-  /** Forced trailing feed override, in mm (labelwriter only). */
-  trailingFeed?: number;
 }
 
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
@@ -61,16 +51,6 @@ function parseChoice<T extends string>(label: string, allowed: readonly T[]): (v
       throw new Error(`Invalid ${label}: ${value}. Expected one of: ${allowed.join(', ')}`);
     }
     return value as T;
-  };
-}
-
-function parseNonNegative(label: string): (value: string) => number {
-  return (value: string): number => {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n < 0) {
-      throw new Error(`Invalid --${label}: ${value}. Expected a non-negative number in mm.`);
-    }
-    return n;
   };
 }
 
@@ -139,31 +119,6 @@ program
   .option('--port <port>', 'TCP-9100 port (default 9100). Brother-ql tcp transport only.', v =>
     Number.parseInt(v, 10),
   )
-  .option(
-    '--leading <mm>',
-    'Labelwriter only: override the leading-edge dead-zone in mm (plan 08 §7a). Defaults to the engine value (zero in phase 1).',
-    parseNonNegative('leading'),
-  )
-  .option(
-    '--trailing <mm>',
-    'Labelwriter only: override the trailing-edge dead-zone in mm. Defaults to the engine value.',
-    parseNonNegative('trailing'),
-  )
-  .option(
-    '--left <mm>',
-    'Labelwriter only: override the left-edge dead-zone in mm. Defaults to the engine value.',
-    parseNonNegative('left'),
-  )
-  .option(
-    '--right <mm>',
-    'Labelwriter only: override the right-edge dead-zone in mm. Defaults to the engine value.',
-    parseNonNegative('right'),
-  )
-  .option(
-    '--trailing-feed <mm>',
-    'Labelwriter only: override the post-print forced trailing feed in mm. Defaults to the engine value (zero on LW today; the LW family uses variable form-feed).',
-    parseNonNegative('trailing-feed'),
-  )
   .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
@@ -193,11 +148,6 @@ program
         media: options.media,
         host: options.host,
         port: options.port,
-        leadingMm: options.leading,
-        trailingMm: options.trailing,
-        leftMm: options.left,
-        rightMm: options.right,
-        forcedTrailingFeedMm: options.trailingFeed,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

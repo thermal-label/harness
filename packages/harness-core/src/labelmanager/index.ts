@@ -7,9 +7,5 @@
 // to it; see `diagnostic-print.ts` for the rationale behind keeping
 // a driver-named subpath inside otherwise-agnostic harness-core.
 
-export type {
-  DiagnosticBitmapResult,
-  DiagnosticPrintInput,
-  PrintableAreaOverride,
-} from './diagnostic-print.js';
+export type { DiagnosticBitmapResult, DiagnosticPrintInput } from './diagnostic-print.js';
 export { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';

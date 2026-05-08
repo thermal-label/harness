@@ -154,52 +154,6 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(report.device.confirmed.overrides?.label).toBe('address-standard');
     expect(report.reporter?.handle).toBe('@mannes');
     expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
-    // No printable-area flags supplied → no offsetCalibration on the
-    // report (plan 08 §7a: the field is omitted when nothing differs
-    // from the engine defaults).
-    expect(report.transports[0]?.offsetCalibration).toBeUndefined();
-  }, 30_000);
-
-  it('rides printable-area flag overrides into the labelwriter report', async () => {
-    const result = await runCli([
-      'verify',
-      'labelwriter',
-      'LW_330_TURBO',
-      '--transport',
-      'usb',
-      '--media',
-      'ADDRESS_STANDARD',
-      '--rung',
-      'verified',
-      '--no-prompt',
-      '--dry-run',
-      '--leading',
-      '6',
-      '--trailing',
-      '4',
-      '--left',
-      '1',
-      '--trailing-feed',
-      '0',
-    ]);
-    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
-    const report = extractJsonReport(result.stdout);
-    const calibration = report.transports[0]?.offsetCalibration;
-    expect(calibration).toBeDefined();
-    expect(calibration?.leadingMm).toBe(6);
-    expect(calibration?.trailingMm).toBe(4);
-    expect(calibration?.leftMm).toBe(1);
-    // --right was not supplied → field omitted (matches engine default 0).
-    expect(calibration?.rightMm).toBeUndefined();
-    // --trailing-feed 0 matches engine default 0 → field omitted.
-    expect(calibration?.forcedTrailingFeedMm).toBeUndefined();
-    expect(calibration?.defaults).toEqual({
-      leadingMm: 0,
-      trailingMm: 0,
-      leftMm: 0,
-      rightMm: 0,
-      forcedTrailingFeedMm: 0,
-    });
   }, 30_000);
 
   it('accepts a SKU as --media for labelwriter', async () => {

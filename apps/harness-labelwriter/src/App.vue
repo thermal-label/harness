@@ -15,7 +15,6 @@ import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
 import IdentitySection from './components/IdentitySection.vue';
 import MediaSection from './components/MediaSection.vue';
-import CalibrationSection from './components/CalibrationSection.vue';
 import PrintSection from './components/PrintSection.vue';
 import AssessmentSection from './components/AssessmentSection.vue';
 import SubmitSection from './components/SubmitSection.vue';
@@ -41,7 +40,6 @@ const supported = canRunOnThisBrowser();
       <ConnectSection />
       <IdentitySection />
       <MediaSection />
-      <CalibrationSection />
       <PrintSection />
       <AssessmentSection />
       <SubmitSection />

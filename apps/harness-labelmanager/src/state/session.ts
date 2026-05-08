@@ -10,9 +10,6 @@
  *  - No media catalog; the operator picks a `tapeWidth` (6/9/12/19 mm).
  *    Default 12 mm (the maintainer's bench unit).
  *  - No SKU / NFC probe state.
- *  - `forcedTrailingFeedMm` is load-bearing on labelmanager (the
- *    chassis post-print feed advance), unlike labelwriter where it's
- *    informational today.
  */
 import { computed, reactive, ref } from 'vue';
 import type { Transport } from '@thermal-label/contracts';
@@ -33,34 +30,6 @@ export interface ConnectionState {
 export interface AssessmentState {
   rung: ProposedRung | null;
   notes: string;
-}
-
-/**
- * Per-session printable-area / forced-trailing-feed overrides
- * (plan 08 §7a). Defaults populate from `getPrintableArea(engine)` /
- * `getForcedTrailingFeedMm(engine)` when the operator opens the
- * calibration drawer; on labelmanager the registry today carries
- * `leading: 8 mm` / `forcedTrailingFeedMm: 8 mm` on every entry, so
- * the defaults are non-zero out of the box.
- */
-export interface CalibrationState {
-  /** Has the operator surfaced the calibration drawer this run? */
-  drawerOpen: boolean;
-  leadingMm: number;
-  trailingMm: number;
-  leftMm: number;
-  rightMm: number;
-  forcedTrailingFeedMm: number;
-  /** Snapshot of the engine defaults; report includes for evidence. */
-  defaults: {
-    leadingMm: number;
-    trailingMm: number;
-    leftMm: number;
-    rightMm: number;
-    forcedTrailingFeedMm: number;
-  };
-  /** Whether the operator changed any value away from the default. */
-  edited: boolean;
 }
 
 export interface SubmitState {
@@ -95,23 +64,6 @@ export const submitState = reactive<SubmitState>({
   issueUrl: null,
 });
 
-export const calibration = reactive<CalibrationState>({
-  drawerOpen: false,
-  leadingMm: 0,
-  trailingMm: 0,
-  leftMm: 0,
-  rightMm: 0,
-  forcedTrailingFeedMm: 0,
-  defaults: {
-    leadingMm: 0,
-    trailingMm: 0,
-    leftMm: 0,
-    rightMm: 0,
-    forcedTrailingFeedMm: 0,
-  },
-  edited: false,
-});
-
 export const isConnected = computed(() => connection.transport !== null);
 export const hasIdentity = computed(() => Boolean(connection.identity && device.value));
 /**
@@ -137,11 +89,4 @@ export function resetForNewRun(): void {
   submitState.printed = false;
   submitState.submitted = false;
   submitState.issueUrl = null;
-  calibration.drawerOpen = false;
-  calibration.leadingMm = calibration.defaults.leadingMm;
-  calibration.trailingMm = calibration.defaults.trailingMm;
-  calibration.leftMm = calibration.defaults.leftMm;
-  calibration.rightMm = calibration.defaults.rightMm;
-  calibration.forcedTrailingFeedMm = calibration.defaults.forcedTrailingFeedMm;
-  calibration.edited = false;
 }

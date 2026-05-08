@@ -50,18 +50,6 @@ export interface VerifyOptions {
   host: string | undefined;
   /** TCP-9100 port (default 9100). Brother-ql tcp transport only. */
   port: number | undefined;
-  /**
-   * Per-session printable-area / forced-trailing-feed overrides
-   * (plan 08 §7a). All five are labelwriter-only today; other
-   * drivers ignore them. Values flow into the bitmap pipeline and
-   * ride along on the submitted report as evidence; they do not
-   * persist into the registry from the harness.
-   */
-  leadingMm: number | undefined;
-  trailingMm: number | undefined;
-  leftMm: number | undefined;
-  rightMm: number | undefined;
-  forcedTrailingFeedMm: number | undefined;
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {

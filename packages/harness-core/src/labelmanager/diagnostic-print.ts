@@ -44,19 +44,18 @@
  * **Authored bitmap vs. wire bytes (plan 08 §6 Labelmanager).**
  *
  * Labelmanager pads top + bottom in the encoder itself
- * (`buildPrinterStream` → `prepareForEmission` reads
- * `engine.printableArea.leading` + `getForcedTrailingFeedMm(engine)`
- * and pads white rows accordingly — the "white-pad-rows" mechanism
- * per plan 08 §6, distinct from labelwriter's "send fewer rows").
- * The harness's job is therefore simpler than labelwriter's: author
- * content within the printable region, hand off the bitmap as-is to
- * the driver-core encoder, and let the encoder do the padding.
+ * (`buildPrinterStream` reads `engine.printableArea.leading` +
+ * `getForcedTrailingFeedMm(engine)` and pads white rows accordingly —
+ * the "white-pad-rows" mechanism per plan 08 §6, distinct from
+ * labelwriter's "send fewer rows"). The harness's job is therefore
+ * simpler than labelwriter's: author content within the printable
+ * region, hand off the bitmap as-is to the driver-core encoder, and
+ * let the encoder do the padding.
  *
- * Per-session printable-area / forced-trailing-feed overrides
- * (plan 08 §7a) are plumbed via option (b) — the harness synthesises
- * an "effective engine" `{...engine, printableArea, forcedTrailingFeedMm}`
- * and passes it to `buildPrinterStream`. The driver-core encoder
- * stays untouched. See `effectiveEngine()` below.
+ * Dead-zone values come from `getPrintableArea(engine)` /
+ * `getForcedTrailingFeedMm(engine)` — chassis-mechanical registry
+ * metadata, no operator-facing override. The maintainer revises
+ * registry values per bench measurement.
  *
  * The returned `wire` field is the same `LabelBitmap` as `authored`
  * (the labelmanager harness does not pre-skip rows), kept in the
@@ -77,45 +76,14 @@ import {
   getForcedTrailingFeedMm,
   ZERO_PRINTABLE_AREA,
   type PrintableArea,
-  type PrintEngine,
 } from '@thermal-label/contracts';
 import { cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.js';
-
-/**
- * Per-session overrides supplied by the harness operator (plan 08
- * §7a). Each field is optional in millimetres; when present, it
- * replaces the matching value resolved from `getPrintableArea` /
- * `getForcedTrailingFeedMm`. Used by the diagnostic encoder to
- * synthesise an "effective engine" and by the harness UI to drive
- * the dead-zone overlays in the preview canvas.
- *
- * On labelmanager the cross-feed `leftMm` / `rightMm` fields don't
- * map to a chassis dead-zone today (the head is always centred on
- * the cartridge); they ride along on the report for forward-compat
- * but the encoder ignores them. The leading / trailing / forced-
- * trailing-feed fields are the load-bearing ones.
- */
-export interface PrintableAreaOverride {
-  leadingMm?: number;
-  trailingMm?: number;
-  leftMm?: number;
-  rightMm?: number;
-  forcedTrailingFeedMm?: number;
-}
 
 export interface DiagnosticPrintInput {
   device: LabelManagerDevice;
   tapeWidth: TapeWidth;
   harnessVersion: string;
   driverVersion: string;
-  /**
-   * Optional per-session override for the printable-area / forced-
-   * trailing-feed values. Merged on top of
-   * `getPrintableArea(engine)` / `getForcedTrailingFeedMm(engine)`.
-   * Used by `encodeBitmap` to synthesise an effective engine before
-   * calling `buildPrinterStream`.
-   */
-  override?: PrintableAreaOverride;
 }
 
 /**
@@ -227,84 +195,26 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
  * `engine` is required after the plan-08 refactor — the encoder
  * reads `printableArea` + `forcedTrailingFeedMm` to apply the
  * leading/trailing pads. Pass `device.engines[0]`.
- *
- * `override`, when supplied, synthesises an effective engine
- * `{...engine, printableArea, forcedTrailingFeedMm}` per plan 08
- * §7a option (b) — the driver-core encoder stays untouched, the
- * harness overlays its per-session calibration on top.
  */
 export function encodeBitmap(
   bitmap: LabelBitmap,
   engine: LabelManagerDevice['engines'][number],
   tapeWidth: TapeWidth,
-  override?: PrintableAreaOverride,
 ): Uint8Array {
-  const effective = effectiveEngine(engine, override);
   const options: LabelManagerPrintOptions = { tapeWidth, copies: 1 };
-  return buildPrinterStream(bitmap, effective, options);
-}
-
-/**
- * Synthesise an "effective engine" carrying the operator's
- * per-session overrides for `printableArea` /
- * `forcedTrailingFeedMm`. When no override is present, returns the
- * input engine as-is so the byte stream is unchanged.
- *
- * This is the option (b) plumbing from plan 08 §7a — instead of
- * threading override fields through `LabelManagerPrintOptions`
- * (which would require touching labelmanager-core), the harness
- * builds a one-off engine view and hands it to `buildPrinterStream`
- * unchanged. The driver-core encoder reads `engine.printableArea` /
- * `engine.forcedTrailingFeedMm` exactly as it would with a registry
- * value.
- */
-function effectiveEngine(
-  engine: LabelManagerDevice['engines'][number],
-  override: PrintableAreaOverride | undefined,
-): PrintEngine {
-  if (!override) return engine;
-
-  const basePrintable = getPrintableArea(engine);
-  const baseForced = getForcedTrailingFeedMm(engine);
-
-  const printableArea: PrintableArea = {
-    leading: override.leadingMm ?? basePrintable.leading,
-    trailing: override.trailingMm ?? basePrintable.trailing,
-    left: override.leftMm ?? basePrintable.left,
-    right: override.rightMm ?? basePrintable.right,
-  };
-  const forcedTrailingFeedMm = override.forcedTrailingFeedMm ?? baseForced;
-
-  // Spread engine + replace the two override fields. Cast through
-  // the engine type because PrintEngine has additional optional
-  // fields the encoder reads via `engine.dpi` etc. — those flow
-  // through unchanged.
-  return {
-    ...engine,
-    printableArea,
-    forcedTrailingFeedMm,
-  };
+  return buildPrinterStream(bitmap, engine, options);
 }
 
 function resolvePrintableArea(input: DiagnosticPrintInput): PrintableArea {
   const engine = input.device.engines[0];
   if (!engine) return ZERO_PRINTABLE_AREA;
-  const base = getPrintableArea(engine);
-  const ov = input.override;
-  if (!ov) return base;
-  return {
-    leading: ov.leadingMm ?? base.leading,
-    trailing: ov.trailingMm ?? base.trailing,
-    left: ov.leftMm ?? base.left,
-    right: ov.rightMm ?? base.right,
-  };
+  return getPrintableArea(engine);
 }
 
 function resolveForcedTrailingFeedMm(input: DiagnosticPrintInput): number {
   const engine = input.device.engines[0];
   if (!engine) return 0;
-  const base = getForcedTrailingFeedMm(engine);
-  return input.override?.forcedTrailingFeedMm ?? base;
+  return getForcedTrailingFeedMm(engine);
 }
 
 /**

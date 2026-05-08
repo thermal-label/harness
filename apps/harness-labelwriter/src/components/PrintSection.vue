@@ -13,20 +13,8 @@
  * preview lines for triage.
  */
 import { computed, ref } from 'vue';
-import {
-  buildDiagnosticBitmap,
-  encodeBitmap,
-  type PrintableAreaOverride,
-} from '@thermal-label/harness-core/labelwriter';
-import {
-  calibration,
-  connection,
-  device,
-  hasMedia,
-  hasPrinted,
-  media,
-  submitState,
-} from '../state/session';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
+import { connection, device, hasMedia, hasPrinted, media, submitState } from '../state/session';
 import { writeDiagnosticPrint } from '../transport/connect';
 import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
 import BitmapPreview from './BitmapPreview.vue';
@@ -43,24 +31,13 @@ const lastError = ref<string | null>(null);
 const lastByteCount = ref(0);
 const lastBytesPreview = ref<string>('');
 
-function currentOverride(): PrintableAreaOverride {
-  return {
-    leadingMm: calibration.leadingMm,
-    trailingMm: calibration.trailingMm,
-    leftMm: calibration.leftMm,
-    rightMm: calibration.rightMm,
-    forcedTrailingFeedMm: calibration.forcedTrailingFeedMm,
-  };
-}
-
 /**
- * Reactive diagnostic bitmap pair, recomputed whenever device,
- * media, or the calibration overrides change. Authored bitmap is
- * shown as a small canvas thumbnail with dead-zone overlays so the
- * operator can compare what we intended to send against what
- * physically came out of the printer. Encoder is a pure function of
- * (device, media, version strings, override) — the preview matches
- * the bytes sent on the next print exactly.
+ * Reactive diagnostic bitmap pair, recomputed whenever device or
+ * media changes. Authored bitmap is shown as a small canvas thumbnail
+ * with dead-zone overlays so the operator can compare what we
+ * intended to send against what physically came out of the printer.
+ * Encoder is a pure function of (device, media, version strings) —
+ * the preview matches the bytes sent on the next print exactly.
  */
 const previewResult = computed(() => {
   if (!device.value || !media.value) return null;
@@ -70,7 +47,6 @@ const previewResult = computed(() => {
       media: media.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
-      override: currentOverride(),
     });
   } catch {
     return null;
@@ -87,7 +63,6 @@ async function doPrint(): Promise<void> {
       media: media.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
-      override: currentOverride(),
     });
     // Send the WIRE bitmap — that's the head-sized composition that
     // the LW expects. The authored bitmap is for the preview canvas
@@ -128,7 +103,7 @@ function formatHexPreview(bytes: Uint8Array): string {
 </script>
 
 <template>
-  <SectionCard :step="5" title="Print the diagnostic" :state="sectionState">
+  <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
     <p v-if="!hasMedia" class="muted">
       Pick a label first — the bitmap dimensions come from there.
     </p>
@@ -150,8 +125,7 @@ function formatHexPreview(bytes: Uint8Array): string {
         <p class="muted small preview-hint">
           This is what we're about to send. Click to zoom. Striped bands show the dead-zone regions
           your printer can't reach (top, bottom, sides) plus any forced trailing feed below the
-          bitmap. Compare with the physical label — anything missing, shifted, or clipped is a hint
-          about whether your overrides match reality.
+          bitmap.
         </p>
       </div>
 

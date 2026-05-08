@@ -13,20 +13,8 @@
  * preview lines for triage.
  */
 import { computed, ref } from 'vue';
-import {
-  buildDiagnosticBitmap,
-  encodeBitmap,
-  type PrintableAreaOverride,
-} from '@thermal-label/harness-core/labelmanager';
-import {
-  calibration,
-  connection,
-  device,
-  hasTape,
-  hasPrinted,
-  submitState,
-  tapeWidth,
-} from '../state/session';
+import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelmanager';
+import { connection, device, hasTape, hasPrinted, submitState, tapeWidth } from '../state/session';
 import { writeDiagnosticPrint } from '../transport/connect';
 import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
 import BitmapPreview from './BitmapPreview.vue';
@@ -43,28 +31,17 @@ const lastError = ref<string | null>(null);
 const lastByteCount = ref(0);
 const lastBytesPreview = ref<string>('');
 
-function currentOverride(): PrintableAreaOverride {
-  return {
-    leadingMm: calibration.leadingMm,
-    trailingMm: calibration.trailingMm,
-    leftMm: calibration.leftMm,
-    rightMm: calibration.rightMm,
-    forcedTrailingFeedMm: calibration.forcedTrailingFeedMm,
-  };
-}
-
 const enginePrimary = computed(() => device.value?.engines[0] ?? null);
 
 const previewDpi = computed(() => enginePrimary.value?.dpi ?? 180);
 
 /**
- * Reactive diagnostic bitmap pair, recomputed whenever device, tape
- * width, or the calibration overrides change. Authored bitmap is
- * shown as a small canvas thumbnail with dead-zone overlays so the
- * operator can compare what we intended to send against what
- * physically came out of the printer. Encoder is a pure function of
- * (device, tapeWidth, version strings, override) — the preview
- * matches the bytes sent on the next print exactly.
+ * Reactive diagnostic bitmap pair, recomputed whenever device or tape
+ * width changes. Authored bitmap is shown as a small canvas thumbnail
+ * with dead-zone overlays so the operator can compare what we
+ * intended to send against what physically came out of the printer.
+ * Encoder is a pure function of (device, tapeWidth, version strings)
+ * — the preview matches the bytes sent on the next print exactly.
  */
 const previewResult = computed(() => {
   if (!device.value) return null;
@@ -74,7 +51,6 @@ const previewResult = computed(() => {
       tapeWidth: tapeWidth.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
-      override: currentOverride(),
     });
   } catch {
     return null;
@@ -91,17 +67,12 @@ async function doPrint(): Promise<void> {
       tapeWidth: tapeWidth.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
-      override: currentOverride(),
     });
     // Pass `result.wire` — for labelmanager `wire === authored`, the
     // driver-core encoder pads top/bottom itself based on the
-    // effective engine derived from our override.
-    const bytes = encodeBitmap(
-      result.wire,
-      enginePrimary.value,
-      tapeWidth.value,
-      currentOverride(),
-    );
+    // engine's `printableArea` / `forcedTrailingFeedMm` registry
+    // values.
+    const bytes = encodeBitmap(result.wire, enginePrimary.value, tapeWidth.value);
     lastByteCount.value = bytes.byteLength;
     lastBytesPreview.value = formatHexPreview(bytes);
     await writeDiagnosticPrint(connection.transport, bytes);
@@ -133,7 +104,7 @@ function formatHexPreview(bytes: Uint8Array): string {
 </script>
 
 <template>
-  <SectionCard :step="5" title="Print the diagnostic" :state="sectionState">
+  <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
     <p v-if="!hasTape" class="muted">
       Pick the tape width first — the bitmap dimensions come from there.
     </p>
@@ -155,8 +126,6 @@ function formatHexPreview(bytes: Uint8Array): string {
         <p class="muted small preview-hint">
           This is what we're about to send. Click to zoom. Striped bands show the dead-zone regions
           your printer can't reach (top, bottom) plus the forced trailing feed below the bitmap.
-          Compare with the physical strip — anything missing, shifted, or clipped is a hint about
-          whether your overrides match reality.
         </p>
       </div>
 

@@ -7,7 +7,6 @@ export type {
   DeviceIdentity,
   HardwareReport,
   IdentitySnapshot,
-  OffsetCalibration,
   PatternResult,
   ProposedRung,
   ReporterInfo,

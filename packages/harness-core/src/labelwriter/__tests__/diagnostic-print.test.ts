@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { DEVICES, MEDIA } from '@thermal-label/labelwriter-core';
-import { bitmapEquals } from '@mbtech-nl/bitmap';
 import { buildDiagnosticBitmap, encodeBitmap } from '../diagnostic-print.js';
 
 describe('labelwriter diagnostic-print encoder', () => {
@@ -60,50 +59,12 @@ describe('labelwriter diagnostic-print encoder', () => {
     expect(bytes.length).toBeGreaterThan(1000);
   });
 
-  it('returns wire === authored byte-for-byte when no override is supplied (phase-1 invariant)', () => {
-    // Phase 1 default: no engine carries `printableArea` /
-    // `forcedTrailingFeedMm` values yet, and no override is passed.
-    // The wire bitmap must match the authored bitmap exactly so the
-    // wire stream stays byte-identical to today's output.
-    const result = buildDiagnosticBitmap({
-      device: DEVICES.LW_330_TURBO,
-      media: MEDIA.ADDRESS_STANDARD,
-      harnessVersion: '0.0.0',
-      driverVersion: '0.0.0',
-    });
-    expect(bitmapEquals(result.wire, result.authored)).toBe(true);
-    expect(result.printableArea).toEqual({ leading: 0, trailing: 0, left: 0, right: 0 });
-    expect(result.forcedTrailingFeedMm).toBe(0);
-  });
-
-  it('returns wire === authored byte-for-byte when the override is all zeros', () => {
-    // An override that explicitly sets every field to 0 must still
-    // hit the byte-identical fast path — operators who clear the
-    // override fields back to 0 should not see a different stream.
-    const result = buildDiagnosticBitmap({
-      device: DEVICES.LW_330_TURBO,
-      media: MEDIA.ADDRESS_STANDARD,
-      harnessVersion: '0.0.0',
-      driverVersion: '0.0.0',
-      override: {
-        leadingMm: 0,
-        trailingMm: 0,
-        leftMm: 0,
-        rightMm: 0,
-        forcedTrailingFeedMm: 0,
-      },
-    });
-    expect(bitmapEquals(result.wire, result.authored)).toBe(true);
-  });
-
-  it('produces a wire bitmap that is shorter and head-sized when leading/trailing overrides are populated', () => {
-    // Bench-confirmed model 2026-05-08: the LW family does pull the
-    // label back before each print, but the head still sits ~leadingMm
-    // past the label leading edge (the pull-back is partial, the
-    // mechanical offset to the cutter is irreducible). So the wire
-    // bitmap MUST drop `leadingDots` rows from the top of the
-    // authored bitmap — otherwise the head fires content past the
-    // trailing edge of the label.
+  it('produces a wire bitmap that is shorter than the authored canvas (LW chassis leading skip)', () => {
+    // Bench-confirmed model 2026-05-08: every LW 3xx/4xx/5xx engine
+    // ships `printableArea.leading: 6 mm`. The wire bitmap MUST drop
+    // `leadingDots` rows from the top of the authored bitmap —
+    // otherwise the head fires content past the trailing edge of the
+    // label.
     //
     // The diagnostic encoder lays content WITHIN the printable region
     // of a full-label authored canvas (top `leadingDots` rows blank
@@ -120,18 +81,17 @@ describe('labelwriter diagnostic-print encoder', () => {
       media: MEDIA.ADDRESS_LARGE,
       harnessVersion: '0.0.0',
       driverVersion: '0.0.0',
-      override: { leadingMm: 6, trailingMm: 4 },
     });
 
     const expectedSkip = Math.round((6 * 300) / 25.4);
     expect(result.wire.heightPx).toBe(result.authored.heightPx - expectedSkip);
-    expect(result.printableArea).toEqual({ leading: 6, trailing: 4, left: 0, right: 0 });
+    expect(result.printableArea).toEqual({ leading: 6, trailing: 0, left: 0, right: 0 });
 
     // Top `leadingDots` rows of the authored bitmap are blank by
     // construction — the diagnostic content stack was sized to fit
     // within the printable region and pasted at offset (leadingDots,
     // leftDots), so the dead-zone area carries no ink.
-    const leadingDots = Math.round((6 * 300) / 25.4);
+    const leadingDots = expectedSkip;
     const bpr = Math.ceil(result.authored.widthPx / 8);
     let leadingHasInk = false;
     for (let y = 0; y < leadingDots; y += 1) {
@@ -146,34 +106,18 @@ describe('labelwriter diagnostic-print encoder', () => {
     expect(leadingHasInk).toBe(false);
   });
 
-  it('exposes the forced-trailing-feed value back to the caller (LW)', () => {
-    // forcedTrailingFeedMm is informational on LW today (variable
-    // form-feed handles the trailing-edge advance). The encoder
-    // doesn't append rows for it; the value rides on the result so
-    // the harness preview can render the strip-overlay extension and
-    // the report can carry the operator's calibration intent.
-    const result = buildDiagnosticBitmap({
-      device: DEVICES.LW_330_TURBO,
-      media: MEDIA.ADDRESS_LARGE,
-      harnessVersion: '0.0.0',
-      driverVersion: '0.0.0',
-      override: { leadingMm: 6, trailingMm: 4, forcedTrailingFeedMm: 8 },
-    });
-
-    expect(result.forcedTrailingFeedMm).toBe(8);
-  });
-
   it('exposes the resolved printable area / forced trailing feed back to the caller', () => {
-    // The caller uses these to render preview overlays and report
-    // them on the `HardwareReport.transports[].offsetCalibration`
-    // field. Make sure the returned values match the override.
+    // The caller uses these to render preview overlays. Engine
+    // defaults from the registry — no operator override layer.
     const result = buildDiagnosticBitmap({
       device: DEVICES.LW_330_TURBO,
       media: MEDIA.ADDRESS_LARGE,
       harnessVersion: '0.0.0',
       driverVersion: '0.0.0',
-      override: { leadingMm: 5.5, trailingMm: 3.2, leftMm: 1, rightMm: 0, forcedTrailingFeedMm: 0 },
     });
-    expect(result.printableArea).toEqual({ leading: 5.5, trailing: 3.2, left: 1, right: 0 });
+    expect(result.printableArea.leading).toBe(6);
+    // LW family uses variable form-feed for trailing — no
+    // `forcedTrailingFeedMm` populated.
+    expect(result.forcedTrailingFeedMm).toBe(0);
   });
 });

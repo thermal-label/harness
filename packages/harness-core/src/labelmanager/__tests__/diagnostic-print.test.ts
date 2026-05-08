@@ -46,25 +46,12 @@ describe('labelmanager diagnostic-print encoder', () => {
       harnessVersion: '0.0.0',
       driverVersion: '0.5.1',
     });
-    // LM_PNP carries `printableArea: { leading: 8, ... }` and
-    // `forcedTrailingFeedMm: 8` on its primary engine post-plan-08
-    // phase 2. Verify the harness surfaces those defaults verbatim.
-    expect(result.printableArea.leading).toBe(8);
-    expect(result.forcedTrailingFeedMm).toBe(8);
-  });
-
-  it('overlays per-session overrides on top of the engine defaults', () => {
-    const result = buildDiagnosticBitmap({
-      device,
-      tapeWidth: 12,
-      harnessVersion: '0.0.0',
-      driverVersion: '0.5.1',
-      override: { leadingMm: 4, forcedTrailingFeedMm: 12 },
-    });
-    expect(result.printableArea.leading).toBe(4);
-    // Trailing was not overridden — falls back to engine default.
-    expect(result.printableArea.trailing).toBe(0);
-    expect(result.forcedTrailingFeedMm).toBe(12);
+    // LM_PNP carries `printableArea: { leading: 0, ... }` and
+    // `forcedTrailingFeedMm: 16` (centred-strip semantics — symmetric
+    // ~8mm pad each side in steady state). Verify the harness
+    // surfaces those defaults verbatim.
+    expect(result.printableArea.leading).toBe(0);
+    expect(result.forcedTrailingFeedMm).toBe(16);
   });
 
   it('encodes to a non-empty wire stream with the expected header', () => {
@@ -84,21 +71,5 @@ describe('labelmanager diagnostic-print encoder', () => {
     expect(bytes[4]).toBe(0x44);
     expect(bytes[5]).toBe(8);
     expect(bytes.length).toBeGreaterThan(1000);
-  });
-
-  it('encodeBitmap with override increases the trailing-pad rows over the default', () => {
-    const result = buildDiagnosticBitmap({
-      device,
-      tapeWidth: 12,
-      harnessVersion: '0.0.0',
-      driverVersion: '0.5.1',
-    });
-    const baseline = encodeBitmap(result.wire, engine, 12);
-    // Bumping `forcedTrailingFeedMm` from 8 → 24 should add ~113 dots
-    // of trailing white at 180 dpi: (24-8) * 180 / 25.4 ≈ 113. Each
-    // row is `1 (SYN) + 8 (bytes per 64-dot line) = 9` bytes. So we
-    // expect ~1017 more bytes.
-    const padded = encodeBitmap(result.wire, engine, 12, { forcedTrailingFeedMm: 24 });
-    expect(padded.length).toBeGreaterThan(baseline.length);
   });
 });
