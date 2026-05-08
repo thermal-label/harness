@@ -3,6 +3,12 @@
  * Top-level shell. Single-page guided UX: sections stack vertically
  * and stay visible once reached. No stepper, no next/back — the
  * operator scrolls.
+ *
+ * If the browser lacks WebUSB (and we're not in mock mode), the
+ * Connect section is replaced by an `UnsupportedBrowser` screen
+ * pointing the operator at alternative browsers / the CLI / mock
+ * mode. The downstream sections gate on `isConnected`, so they stay
+ * hidden until a real connection happens.
  */
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
@@ -12,6 +18,10 @@ import MediaSection from './components/MediaSection.vue';
 import PrintSection from './components/PrintSection.vue';
 import AssessmentSection from './components/AssessmentSection.vue';
 import SubmitSection from './components/SubmitSection.vue';
+import UnsupportedBrowser from './components/UnsupportedBrowser.vue';
+import { canRunOnThisBrowser } from './composables/useCapabilities';
+
+const supported = canRunOnThisBrowser();
 </script>
 
 <template>
@@ -22,17 +32,18 @@ import SubmitSection from './components/SubmitSection.vue';
       <p class="lede">
         This page walks you through one diagnostic print and one short report. It takes about two
         minutes — the printer prints once, you eyeball the output, you pick a verdict, you submit.
-        You'll need a USB-connected LabelWriter and a working browser USB stack (Chrome/Edge —
-        Firefox doesn't ship WebUSB).
       </p>
     </section>
 
-    <ConnectSection />
-    <IdentitySection />
-    <MediaSection />
-    <PrintSection />
-    <AssessmentSection />
-    <SubmitSection />
+    <UnsupportedBrowser v-if="!supported" />
+    <template v-else>
+      <ConnectSection />
+      <IdentitySection />
+      <MediaSection />
+      <PrintSection />
+      <AssessmentSection />
+      <SubmitSection />
+    </template>
   </main>
   <AppFooter />
 </template>
