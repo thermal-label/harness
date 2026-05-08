@@ -7,6 +7,7 @@ settings:
 overrides:
   '@thermal-label/brother-ql-core': link:../brother-ql/packages/core
   '@thermal-label/contracts': link:../contracts
+  '@thermal-label/d1-core': link:../d1-core
   '@thermal-label/labelmanager-core': link:../labelmanager/packages/core
   '@thermal-label/labelwriter-core': link:../labelwriter/packages/core
   '@thermal-label/transport': link:../transport
