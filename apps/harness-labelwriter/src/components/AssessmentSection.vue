@@ -48,11 +48,6 @@ const choices = [
     <template v-else>
       <p>Pick the option that best matches the print you're holding.</p>
 
-      <p class="assist small">
-        Empty space at the top, bottom, or sides of every print is normal — that's the head's
-        mechanical reach, shown as the striped overlay in the preview. It's not a defect.
-      </p>
-
       <div class="radios">
         <label v-for="c in choices" :key="c.value" class="radio">
           <input v-model="assessment.rung" type="radio" :value="c.value" />
@@ -128,13 +123,5 @@ const choices = [
   font-family: inherit;
   resize: vertical;
   min-height: 4rem;
-}
-
-.assist {
-  background: var(--bg-elevated, var(--bg));
-  border-left: 3px solid var(--accent);
-  padding: var(--space-2) var(--space-3);
-  margin: var(--space-3) 0;
-  color: var(--fg-muted, var(--muted));
 }
 </style>
