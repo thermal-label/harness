@@ -202,37 +202,54 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
   const labelHeight = mediaHeightPx(input.media);
   const trailingProbeOffsetDots = trailingEdgeProbeDots(input.device);
 
+  // Resolve printable area BEFORE composing sections so the layout
+  // budget excludes the dead zones up front. Content is sized to fit
+  // within the printable region; dead-zone rows/cols at the edges of
+  // the authored bitmap stay white. The wire transform then drops
+  // those blank rows / pads cross-feed columns — no content is ever
+  // sliced off because the diagnostic was authored to fit in the
+  // first place.
+  const printableArea = resolvePrintableArea(input);
+  const forcedTrailingFeedMm = resolveForcedTrailingFeedMm(input);
+  const leadingDots = mmToDots(printableArea.leading);
+  const trailingDots = mmToDots(printableArea.trailing);
+  const leftDots = mmToDots(printableArea.left);
+  const rightDots = mmToDots(printableArea.right);
+
+  // Effective content dimensions — inside the dead-zone bands.
+  const contentWidthDots = Math.max(8, labelWidthDots - leftDots - rightDots);
+  const contentHeight =
+    labelHeight !== undefined ? Math.max(0, labelHeight - leadingDots - trailingDots) : undefined;
+
   // "Head" sections — fixed-height content that should appear at the
   // leading edge regardless of label length. Identifying header,
   // orientation marker, edge probes, sample text.
   const headSections: LabelBitmap[] = [
-    textSection(`v${input.harnessVersion}`, labelWidthDots, 1),
-    textSection(input.device.key, labelWidthDots, 1),
-    textSection(String(input.media.id).toUpperCase(), labelWidthDots, 1),
-    textSection('TOP>', labelWidthDots, 2),
-    edgeProbeSection(labelWidthDots, 'left', { stepCount: 32 }),
-    edgeProbeSection(labelWidthDots, 'right', { stepCount: 32 }),
-    textSection('TXT 1X SAMPLE', labelWidthDots, 1),
-    textSection('TXT 2X', labelWidthDots, 2),
+    textSection(`v${input.harnessVersion}`, contentWidthDots, 1),
+    textSection(input.device.key, contentWidthDots, 1),
+    textSection(String(input.media.id).toUpperCase(), contentWidthDots, 1),
+    textSection('TOP>', contentWidthDots, 2),
+    edgeProbeSection(contentWidthDots, 'left', { stepCount: 32 }),
+    edgeProbeSection(contentWidthDots, 'right', { stepCount: 32 }),
+    textSection('TXT 1X SAMPLE', contentWidthDots, 1),
+    textSection('TXT 2X', contentWidthDots, 2),
   ];
 
   // "Tail" sections — trailing-edge probe + bottom orientation
-  // marker. Always pinned to the trailing edge of the label so the
-  // cut/gap alignment is comparable across runs.
+  // marker. Pinned to the bottom of the printable region (which is
+  // the trailing edge minus the trailing dead zone).
   const tailSections: LabelBitmap[] = [
-    textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, labelWidthDots, 1),
-    trailingProbeMarker(labelWidthDots),
-    textSection('B', labelWidthDots, 2),
+    textSection(`TRAIL+${String(trailingProbeOffsetDots)}`, contentWidthDots, 1),
+    trailingProbeMarker(contentWidthDots),
+    textSection('B', contentWidthDots, 2),
   ];
 
-  // Fill region between head and tail. Stretches to fill the
-  // available label height — long labels (e.g. LEVER_ARCH at 190 mm)
-  // get a continuous density check across the whole label rather
-  // than a 26 mm block at the top with the rest blank.
+  // Fill region between head and tail, sized to whatever's left in
+  // the printable region.
   const headHeight = sumHeightsWithGaps(headSections);
   const tailHeight = sumHeightsWithGaps(tailSections);
-  const fillHeight = computeFillHeight(headHeight, tailHeight, labelHeight);
-  const middleSection = diagonalStripes(labelWidthDots, fillHeight);
+  const fillHeight = computeFillHeight(headHeight, tailHeight, contentHeight);
+  const middleSection = diagonalStripes(contentWidthDots, fillHeight);
 
   const sections = [...headSections, middleSection, ...tailSections];
 
@@ -240,26 +257,57 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
   const gapped: LabelBitmap[] = [];
   for (const section of sections) {
     gapped.push(section);
-    gapped.push(createBitmap(labelWidthDots, ROW_GAP_PX));
+    gapped.push(createBitmap(contentWidthDots, ROW_GAP_PX));
   }
   gapped.pop();
 
-  const stacked = stackBitmaps(gapped, 'vertical');
+  const contentStack = stackBitmaps(gapped, 'vertical');
+  const contentTrimmed =
+    contentHeight !== undefined && contentStack.heightPx > contentHeight
+      ? cropHeight(contentStack, contentHeight)
+      : contentStack;
 
-  // Belt-and-suspenders trim — adaptive sizing should already hit
-  // the label height exactly, but cap defensively on continuous
-  // media or sizing edge cases.
-  const authored =
-    labelHeight !== undefined && stacked.heightPx > labelHeight
-      ? cropHeight(stacked, labelHeight)
-      : stacked;
-
-  const printableArea = resolvePrintableArea(input);
-  const forcedTrailingFeedMm = resolveForcedTrailingFeedMm(input);
+  // Position the content stack inside a full-label-sized canvas. The
+  // top `leadingDots` rows + bottom `trailingDots` rows + left/right
+  // `leftDots`/`rightDots` cols stay white. This is the authored
+  // bitmap the preview displays (with dead-zone overlays striped on
+  // top per §7) and that the wire encoder consumes.
+  const authoredHeight = labelHeight ?? contentTrimmed.heightPx + leadingDots + trailingDots;
+  const authored = createBitmap(labelWidthDots, authoredHeight);
+  pasteBitmap(authored, contentTrimmed, leadingDots, leftDots);
 
   const wire = composeWireBitmap(authored, headDots, printableArea, forcedTrailingFeedMm);
 
   return { authored, wire, printableArea, forcedTrailingFeedMm };
+}
+
+/**
+ * Copy a smaller bitmap into a larger destination at the given
+ * (row, col) offset. Used to position the diagnostic content stack
+ * inside the full-label-sized authored canvas, leaving the dead-zone
+ * bands as white.
+ */
+function pasteBitmap(
+  dest: LabelBitmap,
+  src: LabelBitmap,
+  rowOffset: number,
+  colOffset: number,
+): void {
+  const srcBpr = bytesPerRow(src.widthPx);
+  const dstBpr = bytesPerRow(dest.widthPx);
+  const maxRow = Math.min(src.heightPx, dest.heightPx - rowOffset);
+  const maxCol = Math.min(src.widthPx, dest.widthPx - colOffset);
+  for (let y = 0; y < maxRow; y += 1) {
+    for (let x = 0; x < maxCol; x += 1) {
+      const srcByte = src.data[y * srcBpr + (x >> 3)] ?? 0;
+      const srcBit = ((srcByte >> (7 - (x & 7))) & 1) === 1;
+      if (!srcBit) continue;
+      const dstX = colOffset + x;
+      const dstY = rowOffset + y;
+      const dstByteIdx = dstY * dstBpr + (dstX >> 3);
+      dest.data[dstByteIdx] = (dest.data[dstByteIdx] ?? 0) | (1 << (7 - (dstX & 7)));
+    }
+  }
 }
 
 /**
