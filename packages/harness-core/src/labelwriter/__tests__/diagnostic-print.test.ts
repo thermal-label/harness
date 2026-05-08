@@ -97,9 +97,11 @@ describe('labelwriter diagnostic-print encoder', () => {
   });
 
   it('produces a wire bitmap that is shorter and head-sized when leading/trailing overrides are populated', () => {
-    // Plan 08 §6: with leading=6mm and trailing=4mm at 300 dpi the
-    // wire bitmap is ~71+47=118 rows shorter than authored, and
-    // head-sized (672 dots) rather than label-sized.
+    // Bench observation 2026-05-08: the LW family pulls the label
+    // back before each print so the head sits at label-row 0 — the
+    // earlier "send fewer rows" mechanism was wrong for LW. Wire IS
+    // the authored bitmap; content layout (within the printable
+    // region of a full-label canvas) handles the dead-zone bands.
     const result = buildDiagnosticBitmap({
       device: DEVICES.LW_330_TURBO,
       media: MEDIA.ADDRESS_LARGE,
@@ -108,19 +110,35 @@ describe('labelwriter diagnostic-print encoder', () => {
       override: { leadingMm: 6, trailingMm: 4 },
     });
 
-    const headDots = 672;
-    const expectedSkip = Math.round((6 * 300) / 25.4) + Math.round((4 * 300) / 25.4);
-
-    expect(result.wire.widthPx).toBe(headDots);
-    expect(result.wire.heightPx).toBe(result.authored.heightPx - expectedSkip);
-    // Authored remains label-sized.
-    expect(result.authored.widthPx).toBeLessThan(headDots);
+    expect(result.wire).toBe(result.authored);
+    expect(result.wire.heightPx).toBe(result.authored.heightPx);
     expect(result.printableArea).toEqual({ leading: 6, trailing: 4, left: 0, right: 0 });
+
+    // Top `leadingDots` rows of the authored bitmap are blank by
+    // construction — the diagnostic content stack was sized to fit
+    // within the printable region and pasted at offset (leadingDots,
+    // leftDots), so the dead-zone area carries no ink.
+    const leadingDots = Math.round((6 * 300) / 25.4);
+    const bpr = Math.ceil(result.authored.widthPx / 8);
+    let leadingHasInk = false;
+    for (let y = 0; y < leadingDots; y += 1) {
+      for (let x = 0; x < bpr; x += 1) {
+        if (result.authored.data[y * bpr + x] !== 0) {
+          leadingHasInk = true;
+          break;
+        }
+      }
+      if (leadingHasInk) break;
+    }
+    expect(leadingHasInk).toBe(false);
   });
 
-  it('appends forcedTrailingFeedMm worth of white rows to the wire bitmap', () => {
-    // forcedTrailingFeedMm = 8 at 300 dpi = 94 dots of additional
-    // white rows after the printable region.
+  it('keeps wire and authored identical for the forced-trailing-feed case (LW)', () => {
+    // forcedTrailingFeedMm is informational on LW today (variable
+    // form-feed handles the trailing-edge advance). The encoder
+    // doesn't append rows for it; the value rides on the result so
+    // the harness preview can render the strip-overlay extension and
+    // the report can carry the operator's calibration intent.
     const result = buildDiagnosticBitmap({
       device: DEVICES.LW_330_TURBO,
       media: MEDIA.ADDRESS_LARGE,
@@ -129,9 +147,7 @@ describe('labelwriter diagnostic-print encoder', () => {
       override: { leadingMm: 6, trailingMm: 4, forcedTrailingFeedMm: 8 },
     });
 
-    const expectedSkip = Math.round((6 * 300) / 25.4) + Math.round((4 * 300) / 25.4);
-    const expectedFeed = Math.round((8 * 300) / 25.4);
-    expect(result.wire.heightPx).toBe(result.authored.heightPx - expectedSkip + expectedFeed);
+    expect(result.wire).toBe(result.authored);
     expect(result.forcedTrailingFeedMm).toBe(8);
   });
 

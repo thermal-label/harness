@@ -360,68 +360,40 @@ function resolveForcedTrailingFeedMm(input: DiagnosticPrintInput): number {
  */
 function composeWireBitmap(
   authored: LabelBitmap,
-  headDots: number,
-  printableArea: PrintableArea,
-  forcedTrailingFeedMm: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _headDots: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _printableArea: PrintableArea,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _forcedTrailingFeedMm: number,
 ): LabelBitmap {
-  const leadingDots = mmToDots(printableArea.leading);
-  const trailingDots = mmToDots(printableArea.trailing);
-  const leftDots = mmToDots(printableArea.left);
-  const rightDots = mmToDots(printableArea.right);
-  const trailingFeedDots = mmToDots(forcedTrailingFeedMm);
-
-  // Phase-1 fast path: nothing to do, return the authored bitmap
-  // verbatim so the wire stream stays byte-identical to today's.
-  if (
-    leadingDots === 0 &&
-    trailingDots === 0 &&
-    leftDots === 0 &&
-    rightDots === 0 &&
-    trailingFeedDots === 0
-  ) {
-    return authored;
-  }
-
-  // Compute wire dimensions. LW skips leading and trailing rows;
-  // forcedTrailingFeedMm is 0 for LW today (variable form-feed) so
-  // the trailing-feed pad is harmless if a future engine populates
-  // it.
-  const skipTop = Math.min(leadingDots, authored.heightPx);
-  const skipBottom = Math.min(trailingDots, Math.max(0, authored.heightPx - skipTop));
-  const wireRows = Math.max(0, authored.heightPx - skipTop - skipBottom) + trailingFeedDots;
-  const wire = createBitmap(headDots, Math.max(1, wireRows));
-
-  if (wireRows === 0) return wire;
-
-  // Cross-feed paste: copy authored cols [leftDots, labelWidthDots -
-  // rightDots) into wire cols [leftDots, labelWidthDots - rightDots).
-  // LW labels are left-aligned, so labelLeftEdgeDot = 0.
-  const labelWidthDots = authored.widthPx;
-  const srcColStart = Math.min(leftDots, labelWidthDots);
-  const srcColEnd = Math.max(srcColStart, labelWidthDots - rightDots);
-  const dstColStart = srcColStart;
-
-  const srcBpr = bytesPerRow(authored.widthPx);
-  const dstBpr = bytesPerRow(wire.widthPx);
-  const contentRows = authored.heightPx - skipTop - skipBottom;
-
-  for (let y = 0; y < contentRows; y += 1) {
-    const srcY = y + skipTop;
-    const dstY = y;
-    for (let x = srcColStart; x < srcColEnd; x += 1) {
-      const srcByteIdx = srcY * srcBpr + (x >> 3);
-      const srcBit = (((authored.data[srcByteIdx] ?? 0) >> (7 - (x & 7))) & 1) === 1;
-      if (!srcBit) continue;
-      const dstX = dstColStart + (x - srcColStart);
-      if (dstX >= wire.widthPx) break;
-      const dstByteIdx = dstY * dstBpr + (dstX >> 3);
-      wire.data[dstByteIdx] = (wire.data[dstByteIdx] ?? 0) | (1 << (7 - (dstX & 7)));
-    }
-  }
-
-  // forcedTrailingFeedMm rows are already allocated all-white by
-  // createBitmap — no extra work needed.
-  return wire;
+  // Wire IS the authored bitmap.
+  //
+  // The earlier draft of this function skipped `leadingDots` rows from
+  // the top + `trailingDots` rows from the bottom, on the hypothesis
+  // that the LW head sits mechanically past the leading edge after
+  // form-feed. Bench observation by the maintainer (2026-05-08) shows
+  // that's WRONG — LW actually pulls the label *back* before each
+  // print so the head sits at label-row 0. So:
+  //
+  //   - "Send fewer rows" was the wrong correction. With label pulled
+  //     back, sending fewer rows just truncates content from the wire
+  //     stream and (because `buildSetLabelLength` was using the wire
+  //     bitmap height) drove the printer's label-pitch off, causing
+  //     the form-feed offset to compound across consecutive prints.
+  //   - The correct correction is no correction — author content
+  //     within the printable region of a full-label canvas (which
+  //     `buildDiagnosticBitmap` now does), then send the whole canvas
+  //     row-for-row. Dead-zone rows of the authored bitmap stay white;
+  //     the head fires through them but no ink lands.
+  //
+  // The function is kept (vs. inlining the identity) so the
+  // `{ authored, wire, ... }` return shape stays stable for callers
+  // that pattern-match on it. The unused parameters are prefixed `_`
+  // to silence linting; we keep them in the signature so a future
+  // driver with a different mechanical model can opt in without
+  // changing the call site.
+  return authored;
 }
 
 function mmToDots(mm: number): number {
