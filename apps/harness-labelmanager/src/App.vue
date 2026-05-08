@@ -4,12 +4,25 @@
  * and stay visible once reached. No stepper, no next/back — the
  * operator scrolls.
  *
- * Subsequent commits land the section components; today this is the
- * shell with header/footer + intro copy so the bootstrap step is
- * self-contained and visible.
+ * If the browser lacks WebUSB (and we're not in mock mode), the
+ * Connect section is replaced by an `UnsupportedBrowser` screen
+ * pointing the operator at alternative browsers / the CLI / mock
+ * mode. The downstream sections gate on `isConnected`, so they stay
+ * hidden until a real connection happens.
  */
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
+import ConnectSection from './components/ConnectSection.vue';
+import IdentitySection from './components/IdentitySection.vue';
+import TapeSection from './components/TapeSection.vue';
+import CalibrationSection from './components/CalibrationSection.vue';
+import PrintSection from './components/PrintSection.vue';
+import AssessmentSection from './components/AssessmentSection.vue';
+import SubmitSection from './components/SubmitSection.vue';
+import UnsupportedBrowser from './components/UnsupportedBrowser.vue';
+import { canRunOnThisBrowser } from './composables/useCapabilities';
+
+const supported = canRunOnThisBrowser();
 </script>
 
 <template>
@@ -22,6 +35,17 @@ import AppFooter from './components/AppFooter.vue';
         minutes — the printer prints once, you eyeball the output, you pick a verdict, you submit.
       </p>
     </section>
+
+    <UnsupportedBrowser v-if="!supported" />
+    <template v-else>
+      <ConnectSection />
+      <IdentitySection />
+      <TapeSection />
+      <CalibrationSection />
+      <PrintSection />
+      <AssessmentSection />
+      <SubmitSection />
+    </template>
   </main>
   <AppFooter />
 </template>
