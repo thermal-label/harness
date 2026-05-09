@@ -90,13 +90,6 @@ export interface DiagnosticPrintInput {
   media: LabelManagerMedia;
   harnessVersion: string;
   driverVersion: string;
-  /**
-   * Override the authored bitmap width in dots. Defaults to the
-   * LM standalone bucket from `HEAD_DOTS_FOR_TAPE` (32/48/64/64).
-   * Used by the LW Duo dispatch to build at the chassis-specific
-   * band (Duo 128: 12mm = 96 dots) instead of the LM 64-dot bucket.
-   */
-  headDotsOverride?: number;
 }
 
 /**
@@ -129,12 +122,35 @@ export interface DiagnosticBitmapResult {
 }
 
 const ROW_GAP_PX = 4;
-const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
+
+/**
+ * Resolve the authored bitmap width in dots for a (engine, media)
+ * pair. Mirrors d1-core's `resolveRasterDots`:
+ * `min(media.printableDots, engine.headDots)`. The encoder will
+ * later `ESC B`-centre this raster on the head when smaller than
+ * `engine.headDots`.
+ *
+ * Falls back to a tape-width-derived bucket when `media.printableDots`
+ * isn't set (rare — every catalogue entry today carries it).
+ */
+const TAPE_WIDTH_FALLBACK_DOTS: Record<TapeWidth, number> = {
   6: 32,
   9: 48,
   12: 64,
-  19: 64,
+  19: 96,
 };
+
+function resolveAuthoredHeadDots(input: DiagnosticPrintInput): number {
+  const engine = input.device.engines[0];
+  const headCap = engine?.headDots ?? 64;
+  // Catalogue entries always carry `printableDots`; the fallback
+  // table only fires for synthetic media in tests.
+  const fromMedia =
+    typeof input.media.printableDots === 'number'
+      ? input.media.printableDots
+      : TAPE_WIDTH_FALLBACK_DOTS[input.media.tapeWidthMm];
+  return Math.min(fromMedia, headCap);
+}
 
 /**
  * Build the head-aligned diagnostic bitmap. Width matches the head
@@ -150,7 +166,7 @@ const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
  * "won't print" picture.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBitmapResult {
-  const headDots = input.headDotsOverride ?? HEAD_DOTS_FOR_TAPE[input.media.tapeWidthMm];
+  const headDots = resolveAuthoredHeadDots(input);
 
   const sections: LabelBitmap[] = [];
 

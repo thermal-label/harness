@@ -37,7 +37,7 @@
  * '1' / '2', per LW 450 Series Tech Ref p.16). Bench-confirmed against
  * the labelwriter-core protocol tests; pending live-Twin confirmation.
  */
-import { padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
+import type { LabelBitmap } from '@mbtech-nl/bitmap';
 import type { PrintableArea, PrintEngine } from '@thermal-label/contracts';
 import {
   buildDiagnosticBitmap as buildLabelwriterBitmap,
@@ -47,35 +47,6 @@ import {
   buildDiagnosticBitmap as buildLabelmanagerBitmap,
   encodeBitmap as encodeLabelmanagerBitmap,
 } from '../labelmanager/diagnostic-print.js';
-
-/**
- * Per-tape-width printable dots on oversize d1-tape heads.
- *
- * Wider heads (Duo 128) can drive wider tapes (19mm = 96 dots,
- * 24mm = 128 dots) that the LM standalone 64-dot head cannot. For
- * tapes ≤12mm the printable area is the same regardless of head —
- * the tape simply doesn't physically span more head dots. Without
- * this table, 19mm and 24mm tapes on Duo 128 would author at the
- * LM bucket (64 dots) and end up smaller than their actual reach.
- *
- * Bench-confirmed (2026-05-09 on LW_DUO_128 + 12mm tape):
- *   - 12mm → 64 dots (matches LM, both 64- and 128-head chassis)
- *   - 19mm, 24mm: maintainer's read; bench-confirm when wider
- *     tapes arrive.
- *
- * Long-term home for this table is `engine.printableDotsByTapeWidth`
- * on d1-core's engine schema — chassis declares its own bands,
- * shell consumes via the standard `getPrintableArea`-style helpers.
- * For now the harness carries it so we can iterate without a
- * driver-package bump.
- */
-const TAPE_BANDS_FOR_HEAD_DOTS_128: Record<number, number> = {
-  6: 32,
-  9: 48,
-  12: 64,
-  19: 96,
-  24: 128,
-};
 import type {
   LabelWriterDevice,
   LabelWriterMedia,
@@ -194,41 +165,22 @@ export function dispatchEncoder(input: DispatchInput): DispatchedEncoder {
         // `text`, `background`, etc. — structurally compatible for the
         // diagnostic-bitmap builder.
         const lmMediaShim = tapeMedia as unknown as LabelManagerMedia;
-        // PoC: on oversize heads (Duo 128) running narrow tapes,
-        // author at the chassis-specific band (Duo 128 + 12mm tape:
-        // 96 dots, NOT the LM standalone 64-dot bucket). Then pad
-        // centred to engine.headDots so the d1-core encoder's
-        // `scaleBitmap` is a no-op — content lands at its real
-        // pixel size centred under the head, aligned with the tape.
-        const headDotsOverride = bandFor(engine, tapeMedia.tapeWidthMm);
-        const result = buildLabelmanagerBitmap({
+        return buildLabelmanagerBitmap({
           device: lmDeviceShim,
           media: lmMediaShim,
           harnessVersion,
           driverVersion,
-          ...(headDotsOverride === undefined ? {} : { headDotsOverride }),
         });
-        return padTapeBitmapForOversizeHead(result, engine);
       },
       encodeBitmap(bitmap): Uint8Array {
+        // d1-core's encoder now emits `ESC B N` (Dot Tab) to centre
+        // the raster on oversize heads — Duo 128 + 12mm tape gets
+        // `ESC B 4`, shifting the 64-dot content to head pixels
+        // 32–95, aligned with the centred-on-head tape. No bitmap
+        // padding, no `printableDots` shim, no head-band table here.
         // `labelLengthDots` is the LW-only label-pitch override; the
-        // d1-tape encoder pads its own trailing rows internally and
-        // doesn't take a label-length argument.
-        //
-        // **Shim `printableDots` to engine.headDots** on oversize
-        // heads. The shared D1 media catalogue carries
-        // `printableDots: 64` (correct for LM standalone's 64-dot
-        // head). On Duo 128, that constraint causes d1-core's
-        // `resolveRasterDots` to clamp the wire to 64 dots — the
-        // encoder emits ESC D 8 instead of ESC D 16, fires 64 head
-        // dots starting from col 0 (left-aligned), and the centred
-        // tape physically catches only the right half of that
-        // 64-dot raster. With the shim, the wire emits at the full
-        // head width and our centred-pad places content at cols
-        // 16-111 of 128 — aligned with the centred-on-head tape.
-        const baseShim = tapeMedia as unknown as LabelManagerMedia;
-        const lmMediaShim: LabelManagerMedia =
-          engine.headDots > 64 ? { ...baseShim, printableDots: engine.headDots } : baseShim;
+        // d1-tape encoder doesn't take a label-length argument.
+        const lmMediaShim = tapeMedia as unknown as LabelManagerMedia;
         const body = encodeLabelmanagerBitmap(bitmap, engine, lmMediaShim);
         return prepend(prefix, body);
       },
@@ -261,44 +213,4 @@ function prepend(prefix: Uint8Array | null, body: Uint8Array): Uint8Array {
   out.set(prefix, 0);
   out.set(body, prefix.length);
   return out;
-}
-
-/**
- * Look up the authored bitmap width in dots for an oversize-head
- * d1-tape engine. Returns the band value when the engine is on a
- * 128-dot chassis (Duo 128); returns undefined for standard 64-dot
- * heads (LM standalone) so the LM diagnostic-print falls back to
- * its own HEAD_DOTS_FOR_TAPE bucket.
- */
-function bandFor(engine: PrintEngine, tapeWidthMm: number): number | undefined {
-  if (engine.headDots !== 128) return undefined;
-  return TAPE_BANDS_FOR_HEAD_DOTS_128[tapeWidthMm];
-}
-
-/**
- * Pad authored + wire bitmaps centred to `engine.headDots` for
- * oversize-head d1-tape engines (Duo 128). The authored bitmap was
- * already built at the chassis-specific band by passing
- * `headDotsOverride` into `buildLabelmanagerBitmap`; the pad here
- * just centres that band-width content into the head's full dot
- * count so the d1-core encoder's `scaleBitmap` is a no-op (no
- * stretching). No-op on standard 64-dot heads (LM standalone) where
- * authored already matches headDots.
- */
-function padTapeBitmapForOversizeHead(
-  result: MultiEngineBitmapResult,
-  engine: PrintEngine,
-): MultiEngineBitmapResult {
-  const padToHeadDots = (b: LabelBitmap): LabelBitmap => {
-    if (b.widthPx >= engine.headDots) return b;
-    const total = engine.headDots - b.widthPx;
-    const left = Math.floor(total / 2);
-    const right = total - left;
-    return padBitmap(b, { left, right });
-  };
-  return {
-    ...result,
-    authored: padToHeadDots(result.authored),
-    wire: padToHeadDots(result.wire),
-  };
 }

@@ -101,7 +101,7 @@ describe('dispatchEncoder', () => {
     expect(bytes[2]).toBe(0x31);
   });
 
-  it('Duo tape engine builds a D1-shape bitmap padded centred to engine.headDots', () => {
+  it('Duo tape engine builds a D1-shape bitmap at media.printableDots width', () => {
     const device = DEVICES.LW_450_DUO;
     const tape = device.engines.find(e => e.role === 'tape')!;
     const tapeMedia = MEDIA.STANDARD_BLACK_ON_WHITE_12;
@@ -113,12 +113,12 @@ describe('dispatchEncoder', () => {
       driverVersion: DRIVER_VERSION,
     });
     const result = dispatched.buildBitmap();
-    // 128-dot Duo head; PoC tape-band centring pads the LM-authored
-    // 64-dot bitmap to engine.headDots so the d1-core encoder's
-    // scaleBitmap is a no-op (no stretching). Authored stays the
-    // real visual size (~64 dots of content), centred in 128.
-    expect(result.authored.widthPx).toBe(128);
-    expect(result.wire.widthPx).toBe(128);
+    // 12mm tape on 128-dot Duo head: bitmap is authored at the
+    // tape's printable-dot count (64), NOT padded to engine.headDots.
+    // d1-core's encoder centres the raster on the head via `ESC B`
+    // when raster < headDots, so no harness-side padding needed.
+    expect(result.authored.widthPx).toBe(64);
+    expect(result.wire.widthPx).toBe(64);
   });
 
   it('Duo tape engine emits D1 wire bytes (ESC C tape-type, ESC D bytes-per-line)', () => {
