@@ -90,6 +90,13 @@ export interface DiagnosticPrintInput {
   media: LabelManagerMedia;
   harnessVersion: string;
   driverVersion: string;
+  /**
+   * Override the authored bitmap width in dots. Defaults to the
+   * LM standalone bucket from `HEAD_DOTS_FOR_TAPE` (32/48/64/64).
+   * Used by the LW Duo dispatch to build at the chassis-specific
+   * band (Duo 128: 12mm = 96 dots) instead of the LM 64-dot bucket.
+   */
+  headDotsOverride?: number;
 }
 
 /**
@@ -143,7 +150,7 @@ const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
  * "won't print" picture.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBitmapResult {
-  const headDots = HEAD_DOTS_FOR_TAPE[input.media.tapeWidthMm];
+  const headDots = input.headDotsOverride ?? HEAD_DOTS_FOR_TAPE[input.media.tapeWidthMm];
 
   const sections: LabelBitmap[] = [];
 
