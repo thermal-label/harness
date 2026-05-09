@@ -44,14 +44,14 @@ export type MockTarget =
  */
 const TARGET_VID_PID: Record<MockTarget, { vid: number; pid: number; key: string; name: string }> =
   {
-    lm_pnp: { vid: 0x0922, pid: 0x1001, key: 'LM_PNP', name: 'LabelManager PnP' },
+    lm_pnp: { vid: 0x0922, pid: 0x1002, key: 'LM_PNP', name: 'LabelManager PnP' },
     lm_280: { vid: 0x0922, pid: 0x1006, key: 'LM_280', name: 'LabelManager 280' },
-    lm_400: { vid: 0x0922, pid: 0x1002, key: 'LM_400', name: 'LabelManager 400' },
+    lm_400: { vid: 0x0922, pid: 0x0013, key: 'LM_400', name: 'LabelManager 400' },
     lm_420p: { vid: 0x0922, pid: 0x1004, key: 'LM_420P', name: 'LabelManager 420P' },
-    lm_pc: { vid: 0x0922, pid: 0x1007, key: 'LM_PC', name: 'LabelManager PC' },
+    lm_pc: { vid: 0x0922, pid: 0x0011, key: 'LM_PC', name: 'LabelManager PC' },
     lm_wireless_pnp: {
       vid: 0x0922,
-      pid: 0x1009,
+      pid: 0x1008,
       key: 'LM_WIRELESS_PNP',
       name: 'LabelManager Wireless PnP',
     },
@@ -63,7 +63,7 @@ const TARGET_VID_PID: Record<MockTarget, { vid: number; pid: number; key: string
     },
     mobile_labeler: {
       vid: 0x0922,
-      pid: 0x100b,
+      pid: 0x1009,
       key: 'MOBILE_LABELER',
       name: 'Mobile Labeler',
     },
