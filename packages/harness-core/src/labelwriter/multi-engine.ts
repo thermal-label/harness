@@ -37,7 +37,7 @@
  * '1' / '2', per LW 450 Series Tech Ref p.16). Bench-confirmed against
  * the labelwriter-core protocol tests; pending live-Twin confirmation.
  */
-import type { LabelBitmap } from '@mbtech-nl/bitmap';
+import { padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
 import type { PrintableArea, PrintEngine } from '@thermal-label/contracts';
 import {
   buildDiagnosticBitmap as buildLabelwriterBitmap,
@@ -47,6 +47,30 @@ import {
   buildDiagnosticBitmap as buildLabelmanagerBitmap,
   encodeBitmap as encodeLabelmanagerBitmap,
 } from '../labelmanager/diagnostic-print.js';
+
+/**
+ * **PoC bench-tuning bands** for d1-tape on oversize heads (Duo 128).
+ * The standalone LM has a 64-dot head; 12mm tape uses all 64. The Duo
+ * 128 has a 128-dot head, but a 12mm tape physically only covers part
+ * of that head — the rest of the dots fire off-tape. Without this
+ * band-table the d1-core encoder's `scaleBitmap` stretches the
+ * authored 64-dot content to 128, doubling the visual size and
+ * pushing half off the tape edge.
+ *
+ * Round 1 numbers: 12 → 64, 19 → 96, 24 → 128 (maintainer's read).
+ * Bench-confirm by printing on each tape width; revise if wrong.
+ *
+ * This is a poc-stage workaround. Long-term the band table belongs
+ * on `engine.printableDotsByTapeWidth` in d1-core / labelwriter /
+ * labelmanager registries — schema change is queued.
+ */
+const TAPE_BANDS_FOR_HEAD_DOTS_128: Record<number, number> = {
+  6: 32,
+  9: 48,
+  12: 64,
+  19: 96,
+  24: 128,
+};
 import type {
   LabelWriterDevice,
   LabelWriterMedia,
@@ -165,12 +189,19 @@ export function dispatchEncoder(input: DispatchInput): DispatchedEncoder {
         // `text`, `background`, etc. — structurally compatible for the
         // diagnostic-bitmap builder.
         const lmMediaShim = tapeMedia as unknown as LabelManagerMedia;
-        return buildLabelmanagerBitmap({
+        const result = buildLabelmanagerBitmap({
           device: lmDeviceShim,
           media: lmMediaShim,
           harnessVersion,
           driverVersion,
         });
+        // PoC: on oversize heads (Duo 128) running narrow tapes, pad
+        // the authored + wire bitmaps centred to engine.headDots. The
+        // d1-core encoder's `scaleBitmap` becomes a no-op (input
+        // already at headDots), so content lands at its real pixel
+        // size centred under the head — aligned with the tape — and
+        // doesn't get stretched 2× off the tape edge.
+        return padTapeBitmapForOversizeHead(result, engine, tapeMedia.tapeWidthMm);
       },
       encodeBitmap(bitmap): Uint8Array {
         // `labelLengthDots` is the LW-only label-pitch override; the
@@ -209,4 +240,47 @@ function prepend(prefix: Uint8Array | null, body: Uint8Array): Uint8Array {
   out.set(prefix, 0);
   out.set(body, prefix.length);
   return out;
+}
+
+/**
+ * Pad authored + wire bitmaps centred to `engine.headDots` for
+ * oversize-head d1-tape engines (Duo 128). No-op when the head is
+ * already the band's target width (LM 64-dot standalone, or 24mm
+ * tape on Duo 128). PoC table — see TAPE_BANDS_FOR_HEAD_DOTS_128.
+ */
+function padTapeBitmapForOversizeHead(
+  result: MultiEngineBitmapResult,
+  engine: PrintEngine,
+  tapeWidthMm: number,
+): MultiEngineBitmapResult {
+  // Only patch the 128-dot head today. Other oversize heads (e.g. a
+  // future 96-dot variant) would slot in here with their own table.
+  if (engine.headDots !== 128) return result;
+  const targetDots = TAPE_BANDS_FOR_HEAD_DOTS_128[tapeWidthMm];
+  if (targetDots === undefined) return result;
+  // Authored stays at its current width; we ALSO pad it to the same
+  // total head width so the preview reflects how content lines up
+  // under the head physically.
+  const padToHeadDots = (b: LabelBitmap): LabelBitmap => {
+    if (b.widthPx >= engine.headDots) return b;
+    const total = engine.headDots - b.widthPx;
+    const left = Math.floor(total / 2);
+    const right = total - left;
+    return padBitmap(b, { left, right });
+  };
+  // First, if the authored width doesn't match the band target, that
+  // means buildLabelmanagerBitmap built at the LM standalone's
+  // 64-dot HEAD_DOTS_FOR_TAPE bucket but the band table wants
+  // something different (e.g. 19mm tape: LM bucket=64, band=96).
+  // For round 1 we accept the bucket-vs-band mismatch and just pad
+  // both to engine.headDots; revisit if the print on 19mm looks too
+  // narrow.
+  void targetDots; // silence unused — table is consulted indirectly
+  // via the `void` here so future band-driven authoring (round 2)
+  // can plug in cleanly.
+  return {
+    ...result,
+    authored: padToHeadDots(result.authored),
+    wire: padToHeadDots(result.wire),
+  };
 }
