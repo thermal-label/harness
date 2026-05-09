@@ -37,7 +37,7 @@
  * '1' / '2', per LW 450 Series Tech Ref p.16). Bench-confirmed against
  * the labelwriter-core protocol tests; pending live-Twin confirmation.
  */
-import { padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
+import { flipHorizontal, padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
 import type { PrintableArea, PrintEngine } from '@thermal-label/contracts';
 import {
   buildDiagnosticBitmap as buildLabelwriterBitmap,
@@ -266,6 +266,16 @@ function bandFor(engine: PrintEngine, tapeWidthMm: number): number | undefined {
  * count so the d1-core encoder's `scaleBitmap` is a no-op (no
  * stretching). No-op on standard 64-dot heads (LM standalone) where
  * authored already matches headDots.
+ *
+ * **Wire is also `flipHorizontal`-ed on Duo 128.** Bench-confirmed:
+ * the Duo's tape head fires bytes/dots in reverse order vs the LM
+ * standalone — content rendered straight from the LM diagnostic
+ * encoder lands mirrored on the tape (right half of the graphic
+ * appears on the left half of the tape and vice versa). Flipping
+ * the wire compensates: the preview (`authored`) stays as authored
+ * intent, and the printed tape shows the same orientation. LM
+ * standalone is untouched (its head fires the conventional direction
+ * for which the encoder is authored).
  */
 function padTapeBitmapForOversizeHead(
   result: MultiEngineBitmapResult,
@@ -278,9 +288,14 @@ function padTapeBitmapForOversizeHead(
     const right = total - left;
     return padBitmap(b, { left, right });
   };
+  const paddedAuthored = padToHeadDots(result.authored);
+  const paddedWire = padToHeadDots(result.wire);
+  // Only flip on the 128-dot Duo head — that's where the mirror
+  // shows up on bench. Other oversize heads slot in here when added.
+  const flipWire = engine.headDots === 128;
   return {
     ...result,
-    authored: padToHeadDots(result.authored),
-    wire: padToHeadDots(result.wire),
+    authored: paddedAuthored,
+    wire: flipWire ? flipHorizontal(paddedWire) : paddedWire,
   };
 }
