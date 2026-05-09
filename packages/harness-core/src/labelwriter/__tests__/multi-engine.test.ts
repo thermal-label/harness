@@ -101,7 +101,7 @@ describe('dispatchEncoder', () => {
     expect(bytes[2]).toBe(0x31);
   });
 
-  it('Duo tape engine builds a D1-shape bitmap (head dots match tape width)', () => {
+  it('Duo tape engine builds a D1-shape bitmap padded centred to engine.headDots', () => {
     const device = DEVICES.LW_450_DUO;
     const tape = device.engines.find(e => e.role === 'tape')!;
     const tapeMedia = MEDIA.STANDARD_BLACK_ON_WHITE_12;
@@ -113,9 +113,12 @@ describe('dispatchEncoder', () => {
       driverVersion: DRIVER_VERSION,
     });
     const result = dispatched.buildBitmap();
-    // 12 mm tape = 64-dot head per the labelmanager encoder; the
-    // labelwriter encoder would have produced a 672-dot wide bitmap.
-    expect(result.authored.widthPx).toBe(64);
+    // 128-dot Duo head; PoC tape-band centring pads the LM-authored
+    // 64-dot bitmap to engine.headDots so the d1-core encoder's
+    // scaleBitmap is a no-op (no stretching). Authored stays the
+    // real visual size (~64 dots of content), centred in 128.
+    expect(result.authored.widthPx).toBe(128);
+    expect(result.wire.widthPx).toBe(128);
   });
 
   it('Duo tape engine emits D1 wire bytes (ESC C tape-type, ESC D bytes-per-line)', () => {
