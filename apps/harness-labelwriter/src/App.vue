@@ -4,12 +4,19 @@
  * and stay visible once reached. No stepper, no next/back — the
  * operator scrolls.
  *
+ * Multi-engine devices (Twin Turbo, Duo) get an extra `<EngineTabs>`
+ * strip after IdentitySection — each tab scopes the Media / Print /
+ * Assessment sections to one engine's session slot. Single-engine
+ * devices render exactly as before, with no tab strip and no extra
+ * chrome (per plan 09 hard rule: 6-LW renders identically to today).
+ *
  * If the browser lacks WebUSB (and we're not in mock mode), the
  * Connect section is replaced by an `UnsupportedBrowser` screen
  * pointing the operator at alternative browsers / the CLI / mock
  * mode. The downstream sections gate on `isConnected`, so they stay
  * hidden until a real connection happens.
  */
+import { computed } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
@@ -18,10 +25,13 @@ import MediaSection from './components/MediaSection.vue';
 import PrintSection from './components/PrintSection.vue';
 import AssessmentSection from './components/AssessmentSection.vue';
 import SubmitSection from './components/SubmitSection.vue';
+import EngineTabs from './components/EngineTabs.vue';
 import UnsupportedBrowser from './components/UnsupportedBrowser.vue';
 import { canRunOnThisBrowser } from './composables/useCapabilities';
+import { device } from './state/session';
 
 const supported = canRunOnThisBrowser();
+const isMultiEngine = computed(() => (device.value?.engines.length ?? 0) > 1);
 </script>
 
 <template>
@@ -39,6 +49,7 @@ const supported = canRunOnThisBrowser();
     <template v-else>
       <ConnectSection />
       <IdentitySection />
+      <EngineTabs v-if="isMultiEngine" />
       <MediaSection />
       <PrintSection />
       <AssessmentSection />

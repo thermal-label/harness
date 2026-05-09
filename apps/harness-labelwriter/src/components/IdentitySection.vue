@@ -13,7 +13,7 @@
  */
 import { computed, ref, watch } from 'vue';
 import { DEVICES } from '@thermal-label/labelwriter-core';
-import { connection, device, isConnected } from '../state/session';
+import { connection, device, isConnected, syncEngineSessions } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
@@ -38,6 +38,7 @@ function applyOverride(): void {
   const next = known.value.find(d => d.key === overridePick.value);
   if (!next) return;
   device.value = next;
+  syncEngineSessions(next);
   overrideOpen.value = false;
 }
 

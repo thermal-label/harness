@@ -82,6 +82,37 @@ export interface TransportReport {
 }
 
 /**
+ * One engine's worth of assessment inside a `HardwareReport`.
+ *
+ * Multi-engine devices (Twin Turbo's left/right rolls, Duo's label/tape
+ * engines) submit one `EngineReport` per engine the operator covered.
+ * The harness emits an entry only for engines the operator actually
+ * exercised; partial reports (one engine assessed, the other skipped)
+ * are first-class — see plan 09 §rails-not-walls.
+ *
+ * `role` matches `PrintEngine.role` from `@thermal-label/contracts`
+ * (`'label'`, `'tape'`, `'left'`, `'right'`, ...). `mediaKey` is the
+ * media descriptor's id the operator selected for that engine (label
+ * SKU on a label engine, D1 cassette id on the tape engine). `rung`
+ * carries the operator's direct verdict on what came out of the head;
+ * `notes` is the optional free-text caveat.
+ *
+ * Single-engine devices may omit the `engines[]` array on the report
+ * entirely (legacy shape); the parser treats absence as "engine axis
+ * not reported" and falls back to the transport-level rung.
+ */
+export interface EngineReport {
+  /** Engine role — matches `PrintEngine.role` on the device entry. */
+  role: string;
+  /** Media descriptor id selected for this engine (label SKU / cassette id). */
+  mediaKey: string;
+  /** Operator's verdict on what came out of this engine's head. */
+  rung: ProposedRung;
+  /** Free-form one-liner specific to this engine's print. */
+  notes?: string;
+}
+
+/**
  * The detected/confirmed identity pair captured at submit time.
  *
  * `detected` is the raw `IdentitySnapshot` from the identity probe (or what
@@ -136,6 +167,19 @@ export interface HardwareReport {
   harnessVersion: string;
   device: DeviceIdentity;
   transports: readonly TransportReport[];
+  /**
+   * Per-engine assessment, when the device has multiple engines
+   * (Twin Turbo left/right; Duo label/tape). Additive and optional —
+   * single-engine reports omit it entirely. Plan 04's parser uses
+   * presence of this array to surface per-engine rungs in the matrix
+   * (e.g. "Duo verified on label, untested on tape"); absence means
+   * "engine axis not reported" and the transport-level rung wins.
+   *
+   * Partial submissions (one of N engines exercised) are first-class
+   * (plan 09 §rails-not-walls); the array carries entries only for
+   * engines the operator actually assessed.
+   */
+  engines?: readonly EngineReport[];
   /** ISO-8601 timestamp at submit time. */
   submittedAt: string;
   reporter?: ReporterInfo;

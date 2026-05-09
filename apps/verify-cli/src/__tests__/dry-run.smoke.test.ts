@@ -214,6 +214,125 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(result.stderr).toMatch(/no media detection/);
   }, 30_000);
 
+  it('renders a multi-engine HardwareReport for LW_450_DUO --engine label', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_450_DUO',
+      '--transport',
+      'usb',
+      '--engine',
+      'label',
+      '--media',
+      'ADDRESS_STANDARD',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+    expect(report.driver).toBe('labelwriter');
+    expect(report.device.confirmed.model).toBe('LabelWriter 450 Duo');
+    expect(report.engines).toBeDefined();
+    expect(report.engines).toHaveLength(1);
+    expect(report.engines?.[0]?.role).toBe('label');
+    expect(report.engines?.[0]?.mediaKey).toBe('address-standard');
+    expect(report.engines?.[0]?.rung).toBe('verified');
+  }, 30_000);
+
+  it('renders a multi-engine HardwareReport for LW_450_DUO --engine tape', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_450_DUO',
+      '--transport',
+      'usb',
+      '--engine',
+      'tape',
+      '--media',
+      'STANDARD_BLACK_ON_WHITE_12',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+    expect(report.engines).toBeDefined();
+    expect(report.engines?.[0]?.role).toBe('tape');
+    expect(report.engines?.[0]?.mediaKey).toBe('d1-standard-bw-12');
+    // Synthesised identity carries the engine routing for triage.
+    expect(report.device.detected.extra?.engineRole).toBe('tape');
+    expect(report.device.detected.extra?.engineProtocol).toBe('d1-tape');
+  }, 30_000);
+
+  it('Twin Turbo --engine right defaults right roll', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_TWIN_TURBO',
+      '--transport',
+      'usb',
+      '--engine',
+      'right',
+      '--media',
+      'ADDRESS_STANDARD',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+    expect(report.engines?.[0]?.role).toBe('right');
+  }, 30_000);
+
+  it('rejects --engine on a multi-engine device with an unknown role', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_450_DUO',
+      '--transport',
+      'usb',
+      '--engine',
+      'banana',
+      '--media',
+      'ADDRESS_STANDARD',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/has no engine with role "banana"/);
+  }, 30_000);
+
+  it('rejects mismatched media for --engine tape (d1-tape engine wants tape media)', async () => {
+    const result = await runCli([
+      'verify',
+      'labelwriter',
+      'LW_450_DUO',
+      '--transport',
+      'usb',
+      '--engine',
+      'tape',
+      // ADDRESS_STANDARD is paper, not tape — should reject.
+      '--media',
+      'ADDRESS_STANDARD',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /(tape|not compatible with engine "tape"|Unknown labelwriter tape)/i,
+    );
+  }, 30_000);
+
   it('rejects a TCP transport on a USB-only labelwriter model', async () => {
     const result = await runCli([
       'verify',

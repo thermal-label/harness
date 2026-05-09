@@ -6,15 +6,21 @@
  * path; fall back to copy-the-JSON when the URL would exceed
  * GitHub's ~8 kB limit. We don't have a `gh` CLI in the browser, so
  * the CLI's third path (`gh-cli`) doesn't exist here.
+ *
+ * Multi-engine model (plan 09): the `engines[]` array is populated
+ * when the device has more than one engine. Single-engine devices
+ * still emit a single transport report with no engines axis (the
+ * report shape stays back-compatible).
  */
 import {
   renderIssueBody,
+  type EngineReport,
   type HardwareReport,
   type IdentitySnapshot,
-  type ProposedRung,
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
-import type { LabelWriterDevice, LabelWriterMedia } from '@thermal-label/labelwriter-core';
+import type { LabelWriterDevice } from '@thermal-label/labelwriter-core';
+import type { EngineSession } from './state/session';
 import { HARNESS_VERSION, DRIVER_VERSION } from './version';
 
 const DRIVER_KEY = 'labelwriter';
@@ -30,10 +36,19 @@ const URL_LENGTH_LIMIT = 7_500;
 
 export interface BuildReportInput {
   device: LabelWriterDevice;
-  media: LabelWriterMedia;
+  /**
+   * The session whose rung drives the transport-level report. On a
+   * single-engine device this is the only session; on multi-engine
+   * devices we pick the active or first-assessed session so the
+   * legacy transport shape carries a non-null rung. Per-engine
+   * results land in `allSessions` → `engines[]` array.
+   */
+  primarySession: EngineSession;
+  /** All engine sessions the operator has assessed (rung set). */
+  allSessions: readonly EngineSession[];
+  /** True for devices declaring more than one engine. */
+  multiEngine: boolean;
   identity: IdentitySnapshot;
-  rung: ProposedRung;
-  notes: string;
   reporter?: string;
   /** True if the run used the mock transport. */
   mocked: boolean;
@@ -41,17 +56,34 @@ export interface BuildReportInput {
 
 export function buildReport(input: BuildReportInput): HardwareReport {
   const usb = input.device.transports.usb;
+  const primaryRung = input.primarySession.rung;
+  const primaryMedia = input.primarySession.media;
+  if (primaryRung === null || primaryMedia === null) {
+    throw new Error('buildReport: primary session must have rung and media set.');
+  }
   const transportReport: TransportReport = {
     name: 'usb',
     patterns: { diagnostic: 'pass' },
-    rung: input.rung,
-    ...(input.notes.trim() ? { notes: input.notes.trim() } : {}),
+    rung: primaryRung,
+    ...(input.primarySession.notes.trim() ? { notes: input.primarySession.notes.trim() } : {}),
   };
 
   const detected: IdentitySnapshot = {
     ...input.identity,
     extra: { ...input.identity.extra, ...(input.mocked ? { mocked: true } : {}) },
   };
+
+  const engineReports: EngineReport[] = input.allSessions.flatMap<EngineReport>(s => {
+    if (s.rung === null || s.media === null) return [];
+    return [
+      {
+        role: s.engine.role,
+        mediaKey: String(s.media.id),
+        rung: s.rung,
+        ...(s.notes.trim() ? { notes: s.notes.trim() } : {}),
+      },
+    ];
+  });
 
   return {
     schemaVersion: 1,
@@ -63,10 +95,11 @@ export function buildReport(input: BuildReportInput): HardwareReport {
       confirmed: {
         model: input.device.name,
         ...(usb ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) } : {}),
-        overrides: { label: String(input.media.id) },
+        overrides: { label: String(primaryMedia.id) },
       },
     },
     transports: [transportReport],
+    ...(input.multiEngine && engineReports.length > 0 ? { engines: engineReports } : {}),
     submittedAt: new Date().toISOString(),
     ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };
@@ -75,7 +108,11 @@ export function buildReport(input: BuildReportInput): HardwareReport {
 export function buildIssueTitle(report: HardwareReport): string {
   const model = report.device.confirmed.model;
   const transports = report.transports.map(t => `${t.name}=${t.rung}`).join(' / ');
-  return `[harness] ${model} — ${transports || 'unverified'}`;
+  const enginesSummary =
+    report.engines && report.engines.length > 0
+      ? ` [${report.engines.map(e => `${e.role}=${e.rung}`).join(' / ')}]`
+      : '';
+  return `[harness] ${model} — ${transports || 'unverified'}${enginesSummary}`;
 }
 
 /**

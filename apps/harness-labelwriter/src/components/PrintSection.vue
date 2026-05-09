@@ -2,27 +2,29 @@
 /**
  * Print-the-diagnostic section.
  *
- * Builds the bitmap via the shared encoder
+ * Builds the bitmap via the harness multi-engine dispatch
  * (`@thermal-label/harness-core/labelwriter`), encodes to wire bytes,
- * pushes them out the active transport. Disabled until media is
- * confirmed. After a successful write, exposes the byte count and
- * "print again" affordance — operators sometimes want a second copy
- * before assessing.
+ * pushes them out the active engine's transport. Disabled until media
+ * is confirmed for the active engine.
  *
- * The Advanced drawer surfaces the wire-byte length + a few hex
- * preview lines for triage.
+ * Multi-engine devices route into the same component per tab; the
+ * active engine's transport (`connection.transports[role]`) and media
+ * (`activeSession.media`) feed the dispatch helper, which picks
+ * lw-450/550 or d1-tape encoder pairs and prepends the Twin
+ * roll-select prefix when applicable.
  */
 import { computed, ref } from 'vue';
-import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
-import { connection, device, hasMedia, hasPrinted, media, submitState } from '../state/session';
+import { dispatchEncoder } from '@thermal-label/harness-core/labelwriter';
+import { activeSession, connection, device } from '../state/session';
 import { writeDiagnosticPrint } from '../transport/connect';
 import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
 import BitmapPreview from './BitmapPreview.vue';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
-  if (!hasMedia.value) return 'pending';
-  if (!hasPrinted.value) return 'active';
+  const s = activeSession.value;
+  if (!s || s.media === null) return 'pending';
+  if (!s.printed) return 'active';
   return 'done';
 });
 
@@ -36,46 +38,58 @@ const lastBytesPreview = ref<string>('');
  * media changes. Authored bitmap is shown as a small canvas thumbnail
  * with dead-zone overlays so the operator can compare what we
  * intended to send against what physically came out of the printer.
- * Encoder is a pure function of (device, media, version strings) —
- * the preview matches the bytes sent on the next print exactly.
  */
 const previewResult = computed(() => {
-  if (!device.value || !media.value) return null;
+  const session = activeSession.value;
+  const dev = device.value;
+  if (!session || !session.media || !dev) return null;
   try {
-    return buildDiagnosticBitmap({
-      device: device.value,
-      media: media.value,
+    const dispatched = dispatchEncoder({
+      device: dev,
+      engine: session.engine,
+      media: session.media,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
     });
+    return dispatched.buildBitmap();
   } catch {
     return null;
   }
 });
 
 async function doPrint(): Promise<void> {
-  if (!device.value || !media.value || !connection.transport) return;
+  const session = activeSession.value;
+  const dev = device.value;
+  if (!session || !session.media || !dev) return;
+  const transport = connection.transports[session.engine.role];
+  if (!transport) {
+    lastError.value =
+      `No transport open for engine "${session.engine.role}" — the browser refused to claim ` +
+      `its USB interface at connect time. Disconnect and reconnect to retry.`;
+    return;
+  }
   lastError.value = null;
   printing.value = true;
   try {
-    const result = buildDiagnosticBitmap({
-      device: device.value,
-      media: media.value,
+    // The dispatch helper picks the right encoder pair per
+    // `engine.protocol` and prepends Twin's `ESC q <addr>` prefix
+    // when applicable.
+    const dispatched = dispatchEncoder({
+      device: dev,
+      engine: session.engine,
+      media: session.media,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
     });
+    const result = dispatched.buildBitmap();
     // Send the WIRE bitmap — that's the head-sized composition that
-    // the LW expects. The authored bitmap is for the preview canvas
-    // only.
-    // Pass `result.authored.heightPx` as the label pitch — `result.wire`
-    // may be shorter than the label (the LW mechanical leading offset
-    // is skipped from the raster stream) but the printer still needs
-    // the actual label pitch for form-feed/cut sequencing.
-    const bytes = encodeBitmap(result.wire, device.value, result.authored.heightPx);
+    // the printer expects. The authored bitmap is for the preview
+    // canvas only.
+    const bytes = dispatched.encodeBitmap(result.wire, result.authored.heightPx);
     lastByteCount.value = bytes.byteLength;
     lastBytesPreview.value = formatHexPreview(bytes);
-    await writeDiagnosticPrint(connection.transport, bytes);
-    submitState.printed = true;
+    await writeDiagnosticPrint(transport, bytes);
+    session.printed = true;
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -100,6 +114,9 @@ function formatHexPreview(bytes: Uint8Array): string {
   }
   return lines.join('\n');
 }
+
+const hasMedia = computed(() => Boolean(activeSession.value?.media));
+const hasPrinted = computed(() => Boolean(activeSession.value?.printed));
 </script>
 
 <template>

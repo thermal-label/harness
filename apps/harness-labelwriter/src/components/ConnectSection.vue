@@ -8,6 +8,7 @@ import {
   printerStatus,
   startStatusPolling,
   stopStatusPolling,
+  syncEngineSessions,
 } from '../state/session';
 import { connectToLabelwriter } from '../transport/connect';
 import type { PrinterStatus } from '@thermal-label/contracts';
@@ -51,10 +52,11 @@ async function connect(): Promise<void> {
   connecting.value = true;
   try {
     const result = await connectToLabelwriter();
-    connection.transport = result.transport;
+    connection.transports = result.transports;
     connection.identity = result.identity;
     connection.mocked = result.mocked;
     device.value = result.device;
+    syncEngineSessions(result.device);
     if (result.skuInfo) {
       // Stash for the media section to consume.
       connection.identity = {
@@ -75,7 +77,14 @@ async function connect(): Promise<void> {
             rawBytes: new Uint8Array(),
           }
         : null;
-    startStatusPolling(result.transport, result.device, initial);
+    // Status poll runs against the first engine's transport — on
+    // single-engine devices that's the only one; on Duo we poll the
+    // label engine (lw-450 status request, on interface 0).
+    const firstRole = result.device.engines[0]?.role;
+    const firstTransport = firstRole ? result.transports[firstRole] : undefined;
+    if (firstTransport) {
+      startStatusPolling(firstTransport, result.device, initial);
+    }
   } catch (err) {
     connection.error = err instanceof Error ? err.message : String(err);
   } finally {
@@ -85,12 +94,19 @@ async function connect(): Promise<void> {
 
 async function disconnect(): Promise<void> {
   stopStatusPolling();
-  if (connection.transport) {
-    await connection.transport.close();
+  // Close every per-engine transport. On Duo this releases both
+  // interfaces; on single-engine devices both entries point at the
+  // same Transport instance and the second close is a no-op.
+  const closed = new Set<unknown>();
+  for (const t of Object.values(connection.transports)) {
+    if (closed.has(t)) continue;
+    closed.add(t);
+    await t.close();
   }
-  connection.transport = null;
+  connection.transports = {};
   connection.identity = null;
   device.value = null;
+  syncEngineSessions(null);
   connection.error = null;
 }
 
@@ -114,6 +130,7 @@ function applyManualVidPid(): void {
       'Continuing anyway with the device label, but encoder behaviour is undefined.';
   }
   device.value = matched ?? null;
+  syncEngineSessions(matched ?? null);
 }
 </script>
 
