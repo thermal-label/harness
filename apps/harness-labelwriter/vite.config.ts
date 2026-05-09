@@ -16,6 +16,12 @@ import { fileURLToPath } from 'node:url';
 // matches what the link override intends.
 const contractsDist = fileURLToPath(new URL('../../../contracts/dist/index.js', import.meta.url));
 
+// Same trick for `@thermal-label/d1-core` — labelwriter-core consumes
+// it transitively (Duo tape engine), and Vite would otherwise pick up
+// the copy nested under labelwriter's `node_modules/.pnpm/` instead of
+// the sibling-checkout's built dist.
+const d1CoreDist = fileURLToPath(new URL('../../../d1-core/dist/index.js', import.meta.url));
+
 export default defineConfig({
   plugins: [vue()],
   // Static-bundle output: relative asset paths so the bundle works
@@ -24,6 +30,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@thermal-label/contracts': contractsDist,
+      '@thermal-label/d1-core': d1CoreDist,
     },
   },
   optimizeDeps: {
