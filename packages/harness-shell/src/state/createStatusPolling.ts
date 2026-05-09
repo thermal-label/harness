@@ -98,9 +98,11 @@ export function startStatusPolling<TDevice, TStatus>(opts: {
       );
       opts.target.value = status;
     } catch {
-      // Silent — a missed poll just leaves the dot grey for one
-      // cycle. Sustained outage shows up as a stale value.
-      opts.target.value = null;
+      // Silent — a missed poll keeps the LAST known status so
+      // downstream computeds (status pills, mediaPicker.detected)
+      // don't flicker between known-good and null on every transient
+      // read failure. Sustained outage just freezes the snapshot;
+      // disconnect clears it via the caller's stop() path.
     } finally {
       inFlight = false;
     }

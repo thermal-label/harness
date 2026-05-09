@@ -100,18 +100,30 @@ const secondaryCount = computed(() =>
 
 /**
  * Pre-select the default on mount and whenever the available set or
- * `detected` hint changes. Critically does NOT auto-select on every
- * prop change — only when `modelValue` is null. Once the operator
- * picks, we leave their choice alone.
+ * `detected` hint changes.
  *
- * For `detectionCapability !== 'none'` and a present `detected`
- * value: prefer the detected entry over `defaultMediaId`. The picker
- * still allows manual override (except in `auto-locked`, where the
- * catalogue is rendered disabled).
+ * Selection rules:
+ *  - `auto-locked`: the printer's truth ALWAYS wins. Re-emit on
+ *    every `detected` change (including after the operator
+ *    "selected" something — they couldn't really, the catalogue is
+ *    disabled). Updates flow live as the polled status changes:
+ *    swap a DK roll, picker reflects within one poll cycle.
+ *  - `auto-suggest` / `none`: only auto-select when `modelValue`
+ *    is null. Once the operator picks, leave their choice alone.
+ *  - `detected` non-null: prefer it over `defaultMediaId`.
  */
 function pickInitial(): void {
-  if (props.modelValue !== null) return;
   if (props.available.length === 0) return;
+  // auto-locked: detected ALWAYS wins. Re-emit if detected differs
+  // from the current modelValue.
+  if (detectionMode.value === 'auto-locked' && props.detected) {
+    if (props.modelValue?.id !== props.detected.id) {
+      emit('update:modelValue', props.detected);
+    }
+    return;
+  }
+  // none / auto-suggest: don't clobber an existing operator pick.
+  if (props.modelValue !== null) return;
   if (detectionMode.value !== 'none' && props.detected) {
     emit('update:modelValue', props.detected);
     return;
