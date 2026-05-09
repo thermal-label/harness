@@ -37,6 +37,7 @@ import {
   type TapeWidth,
 } from '@thermal-label/labelmanager-core';
 import MediaPicker from '@thermal-label/harness-components/media-picker';
+import StatusPill from '@thermal-label/harness-components/status-pill';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 import { device, hasIdentity, media, printerStatus } from '../state/session';
 import SectionCard from './SectionCard.vue';
@@ -111,41 +112,33 @@ function onUpdate(next: LabelManagerMedia | null): void {
   media.value = next;
 }
 
-// ─── Live status indicators ──────────────────────────────────────
+// ─── Live cassette-presence pill (shown in the section header) ──
 
 /**
- * Tape-presence dot. The D1 status reply gives us cassette presence
- * (firmware can detect *that* a cassette is loaded; can't detect
- * *what type* — see `parseStatus`). Three states: unknown (grey,
- * before first poll lands), loaded (green), missing (red).
+ * Cassette pill — D1 status gives us presence (firmware can't read
+ * type). Three states: unknown grey before first poll lands; green
+ * loaded; red missing. The "ready / busy / low-tape" reading is
+ * surfaced in the Connect section's header, not here.
  */
 type DotState = 'unknown' | 'good' | 'warn' | 'bad';
 
-const tapeDot = computed<{ state: DotState; label: string }>(() => {
+const cassetteDot = computed<{ state: DotState; label: string }>(() => {
   const s = printerStatus.value;
   if (!s) return { state: 'unknown', label: 'Cassette: checking…' };
-  return s.mediaLoaded
-    ? { state: 'good', label: 'Cassette loaded' }
-    : { state: 'bad', label: 'No cassette detected' };
-});
-
-/**
- * Printer-ready dot. `ready` covers the busy bit; `errors[]` may
- * carry `low_media` (warn) or other conditions. Aggregate to one
- * traffic-light state for the operator.
- */
-const printerDot = computed<{ state: DotState; label: string }>(() => {
-  const s = printerStatus.value;
-  if (!s) return { state: 'unknown', label: 'Printer: checking…' };
-  if (!s.ready) return { state: 'bad', label: 'Printer busy' };
-  const lowMedia = s.errors.some(e => e.code === 'low_media');
-  if (lowMedia) return { state: 'warn', label: 'Tape supply low' };
-  return { state: 'good', label: 'Printer ready' };
+  if (!s.mediaLoaded) return { state: 'bad', label: 'No cassette' };
+  const low = s.errors.some(e => e.code === 'low_media');
+  return low
+    ? { state: 'warn', label: 'Cassette loaded — tape low' }
+    : { state: 'good', label: 'Cassette loaded' };
 });
 </script>
 
 <template>
   <SectionCard :step="3" title="Pick what's loaded" :state="sectionState">
+    <template v-if="hasIdentity" #header-aside>
+      <StatusPill :state="cassetteDot.state" :label="cassetteDot.label" />
+    </template>
+
     <p v-if="!hasIdentity" class="muted">
       Confirm the model first, then pick the loaded D1 cartridge.
     </p>
@@ -155,15 +148,6 @@ const printerDot = computed<{ state: DotState; label: string }>(() => {
         Pick what's loaded — drives the head dot count and the tape-type byte sent to the firmware.
         Labelmanager has no way to detect the cartridge automatically.
       </p>
-
-      <div class="status-row">
-        <span class="status-pill" :class="`s-${tapeDot.state}`" :title="tapeDot.label">
-          <span class="dot" />{{ tapeDot.label }}
-        </span>
-        <span class="status-pill" :class="`s-${printerDot.state}`" :title="printerDot.label">
-          <span class="dot" />{{ printerDot.label }}
-        </span>
-      </div>
 
       <MediaPicker
         :model-value="media"
@@ -178,48 +162,3 @@ const printerDot = computed<{ state: DotState; label: string }>(() => {
     </template>
   </SectionCard>
 </template>
-
-<style scoped>
-.status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-2) 0;
-  font-size: 0.82rem;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg-muted, var(--muted));
-}
-
-.dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: currentColor;
-  flex: 0 0 auto;
-}
-
-.s-good {
-  color: var(--ok, #1d8a40);
-  border-color: currentColor;
-}
-.s-warn {
-  color: var(--warn, #b07700);
-  border-color: currentColor;
-}
-.s-bad {
-  color: var(--error, #b22020);
-  border-color: currentColor;
-}
-.s-unknown {
-  color: var(--fg-muted, #8a8a8a);
-}
-</style>

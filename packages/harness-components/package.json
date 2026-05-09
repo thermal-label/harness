@@ -9,6 +9,7 @@
   "sideEffects": false,
   "exports": {
     "./media-picker": "./src/MediaPicker.vue",
+    "./status-pill": "./src/StatusPill.vue",
     "./types": {
       "types": "./src/types.ts",
       "import": "./src/types.ts"

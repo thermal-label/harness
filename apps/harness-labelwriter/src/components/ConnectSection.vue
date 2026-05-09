@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { transportInstructions } from '@thermal-label/harness-core/shared';
-import { connection, device, isConnected } from '../state/session';
+import {
+  connection,
+  device,
+  isConnected,
+  printerStatus,
+  startStatusPolling,
+  stopStatusPolling,
+} from '../state/session';
 import { connectToLabelwriter } from '../transport/connect';
+import type { PrinterStatus } from '@thermal-label/contracts';
+import StatusPill from '@thermal-label/harness-components/status-pill';
 import { IS_MOCK_MODE } from '../composables/useMockMode';
 import { findDeviceByVidPid } from '../transport/webusb-filters';
 import { MockTransport } from '../transport/mock';
@@ -11,6 +20,29 @@ import SectionCard from './SectionCard.vue';
 const sectionState = computed<'pending' | 'active' | 'done'>(() =>
   isConnected.value ? 'done' : 'active',
 );
+
+/**
+ * Printer-ready pill in the section header. After connect we poll
+ * status every few seconds; the pill collapses the result into a
+ * traffic-light. On LW, `ready` means paper loaded AND no error AND
+ * not busy — so a green pill here is the operator's "you're good
+ * to print" signal.
+ */
+type DotState = 'unknown' | 'good' | 'warn' | 'bad';
+const printerDot = computed<{ state: DotState; label: string }>(() => {
+  const s = printerStatus.value;
+  if (!s) return { state: 'unknown', label: 'Printer: checking…' };
+  if (!s.ready) {
+    if (s.errors.some(e => e.code === 'no_media')) {
+      return { state: 'bad', label: 'No paper loaded' };
+    }
+    if (s.errors.some(e => e.code === 'paper_jam')) {
+      return { state: 'bad', label: 'Paper jam' };
+    }
+    return { state: 'bad', label: 'Printer not ready' };
+  }
+  return { state: 'good', label: 'Printer ready' };
+});
 
 const connecting = ref(false);
 
@@ -30,6 +62,20 @@ async function connect(): Promise<void> {
         extra: { ...result.identity.extra, detectedSku: result.skuInfo.sku },
       };
     }
+    // Seed printerStatus from the initial probe + start the live
+    // poll so the section-header pill stays alive for paper-jam /
+    // out-of-paper transitions during a session.
+    const extra = (result.identity.extra ?? {}) as { ready?: boolean; mediaLoaded?: boolean };
+    const initial: PrinterStatus | null =
+      typeof extra.ready === 'boolean' && typeof extra.mediaLoaded === 'boolean'
+        ? {
+            ready: extra.ready,
+            mediaLoaded: extra.mediaLoaded,
+            errors: [],
+            rawBytes: new Uint8Array(),
+          }
+        : null;
+    startStatusPolling(result.transport, result.device, initial);
   } catch (err) {
     connection.error = err instanceof Error ? err.message : String(err);
   } finally {
@@ -38,6 +84,7 @@ async function connect(): Promise<void> {
 }
 
 async function disconnect(): Promise<void> {
+  stopStatusPolling();
   if (connection.transport) {
     await connection.transport.close();
   }
@@ -72,6 +119,10 @@ function applyManualVidPid(): void {
 
 <template>
   <SectionCard :step="1" title="Connect to your printer" :state="sectionState">
+    <template v-if="isConnected" #header-aside>
+      <StatusPill :state="printerDot.state" :label="printerDot.label" />
+    </template>
+
     <p>{{ usbInstruction.inline }}</p>
 
     <p v-if="IS_MOCK_MODE" class="mock-banner">

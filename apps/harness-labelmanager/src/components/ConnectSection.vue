@@ -5,11 +5,13 @@ import {
   connection,
   device,
   isConnected,
+  printerStatus,
   startStatusPolling,
   stopStatusPolling,
 } from '../state/session';
 import { connectToLabelmanager } from '../transport/connect';
 import type { PrinterStatus } from '@thermal-label/contracts';
+import StatusPill from '@thermal-label/harness-components/status-pill';
 import { IS_MOCK_MODE } from '../composables/useMockMode';
 import { findDeviceByVidPid } from '../transport/webusb-filters';
 import { MockTransport } from '../transport/mock';
@@ -18,6 +20,22 @@ import SectionCard from './SectionCard.vue';
 const sectionState = computed<'pending' | 'active' | 'done'>(() =>
   isConnected.value ? 'done' : 'active',
 );
+
+/**
+ * Printer-ready pill for the section header. Once connected we read
+ * status every few seconds; this pill collapses the result into a
+ * traffic-light: green (ready, no errors), yellow (low tape — still
+ * printable), red (busy / no media), grey (no read yet).
+ */
+type DotState = 'unknown' | 'good' | 'warn' | 'bad';
+const printerDot = computed<{ state: DotState; label: string }>(() => {
+  const s = printerStatus.value;
+  if (!s) return { state: 'unknown', label: 'Printer: checking…' };
+  if (!s.ready) return { state: 'bad', label: 'Printer busy' };
+  const lowMedia = s.errors.some(e => e.code === 'low_media');
+  if (lowMedia) return { state: 'warn', label: 'Tape supply low' };
+  return { state: 'good', label: 'Printer ready' };
+});
 
 const connecting = ref(false);
 
@@ -87,6 +105,10 @@ function applyManualVidPid(): void {
 
 <template>
   <SectionCard :step="1" title="Connect to your printer" :state="sectionState">
+    <template v-if="isConnected" #header-aside>
+      <StatusPill :state="printerDot.state" :label="printerDot.label" />
+    </template>
+
     <p>{{ usbInstruction.inline }}</p>
 
     <p v-if="IS_MOCK_MODE" class="mock-banner">

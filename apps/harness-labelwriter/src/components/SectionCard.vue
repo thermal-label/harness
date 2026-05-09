@@ -25,6 +25,9 @@ defineProps<{
     <header class="card-header">
       <span class="step" aria-hidden="true">{{ step }}</span>
       <h2 class="card-title">{{ title }}</h2>
+      <span v-if="$slots['header-aside']" class="header-aside">
+        <slot name="header-aside" />
+      </span>
       <span v-if="state === 'done'" class="badge done" aria-label="completed">done</span>
       <span v-else-if="state === 'pending'" class="badge pending" aria-label="not yet active"
         >waiting</span

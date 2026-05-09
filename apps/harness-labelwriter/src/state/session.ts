@@ -7,8 +7,14 @@
  * enough that ceremony would cost more than it would buy.
  */
 import { computed, reactive, ref } from 'vue';
-import type { Transport } from '@thermal-label/contracts';
-import type { LabelWriterDevice, LabelWriterMedia } from '@thermal-label/labelwriter-core';
+import type { PrinterStatus, Transport } from '@thermal-label/contracts';
+import {
+  buildStatusRequest,
+  parseStatus,
+  statusByteCount,
+  type LabelWriterDevice,
+  type LabelWriterMedia,
+} from '@thermal-label/labelwriter-core';
 import type { IdentitySnapshot, ProposedRung } from '@thermal-label/harness-core/shared';
 
 export interface ConnectionState {
@@ -77,4 +83,59 @@ export function resetForNewRun(): void {
   submitState.printed = false;
   submitState.submitted = false;
   submitState.issueUrl = null;
+  stopStatusPolling();
+  printerStatus.value = null;
+}
+
+// ─── Live printer-status polling ─────────────────────────────────
+
+/**
+ * Latest LW status reply. `null` when no read has succeeded yet, or
+ * when the connection has been torn down. Polled every
+ * `STATUS_POLL_MS` while connected so paper jams / out-of-paper /
+ * cover-open transitions surface live in the UI without the
+ * operator having to reload.
+ *
+ * `parseStatus` is device-aware (lw-450 vs lw-550 byte layouts);
+ * needs the device entry to know which parser to call.
+ */
+export const printerStatus = ref<PrinterStatus | null>(null);
+
+const STATUS_POLL_MS = 4000;
+const STATUS_TIMEOUT_MS = 1500;
+let pollHandle: ReturnType<typeof setInterval> | null = null;
+let pollInFlight = false;
+
+async function readStatusOnce(transport: Transport, dev: LabelWriterDevice): Promise<void> {
+  if (pollInFlight) return;
+  pollInFlight = true;
+  try {
+    await transport.write(buildStatusRequest(dev, 0));
+    const response = await transport.read(statusByteCount(dev), STATUS_TIMEOUT_MS);
+    printerStatus.value = parseStatus(dev, response);
+  } catch {
+    printerStatus.value = null;
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+export function startStatusPolling(
+  transport: Transport,
+  dev: LabelWriterDevice,
+  initial?: PrinterStatus | null,
+): void {
+  stopStatusPolling();
+  if (initial) printerStatus.value = initial;
+  pollHandle = setInterval(() => {
+    void readStatusOnce(transport, dev);
+  }, STATUS_POLL_MS);
+}
+
+export function stopStatusPolling(): void {
+  if (pollHandle !== null) {
+    clearInterval(pollHandle);
+    pollHandle = null;
+  }
+  pollInFlight = false;
 }

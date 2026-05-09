@@ -17,13 +17,31 @@
  */
 import { computed, ref, watch } from 'vue';
 import { MEDIA, type LabelWriterMedia } from '@thermal-label/labelwriter-core';
-import { connection, device, hasIdentity, media } from '../state/session';
+import { connection, device, hasIdentity, media, printerStatus } from '../state/session';
+import StatusPill from '@thermal-label/harness-components/status-pill';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
   if (!hasIdentity.value) return 'pending';
   if (media.value === null) return 'active';
   return 'done';
+});
+
+/**
+ * Paper-loaded pill in the section header. LW status carries
+ * `mediaLoaded` (the no_media bit). Three states: unknown grey
+ * before first poll lands; green when paper present; red when not.
+ * Paper-jam counts as "loaded but unhappy" → warn.
+ */
+type DotState = 'unknown' | 'good' | 'warn' | 'bad';
+const paperDot = computed<{ state: DotState; label: string }>(() => {
+  const s = printerStatus.value;
+  if (!s) return { state: 'unknown', label: 'Paper: checking…' };
+  if (!s.mediaLoaded) return { state: 'bad', label: 'No paper loaded' };
+  const jam = s.errors.some(e => e.code === 'paper_jam');
+  return jam
+    ? { state: 'warn', label: 'Paper loaded — jam reported' }
+    : { state: 'good', label: 'Paper loaded' };
 });
 
 function isLabelMedia(m: unknown): m is LabelWriterMedia {
@@ -117,6 +135,10 @@ function applyCustom(): void {
 
 <template>
   <SectionCard :step="3" title="Pick the loaded label" :state="sectionState">
+    <template v-if="hasIdentity" #header-aside>
+      <StatusPill :state="paperDot.state" :label="paperDot.label" />
+    </template>
+
     <p v-if="!hasIdentity" class="muted">Confirm the model first, then pick a label.</p>
 
     <template v-else>

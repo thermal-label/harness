@@ -100,6 +100,9 @@ importers:
       '@thermal-label/contracts':
         specifier: link:../../../contracts
         version: link:../../../contracts
+      '@thermal-label/harness-components':
+        specifier: workspace:*
+        version: link:../../packages/harness-components
       '@thermal-label/harness-core':
         specifier: workspace:*
         version: link:../../packages/harness-core
