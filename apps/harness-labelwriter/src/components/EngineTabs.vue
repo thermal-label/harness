@@ -50,44 +50,71 @@ function badgeGlyph(badge: 'empty' | 'in-progress' | 'done'): string {
 </script>
 
 <template>
-  <nav class="engine-tabs" aria-label="Engines">
-    <button
-      v-for="tab in tabs"
-      :key="tab.role"
-      type="button"
-      :class="['tab', `badge-${tab.badge}`, { active: selectedRole === tab.role }]"
-      :aria-current="selectedRole === tab.role ? 'page' : undefined"
-      @click="activate(tab.role)"
-    >
-      <span class="badge" aria-hidden="true">{{ badgeGlyph(tab.badge) }}</span>
-      <span class="role">{{ tab.role }}</span>
-      <span class="protocol muted">{{ tab.protocol }}</span>
-    </button>
+  <nav id="engine-tabs" class="engine-tabs" aria-label="Engines">
+    <p class="tabs-hint">
+      This printer has <strong>{{ tabs.length }} engines</strong> — pick what to test below. You can
+      come back to the other one later; partial reports help too.
+    </p>
+    <div class="tab-strip" role="tablist">
+      <button
+        v-for="tab in tabs"
+        :key="tab.role"
+        type="button"
+        role="tab"
+        :class="['tab', `badge-${tab.badge}`, { active: selectedRole === tab.role }]"
+        :aria-current="selectedRole === tab.role ? 'page' : undefined"
+        :aria-selected="selectedRole === tab.role"
+        @click="activate(tab.role)"
+      >
+        <span class="badge" aria-hidden="true">{{ badgeGlyph(tab.badge) }}</span>
+        <span class="tab-body">
+          <span class="role">{{ tab.role }}</span>
+          <span class="protocol">{{ tab.protocol }}</span>
+        </span>
+      </button>
+    </div>
   </nav>
 </template>
 
 <style scoped>
 .engine-tabs {
+  margin: var(--space-5) 0 var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tabs-hint {
+  margin: 0 0 var(--space-3);
+  font-size: 0.92rem;
+  color: var(--fg-muted, var(--muted));
+}
+
+.tab-strip {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin: var(--space-4) 0 var(--space-3);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: var(--space-2);
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font-size: 0.92rem;
+  padding: var(--space-3) var(--space-4);
+  font-size: 1rem;
   cursor: pointer;
-  transition: border-color 100ms;
+  transition:
+    border-color 120ms,
+    transform 120ms,
+    box-shadow 120ms;
+  flex: 1 1 12rem;
+  min-width: 12rem;
+  text-align: left;
 }
 
 .tab:hover {
@@ -96,15 +123,33 @@ function badgeGlyph(badge: 'empty' | 'in-progress' | 'done'): string {
 
 .tab.active {
   border-color: var(--accent);
-  background: var(--accent-bg, var(--bg));
-  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab.active .protocol {
+  color: var(--accent-fg);
+  opacity: 0.85;
 }
 
 .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  background: var(--bg-elev);
   font-family: var(--font-mono);
-  font-size: 1rem;
-  width: 1.25rem;
-  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.tab.active .badge {
+  background: var(--accent-fg);
+  color: var(--accent);
 }
 
 .badge-done .badge {
@@ -116,15 +161,30 @@ function badgeGlyph(badge: 'empty' | 'in-progress' | 'done'): string {
 }
 
 .badge-empty .badge {
-  color: var(--fg-faint);
+  color: var(--fg-faint, var(--muted));
+}
+
+.tab.active.badge-done .badge {
+  color: var(--ok);
+}
+
+.tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .role {
   text-transform: capitalize;
+  font-weight: 600;
+  font-size: 1.05rem;
 }
 
 .protocol {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-family: var(--font-mono);
+  color: var(--fg-muted, var(--muted));
+  letter-spacing: 0.02em;
 }
 </style>
