@@ -14,7 +14,7 @@ import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
 import IdentitySection from './components/IdentitySection.vue';
-import TapeSection from './components/TapeSection.vue';
+import MediaSection from './components/MediaSection.vue';
 import PrintSection from './components/PrintSection.vue';
 import AssessmentSection from './components/AssessmentSection.vue';
 import SubmitSection from './components/SubmitSection.vue';
@@ -39,7 +39,7 @@ const supported = canRunOnThisBrowser();
     <template v-else>
       <ConnectSection />
       <IdentitySection />
-      <TapeSection />
+      <MediaSection />
       <PrintSection />
       <AssessmentSection />
       <SubmitSection />

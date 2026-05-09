@@ -14,8 +14,8 @@ import {
   connection,
   device,
   hasAssessment,
+  media,
   submitState,
-  tapeWidth,
 } from '../state/session';
 import {
   FALLBACK_EMAIL,
@@ -49,7 +49,7 @@ async function doSubmit(): Promise<void> {
 
   const report = buildReport({
     device: device.value,
-    tapeWidth: tapeWidth.value,
+    media: media.value,
     identity: connection.identity,
     rung: assessment.rung,
     notes: assessment.notes,
@@ -88,7 +88,7 @@ const previewUrlTooLong = computed(() => {
   if (!ready.value || !device.value || !assessment.rung || !connection.identity) return false;
   const report = buildReport({
     device: device.value,
-    tapeWidth: tapeWidth.value,
+    media: media.value,
     identity: connection.identity,
     rung: assessment.rung,
     notes: assessment.notes,

@@ -4,24 +4,25 @@
  *
  * Builds the bitmap via the shared encoder
  * (`@thermal-label/harness-core/labelmanager`), encodes to wire bytes,
- * pushes them out the active transport. Disabled until tape width is
- * confirmed. After a successful write, exposes the byte count and
- * "print again" affordance — operators sometimes want a second copy
- * before assessing.
+ * pushes them out the active transport. Gated on the operator
+ * confirming a media SKU upstream (the picker carries a default, so
+ * this is just an identity gate in practice). After a successful
+ * write, exposes the byte count and "print again" affordance —
+ * operators sometimes want a second copy before assessing.
  *
  * The Advanced drawer surfaces the wire-byte length + a few hex
  * preview lines for triage.
  */
 import { computed, ref } from 'vue';
 import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelmanager';
-import { connection, device, hasTape, hasPrinted, submitState, tapeWidth } from '../state/session';
+import { connection, device, hasMedia, hasPrinted, media, submitState } from '../state/session';
 import { writeDiagnosticPrint } from '../transport/connect';
 import { HARNESS_VERSION, DRIVER_VERSION } from '../version';
 import BitmapPreview from './BitmapPreview.vue';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
-  if (!hasTape.value) return 'pending';
+  if (!hasMedia.value) return 'pending';
   if (!hasPrinted.value) return 'active';
   return 'done';
 });
@@ -36,19 +37,19 @@ const enginePrimary = computed(() => device.value?.engines[0] ?? null);
 const previewDpi = computed(() => enginePrimary.value?.dpi ?? 180);
 
 /**
- * Reactive diagnostic bitmap pair, recomputed whenever device or tape
- * width changes. Authored bitmap is shown as a small canvas thumbnail
+ * Reactive diagnostic bitmap pair, recomputed whenever device or
+ * media changes. Authored bitmap is shown as a small canvas thumbnail
  * with dead-zone overlays so the operator can compare what we
  * intended to send against what physically came out of the printer.
- * Encoder is a pure function of (device, tapeWidth, version strings)
- * — the preview matches the bytes sent on the next print exactly.
+ * Encoder is a pure function of (device, media, version strings) —
+ * the preview matches the bytes sent on the next print exactly.
  */
 const previewResult = computed(() => {
   if (!device.value) return null;
   try {
     return buildDiagnosticBitmap({
       device: device.value,
-      tapeWidth: tapeWidth.value,
+      media: media.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
     });
@@ -64,15 +65,16 @@ async function doPrint(): Promise<void> {
   try {
     const result = buildDiagnosticBitmap({
       device: device.value,
-      tapeWidth: tapeWidth.value,
+      media: media.value,
       harnessVersion: HARNESS_VERSION,
       driverVersion: DRIVER_VERSION,
     });
     // Pass `result.wire` — for labelmanager `wire === authored`, the
     // driver-core encoder pads top/bottom itself based on the
     // engine's `printableArea` / `forcedTrailingFeedMm` registry
-    // values.
-    const bytes = encodeBitmap(result.wire, enginePrimary.value, tapeWidth.value);
+    // values. Forwarding the media descriptor lets the encoder
+    // resolve `ESC C n` from the cartridge's colour pair.
+    const bytes = encodeBitmap(result.wire, enginePrimary.value, media.value);
     lastByteCount.value = bytes.byteLength;
     lastBytesPreview.value = formatHexPreview(bytes);
     await writeDiagnosticPrint(connection.transport, bytes);
@@ -105,8 +107,8 @@ function formatHexPreview(bytes: Uint8Array): string {
 
 <template>
   <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
-    <p v-if="!hasTape" class="muted">
-      Pick the tape width first — the bitmap dimensions come from there.
+    <p v-if="!hasMedia" class="muted">
+      Pick what's loaded first — the bitmap dimensions and tape-type byte come from there.
     </p>
 
     <template v-else>
@@ -147,7 +149,7 @@ function formatHexPreview(bytes: Uint8Array): string {
       </p>
     </template>
 
-    <template v-if="hasTape" #advanced>
+    <template v-if="hasMedia" #advanced>
       <p class="muted small">
         Last encoded payload: <strong>{{ lastByteCount.toLocaleString() }}</strong> bytes.
       </p>

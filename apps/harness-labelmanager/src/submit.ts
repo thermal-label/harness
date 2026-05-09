@@ -14,7 +14,7 @@ import {
   type ProposedRung,
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
-import type { LabelManagerDevice, TapeWidth } from '@thermal-label/labelmanager-core';
+import type { LabelManagerDevice, LabelManagerMedia } from '@thermal-label/labelmanager-core';
 import { HARNESS_VERSION, DRIVER_VERSION } from './version';
 
 const DRIVER_KEY = 'labelmanager';
@@ -30,7 +30,7 @@ const URL_LENGTH_LIMIT = 7_500;
 
 export interface BuildReportInput {
   device: LabelManagerDevice;
-  tapeWidth: TapeWidth;
+  media: LabelManagerMedia;
   identity: IdentitySnapshot;
   rung: ProposedRung;
   notes: string;
@@ -63,11 +63,18 @@ export function buildReport(input: BuildReportInput): HardwareReport {
       confirmed: {
         model: input.device.name,
         ...(usb ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) } : {}),
-        // Tape width rides on the report under `overrides` so the
-        // triage flow knows which head dot count was emitted. Maps
-        // to the labelwriter pattern of stashing the loaded label's
-        // SKU/id under the same field.
-        overrides: { tapeWidthMm: String(input.tapeWidth) },
+        // The chosen D1 cartridge id rides on the report under
+        // `overrides`, mirroring the labelwriter harness's
+        // `overrides.label` shape so a future generic triage view
+        // can render both drivers' "what was loaded" the same way.
+        // The cartridge width is included alongside the id for
+        // human-readable triage — the id encodes it (e.g.
+        // `d1-standard-bw-12` → 12 mm), but spelling it out keeps
+        // the report grep-friendly.
+        overrides: {
+          media: String(input.media.id),
+          tapeWidthMm: String(input.media.tapeWidthMm),
+        },
       },
     },
     transports: [transportReport],
