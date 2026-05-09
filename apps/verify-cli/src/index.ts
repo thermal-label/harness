@@ -99,7 +99,7 @@ program
   )
   .option(
     '--tape-width <mm>',
-    'Tape width in millimetres (6, 9, 12, 19). Labelmanager-only; defaults to 12.',
+    'Legacy labelmanager shorthand: pick the canonical black-on-white STANDARD cartridge for the given width (6, 9, 12, 19). Superseded by --media; kept so existing one-liners still work.',
     (value): 6 | 9 | 12 | 19 => {
       const n = Number(value);
       if (n !== 6 && n !== 9 && n !== 12 && n !== 19) {
@@ -110,7 +110,7 @@ program
   )
   .option(
     '--media <key>',
-    'Loaded label / tape (e.g. ADDRESS_STANDARD or 30334 for labelwriter; DK-22205, DK-22251 for brother-ql). Optional when the printer auto-detects (LW 5xx, brother-ql); required for LW 3xx/4xx and labelmanager-via-tape-width. Wizard prompts when it cannot be detected and no flag is passed.',
+    'Loaded label / tape (e.g. ADDRESS_STANDARD or 30334 for labelwriter; DK-22205, DK-22251 for brother-ql; d1-standard-bw-12 for labelmanager). Optional when the printer auto-detects (LW 5xx, brother-ql); required for LW 3xx/4xx; defaults to d1-standard-bw-12 on labelmanager. Wizard prompts when it cannot be detected and no flag is passed.',
   )
   .option(
     '--host <host>',

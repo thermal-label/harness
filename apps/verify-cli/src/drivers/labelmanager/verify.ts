@@ -17,7 +17,14 @@
  *   6. Render `IssueBody`. Submit lands in the next commit; today the
  *      rendered body is printed to stdout regardless of `--dry-run`.
  */
-import { DEVICES, type LabelManagerDevice } from '@thermal-label/labelmanager-core';
+import {
+  DEFAULT_MEDIA,
+  DEVICES,
+  MEDIA,
+  MEDIA_LIST,
+  type LabelManagerDevice,
+  type LabelManagerMedia,
+} from '@thermal-label/labelmanager-core';
 import {
   DeviceNotFoundError,
   TransportClosedError,
@@ -49,7 +56,6 @@ import type { LabelBitmap } from '@mbtech-nl/bitmap';
 const DRIVER_KEY = 'labelmanager';
 const HARNESS_VERSION = '0.0.0';
 const DRIVER_VERSION = '0.5.1';
-const DEFAULT_TAPE_WIDTH = 12 as const;
 const TARGET_REPO = 'thermal-label/labelmanager';
 const FALLBACK_EMAIL = 'mannes@krukje.nl';
 
@@ -78,9 +84,9 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
 
   const device = await resolveDevice(options, ctx);
   const transport = await resolveTransport(options, ctx);
-  const tapeWidth = options.tapeWidth ?? DEFAULT_TAPE_WIDTH;
+  const media = resolveMedia(device, options);
 
-  printSessionHeader(device, transport, tapeWidth);
+  printSessionHeader(device, transport, media);
 
   // Build the bitmap up front so `--preview` can show it before any
   // hardware contact, and so dry-run + preview is a useful combo
@@ -93,7 +99,7 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
   // shape symmetric with the labelwriter sibling.
   const diagnostic = buildDiagnosticBitmap({
     device,
-    tapeWidth,
+    media,
     harnessVersion: HARNESS_VERSION,
     driverVersion: DRIVER_VERSION,
   });
@@ -114,7 +120,7 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
     console.log('');
   }
 
-  const identity = await runConnect(device, options, bitmap, tapeWidth);
+  const identity = await runConnect(device, options, bitmap, media);
 
   const rung = await resolveRung(options, ctx);
   const notes = await resolveNotes(options, ctx);
@@ -215,13 +221,13 @@ function buildIssueTitle(report: HardwareReport): string {
 function printSessionHeader(
   device: LabelManagerDevice,
   transport: TransportType,
-  tapeWidth: 6 | 9 | 12 | 19,
+  media: LabelManagerMedia,
 ): void {
   console.log('');
   console.log(`Driver:    ${DRIVER_KEY} (core ${DRIVER_VERSION}, harness ${HARNESS_VERSION})`);
   console.log(`Model:     ${device.name}  [${device.key}]`);
   console.log(`Transport: ${transport}`);
-  console.log(`Tape:      ${String(tapeWidth)} mm`);
+  console.log(`Media:     ${media.name}  [${String(media.id)}]  (${String(media.tapeWidthMm)} mm)`);
   console.log('');
   console.log(transportInstructions[transport].inline);
   console.log('');
@@ -231,7 +237,7 @@ async function runConnect(
   device: LabelManagerDevice,
   options: VerifyOptions,
   bitmap: LabelBitmap,
-  tapeWidth: 6 | 9 | 12 | 19,
+  media: LabelManagerMedia,
 ): Promise<IdentitySnapshot> {
   if (options.dryRun) {
     return synthesiseIdentity(device);
@@ -260,7 +266,7 @@ async function runConnect(
   console.log('Encoding diagnostic print...');
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- every labelmanager device has at least one engine
   const engine = device.engines[0]!;
-  const bytes = encodeBitmap(bitmap, engine, tapeWidth);
+  const bytes = encodeBitmap(bitmap, engine, media);
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
   try {
     await writeDiagnosticPrint(session.transport, bytes);
@@ -308,6 +314,61 @@ async function resolveDevice(
   const found = known.find(d => d.key === key);
   if (!found) throw new Error(`Picked unknown key ${key}`);
   return found;
+}
+
+/**
+ * Resolve `--media <key>` to a `LabelManagerMedia` descriptor.
+ *
+ * Precedence: explicit `--media` flag (matched against `MEDIA[id]`) →
+ * legacy `--tape-width <mm>` flag (canonical BoW STANDARD for that
+ * width via `findMediaByTapeWidth`) → `DEFAULT_MEDIA` (12 mm BoW).
+ *
+ * The labelmanager firmware can't probe the cassette, so there is no
+ * detection step (cf. labelwriter's NFC roll-tag path). Filtering
+ * against the device's `mediaCompatibility` is done after lookup —
+ * picking a 19 mm cartridge for a 12-mm-only chassis is an operator
+ * mistake we surface rather than silently downgrade.
+ */
+function resolveMedia(device: LabelManagerDevice, options: VerifyOptions): LabelManagerMedia {
+  const compat = device.engines[0]?.mediaCompatibility ?? [];
+
+  let media: LabelManagerMedia;
+  if (options.media !== undefined) {
+    const match = MEDIA[options.media];
+    if (!match) {
+      const known = MEDIA_LIST.map(m => `  ${String(m.id)}  (${m.name})`).join('\n');
+      throw new Error(
+        `Unknown labelmanager media "${options.media}". Known cartridges:\n${known}`,
+      );
+    }
+    media = match;
+  } else if (options.tapeWidth !== undefined) {
+    const fallback = MEDIA_LIST.find(
+      m =>
+        m.tapeWidthMm === options.tapeWidth &&
+        m.material === 'standard' &&
+        m.text === 'black' &&
+        m.background === 'white',
+    );
+    if (!fallback) {
+      throw new Error(
+        `No catalogued black-on-white STANDARD cartridge for tapeWidth=${String(options.tapeWidth)}.`,
+      );
+    }
+    media = fallback;
+  } else {
+    media = DEFAULT_MEDIA;
+  }
+
+  const targets = media.targetModels ?? [];
+  const compatible = targets.some(t => compat.includes(t));
+  if (!compatible) {
+    throw new Error(
+      `Media ${String(media.id)} (${media.name}) is not compatible with ${device.key} ` +
+        `(chassis tier supports ${compat.join(', ') || '(unknown)'}). Pick a smaller cartridge.`,
+    );
+  }
+  return media;
 }
 
 async function resolveTransport(

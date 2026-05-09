@@ -11,9 +11,8 @@
  * Per-driver options live behind an opaque `VerifyOptions` shape rather
  * than a discriminated union — every flag is optional at the type level,
  * and each driver's orchestrator validates the subset it cares about
- * (driver-irrelevant fields like `tapeWidth` for brother-ql, or `media`
- * for labelmanager, are simply ignored). Adding a fourth driver is one
- * more `case` here.
+ * (driver-irrelevant fields like `tapeWidth` for brother-ql are simply
+ * ignored). Adding a fourth driver is one more `case` here.
  */
 import type { TransportType } from '@thermal-label/contracts';
 import type { ProposedRung } from '@thermal-label/harness-core/shared';
@@ -38,12 +37,19 @@ export interface VerifyOptions {
   /** Write the diagnostic bitmap as a PNG to a tmp file and auto-open it. */
   previewPng: boolean;
   reporter: string | undefined;
-  /** Labelmanager-specific. Defaults to 12 mm. */
+  /**
+   * Labelmanager-only legacy shorthand: pick the canonical black-on-
+   * white STANDARD cartridge for the given width. Superseded by
+   * `--media <id>`; kept so old maintainer one-liners still work.
+   */
   tapeWidth: 6 | 9 | 12 | 19 | undefined;
   /**
-   * Loaded label / tape. Labelwriter accepts a media key (e.g. `ADDRESS_STANDARD`) or SKU
-   * (`30334`); brother-ql accepts a DK SKU (`DK-22205`). Optional when the printer auto-detects
-   * (LW 5xx, brother-ql); required for LW 3xx/4xx; labelmanager uses `tapeWidth` instead.
+   * Loaded label / tape. Labelwriter accepts a media key (e.g.
+   * `ADDRESS_STANDARD`) or SKU (`30334`); brother-ql accepts a DK
+   * SKU (`DK-22205`); labelmanager accepts a D1 cartridge id
+   * (e.g. `d1-standard-bw-12`). Optional when the printer
+   * auto-detects (LW 5xx, brother-ql); required for LW 3xx/4xx;
+   * defaults to the canonical 12 mm BoW STANDARD on labelmanager.
    */
   media: string | undefined;
   /** TCP-9100 host. Labelwriter (Wi-Fi) or brother-ql tcp transport. */
