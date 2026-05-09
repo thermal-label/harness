@@ -27,6 +27,10 @@ function parseQuery(): { mock: boolean; target: MockTarget } {
     case 'lw330turbo':
     case 'LW_330_TURBO':
       return { mock: true, target: 'lw330turbo' };
+    case 'duo':
+    case 'lw_450_duo':
+    case 'LW_450_DUO':
+      return { mock: true, target: 'lw_450_duo' };
     case '0':
     case 'false':
     case '':

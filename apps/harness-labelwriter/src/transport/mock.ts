@@ -28,13 +28,19 @@ import {
 } from '@thermal-label/contracts';
 
 /** Mock target — picks which model to pretend is connected. */
-export type MockTarget = 'lw330turbo' | 'lw550' | 'lw5xl';
+export type MockTarget = 'lw330turbo' | 'lw550' | 'lw5xl' | 'lw_450_duo';
 
 const TARGET_VID_PID: Record<MockTarget, { vid: number; pid: number; key: string; name: string }> =
   {
     lw330turbo: { vid: 0x0922, pid: 0x0008, key: 'LW_330_TURBO', name: 'LabelWriter 330 Turbo' },
     lw550: { vid: 0x0922, pid: 0x0028, key: 'LW_550', name: 'LabelWriter 550' },
     lw5xl: { vid: 0x0922, pid: 0x002a, key: 'LW_5XL', name: 'LabelWriter 5XL' },
+    // LW 450 Duo — paper roll engine + D1 tape engine on separate USB
+    // interfaces. Mock connect assigns the same MockTransport to both
+    // engine roles (per `connectMock` shape-uniformity), so the
+    // EngineTabs strip renders and operators can dry-run both tabs
+    // without hardware.
+    lw_450_duo: { vid: 0x0922, pid: 0x0023, key: 'LW_450_DUO', name: 'LabelWriter 450 Duo' },
   };
 
 interface MockResponse {
