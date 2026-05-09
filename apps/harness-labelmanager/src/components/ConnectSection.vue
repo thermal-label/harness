@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { transportInstructions } from '@thermal-label/harness-core/shared';
-import { connection, device, isConnected } from '../state/session';
+import {
+  connection,
+  device,
+  isConnected,
+  startStatusPolling,
+  stopStatusPolling,
+} from '../state/session';
 import { connectToLabelmanager } from '../transport/connect';
+import type { PrinterStatus } from '@thermal-label/contracts';
 import { IS_MOCK_MODE } from '../composables/useMockMode';
 import { findDeviceByVidPid } from '../transport/webusb-filters';
 import { MockTransport } from '../transport/mock';
@@ -23,6 +30,20 @@ async function connect(): Promise<void> {
     connection.identity = result.identity;
     connection.mocked = result.mocked;
     device.value = result.device;
+    // Seed printerStatus from the initial probe (stashed on
+    // identity.extra by runStatusProbe), then poll every few seconds
+    // so cassette swaps + paper-jam clears surface live in the UI.
+    const extra = (result.identity.extra ?? {}) as { ready?: boolean; mediaLoaded?: boolean };
+    const initial: PrinterStatus | null =
+      typeof extra.ready === 'boolean' && typeof extra.mediaLoaded === 'boolean'
+        ? {
+            ready: extra.ready,
+            mediaLoaded: extra.mediaLoaded,
+            errors: [],
+            rawBytes: new Uint8Array(),
+          }
+        : null;
+    startStatusPolling(result.transport, initial);
   } catch (err) {
     connection.error = err instanceof Error ? err.message : String(err);
   } finally {
@@ -31,6 +52,7 @@ async function connect(): Promise<void> {
 }
 
 async function disconnect(): Promise<void> {
+  stopStatusPolling();
   if (connection.transport) {
     await connection.transport.close();
   }

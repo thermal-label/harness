@@ -38,7 +38,7 @@ import {
 } from '@thermal-label/labelmanager-core';
 import MediaPicker from '@thermal-label/harness-components/media-picker';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
-import { device, hasIdentity, media } from '../state/session';
+import { device, hasIdentity, media, printerStatus } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const touched = ref(false);
@@ -111,13 +111,37 @@ function onUpdate(next: LabelManagerMedia | null): void {
   media.value = next;
 }
 
-const currentHeadDots = computed(() => HEAD_DOTS_FOR_TAPE[media.value.tapeWidthMm]);
+// ─── Live status indicators ──────────────────────────────────────
 
-function colourLabel(m: LabelManagerMedia): string {
-  const fg = m.text ?? '?';
-  const bg = m.background ?? '?';
-  return `${fg} on ${bg}`;
-}
+/**
+ * Tape-presence dot. The D1 status reply gives us cassette presence
+ * (firmware can detect *that* a cassette is loaded; can't detect
+ * *what type* — see `parseStatus`). Three states: unknown (grey,
+ * before first poll lands), loaded (green), missing (red).
+ */
+type DotState = 'unknown' | 'good' | 'warn' | 'bad';
+
+const tapeDot = computed<{ state: DotState; label: string }>(() => {
+  const s = printerStatus.value;
+  if (!s) return { state: 'unknown', label: 'Cassette: checking…' };
+  return s.mediaLoaded
+    ? { state: 'good', label: 'Cassette loaded' }
+    : { state: 'bad', label: 'No cassette detected' };
+});
+
+/**
+ * Printer-ready dot. `ready` covers the busy bit; `errors[]` may
+ * carry `low_media` (warn) or other conditions. Aggregate to one
+ * traffic-light state for the operator.
+ */
+const printerDot = computed<{ state: DotState; label: string }>(() => {
+  const s = printerStatus.value;
+  if (!s) return { state: 'unknown', label: 'Printer: checking…' };
+  if (!s.ready) return { state: 'bad', label: 'Printer busy' };
+  const lowMedia = s.errors.some(e => e.code === 'low_media');
+  if (lowMedia) return { state: 'warn', label: 'Tape supply low' };
+  return { state: 'good', label: 'Printer ready' };
+});
 </script>
 
 <template>
@@ -132,6 +156,15 @@ function colourLabel(m: LabelManagerMedia): string {
         Labelmanager has no way to detect the cartridge automatically.
       </p>
 
+      <div class="status-row">
+        <span class="status-pill" :class="`s-${tapeDot.state}`" :title="tapeDot.label">
+          <span class="dot" />{{ tapeDot.label }}
+        </span>
+        <span class="status-pill" :class="`s-${printerDot.state}`" :title="printerDot.label">
+          <span class="dot" />{{ printerDot.label }}
+        </span>
+      </div>
+
       <MediaPicker
         :model-value="media"
         :available="compatibleMedia"
@@ -142,24 +175,51 @@ function colourLabel(m: LabelManagerMedia): string {
         detection-capability="none"
         @update:model-value="onUpdate"
       />
-
-      <p class="muted small">
-        Currently selected: <strong>{{ media.name }}</strong>
-        <code class="inline-id">{{ media.id }}</code> — {{ colourLabel(media) }}, head emits
-        <strong>{{ currentHeadDots }} dots</strong> across the tape.
-      </p>
     </template>
   </SectionCard>
 </template>
 
 <style scoped>
-.inline-id {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  margin-left: var(--space-1);
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  font-size: 0.82rem;
 }
 
-.small {
-  font-size: 0.85rem;
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted, var(--muted));
+}
+
+.dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.s-good {
+  color: var(--ok, #1d8a40);
+  border-color: currentColor;
+}
+.s-warn {
+  color: var(--warn, #b07700);
+  border-color: currentColor;
+}
+.s-bad {
+  color: var(--error, #b22020);
+  border-color: currentColor;
+}
+.s-unknown {
+  color: var(--fg-muted, #8a8a8a);
 }
 </style>

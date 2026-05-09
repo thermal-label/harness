@@ -15,9 +15,11 @@
  *    the cartridge, so the picker is always operator-driven.
  */
 import { computed, reactive, ref } from 'vue';
-import type { Transport } from '@thermal-label/contracts';
+import type { PrinterStatus, Transport } from '@thermal-label/contracts';
 import {
   DEFAULT_MEDIA,
+  parseStatus,
+  STATUS_REQUEST,
   type LabelManagerDevice,
   type LabelManagerMedia,
 } from '@thermal-label/labelmanager-core';
@@ -111,4 +113,57 @@ export function resetForNewRun(): void {
   submitState.printed = false;
   submitState.submitted = false;
   submitState.issueUrl = null;
+  stopStatusPolling();
+  printerStatus.value = null;
+}
+
+// ─── Live printer-status polling ─────────────────────────────────
+
+/**
+ * Latest D1 status reply (cassette presence + ready/error bits).
+ * `null` when no read has succeeded yet, or when the connection has
+ * been torn down. Polled every `STATUS_POLL_MS` while connected so
+ * the UI feels alive — cassette swap or paper jam shows up within a
+ * few seconds without the operator having to reload.
+ */
+export const printerStatus = ref<PrinterStatus | null>(null);
+
+const STATUS_POLL_MS = 4000;
+const STATUS_RESPONSE_BYTES = 64;
+const STATUS_TIMEOUT_MS = 1500;
+let pollHandle: ReturnType<typeof setInterval> | null = null;
+let pollInFlight = false;
+
+async function readStatusOnce(transport: Transport): Promise<void> {
+  if (pollInFlight) return;
+  pollInFlight = true;
+  try {
+    await transport.write(STATUS_REQUEST);
+    const response = await transport.read(STATUS_RESPONSE_BYTES, STATUS_TIMEOUT_MS);
+    printerStatus.value = parseStatus(response);
+  } catch {
+    // Silent — a missed poll just leaves the dot grey for one cycle.
+    // A sustained outage shows up as a stale `printerStatus` (caller
+    // can compare timestamps if needed); for the dot UX a single
+    // failed read is noise, not signal.
+    printerStatus.value = null;
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+export function startStatusPolling(transport: Transport, initial?: PrinterStatus | null): void {
+  stopStatusPolling();
+  if (initial) printerStatus.value = initial;
+  pollHandle = setInterval(() => {
+    void readStatusOnce(transport);
+  }, STATUS_POLL_MS);
+}
+
+export function stopStatusPolling(): void {
+  if (pollHandle !== null) {
+    clearInterval(pollHandle);
+    pollHandle = null;
+  }
+  pollInFlight = false;
 }
