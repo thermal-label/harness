@@ -37,7 +37,7 @@
  * '1' / '2', per LW 450 Series Tech Ref p.16). Bench-confirmed against
  * the labelwriter-core protocol tests; pending live-Twin confirmation.
  */
-import { flipHorizontal, padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
+import { padBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
 import type { PrintableArea, PrintEngine } from '@thermal-label/contracts';
 import {
   buildDiagnosticBitmap as buildLabelwriterBitmap,
@@ -210,7 +210,21 @@ export function dispatchEncoder(input: DispatchInput): DispatchedEncoder {
         // `labelLengthDots` is the LW-only label-pitch override; the
         // d1-tape encoder pads its own trailing rows internally and
         // doesn't take a label-length argument.
-        const lmMediaShim = tapeMedia as unknown as LabelManagerMedia;
+        //
+        // **Shim `printableDots` to engine.headDots** on oversize
+        // heads. The shared D1 media catalogue carries
+        // `printableDots: 64` (correct for LM standalone's 64-dot
+        // head). On Duo 128, that constraint causes d1-core's
+        // `resolveRasterDots` to clamp the wire to 64 dots — the
+        // encoder emits ESC D 8 instead of ESC D 16, fires 64 head
+        // dots starting from col 0 (left-aligned), and the centred
+        // tape physically catches only the right half of that
+        // 64-dot raster. With the shim, the wire emits at the full
+        // head width and our centred-pad places content at cols
+        // 16-111 of 128 — aligned with the centred-on-head tape.
+        const baseShim = tapeMedia as unknown as LabelManagerMedia;
+        const lmMediaShim: LabelManagerMedia =
+          engine.headDots > 64 ? { ...baseShim, printableDots: engine.headDots } : baseShim;
         const body = encodeLabelmanagerBitmap(bitmap, engine, lmMediaShim);
         return prepend(prefix, body);
       },
@@ -266,16 +280,6 @@ function bandFor(engine: PrintEngine, tapeWidthMm: number): number | undefined {
  * count so the d1-core encoder's `scaleBitmap` is a no-op (no
  * stretching). No-op on standard 64-dot heads (LM standalone) where
  * authored already matches headDots.
- *
- * **Wire is also `flipHorizontal`-ed on Duo 128.** Bench-confirmed:
- * the Duo's tape head fires bytes/dots in reverse order vs the LM
- * standalone — content rendered straight from the LM diagnostic
- * encoder lands mirrored on the tape (right half of the graphic
- * appears on the left half of the tape and vice versa). Flipping
- * the wire compensates: the preview (`authored`) stays as authored
- * intent, and the printed tape shows the same orientation. LM
- * standalone is untouched (its head fires the conventional direction
- * for which the encoder is authored).
  */
 function padTapeBitmapForOversizeHead(
   result: MultiEngineBitmapResult,
@@ -288,14 +292,9 @@ function padTapeBitmapForOversizeHead(
     const right = total - left;
     return padBitmap(b, { left, right });
   };
-  const paddedAuthored = padToHeadDots(result.authored);
-  const paddedWire = padToHeadDots(result.wire);
-  // Only flip on the 128-dot Duo head — that's where the mirror
-  // shows up on bench. Other oversize heads slot in here when added.
-  const flipWire = engine.headDots === 128;
   return {
     ...result,
-    authored: paddedAuthored,
-    wire: flipWire ? flipHorizontal(paddedWire) : paddedWire,
+    authored: padToHeadDots(result.authored),
+    wire: padToHeadDots(result.wire),
   };
 }
