@@ -49,26 +49,30 @@ import {
 } from '../labelmanager/diagnostic-print.js';
 
 /**
- * **PoC bench-tuning bands** for d1-tape on oversize heads (Duo 128).
- * The standalone LM has a 64-dot head; 12mm tape uses all 64. The Duo
- * 128 has a 128-dot head, but a 12mm tape physically only covers part
- * of that head — the rest of the dots fire off-tape. Without this
- * band-table the d1-core encoder's `scaleBitmap` stretches the
- * authored 64-dot content to 128, doubling the visual size and
- * pushing half off the tape edge.
+ * Per-tape-width printable dots on oversize d1-tape heads.
  *
- * Round 1 numbers: 12 → 64, 19 → 96, 24 → 128 (looked roughly right).
- * Round 2: try 12 → 96 to double-check whether 64 was undersized.
- * Bench-confirm by printing on each tape width; revise if wrong.
+ * Wider heads (Duo 128) can drive wider tapes (19mm = 96 dots,
+ * 24mm = 128 dots) that the LM standalone 64-dot head cannot. For
+ * tapes ≤12mm the printable area is the same regardless of head —
+ * the tape simply doesn't physically span more head dots. Without
+ * this table, 19mm and 24mm tapes on Duo 128 would author at the
+ * LM bucket (64 dots) and end up smaller than their actual reach.
  *
- * This is a poc-stage workaround. Long-term the band table belongs
- * on `engine.printableDotsByTapeWidth` in d1-core / labelwriter /
- * labelmanager registries — schema change is queued.
+ * Bench-confirmed (2026-05-09 on LW_DUO_128 + 12mm tape):
+ *   - 12mm → 64 dots (matches LM, both 64- and 128-head chassis)
+ *   - 19mm, 24mm: maintainer's read; bench-confirm when wider
+ *     tapes arrive.
+ *
+ * Long-term home for this table is `engine.printableDotsByTapeWidth`
+ * on d1-core's engine schema — chassis declares its own bands,
+ * shell consumes via the standard `getPrintableArea`-style helpers.
+ * For now the harness carries it so we can iterate without a
+ * driver-package bump.
  */
 const TAPE_BANDS_FOR_HEAD_DOTS_128: Record<number, number> = {
   6: 32,
   9: 48,
-  12: 96,
+  12: 64,
   19: 96,
   24: 128,
 };
