@@ -31,14 +31,14 @@ import {
 import SectionCard from './SectionCard.vue';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = useAdapter<any, any, any>();
+const adapter = useAdapter<any, any>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const session = useSession<any, any>();
 
 const isMultiEngine = computed(() => {
-  const dev = session.device.value;
-  if (!dev || !adapter.multiEngine) return false;
-  return adapter.multiEngine.isMultiEngine(dev);
+  const dev = session.device.value as { engines?: readonly unknown[] } | null;
+  if (!dev?.engines) return false;
+  return dev.engines.length > 1;
 });
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {

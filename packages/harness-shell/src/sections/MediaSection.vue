@@ -9,26 +9,27 @@
  * component re-resolves the active engine + catalogue + detected
  * media, and the operator picks for that engine.
  *
- * The cassette/media-loaded pill in the header reads the same
- * `adapter.status.toPills` callback Connect uses, but pulls the
- * `media` slot rather than `printer`. Adapters surface the right
- * label per active engine (LW tape engine: "tape loaded"; LW label
- * engine: "paper loaded").
+ * Detection comes straight from `printer.getStatus().detectedMedia`
+ * (standardised across all drivers via `PrinterAdapter`). When the
+ * driver reports detected media, the picker pre-selects it and locks
+ * the catalogue (`auto-locked` mode); otherwise the operator picks
+ * manually.
  *
- * Custom dimensions drawer surfaces only when the adapter's
- * `mediaPicker.customDimensions.supports(device, engine)` returns
- * true — LW label engines today; future drivers as needed.
+ * "Don't see your label?" now points at the driver repo's issue
+ * tracker — operator-facing custom-dimension functionality lives on
+ * the burnmark.io app, not in the harness.
  */
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import type { MediaDescriptor, PrintEngine } from '@thermal-label/contracts';
 import MediaPicker from '@thermal-label/harness-components/media-picker';
 import StatusPill from '@thermal-label/harness-components/status-pill';
 import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
+import { engineNoun, statusToMediaPill } from '../state/statusPills';
 import SectionCard from './SectionCard.vue';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = useAdapter<any, any, any>();
+const adapter = useAdapter<any, any>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const session = useSession<any, any>();
 
@@ -53,55 +54,57 @@ const compatibleMedia = computed<readonly MediaDescriptor[]>(() => {
   return adapter.mediaPicker.filterByDeviceEngine(adapter.media, dev, engine);
 });
 
+/**
+ * Detected media — pulled directly from the polled `PrinterStatus`.
+ * The driver tags `detectedMedia` per the standard `PrinterStatus`
+ * shape; we resolve it back to a catalogue entry by id so the picker
+ * pre-selects the canonical object (not a detached one). Drivers
+ * that can't detect (LM, LW 450) leave `detectedMedia` undefined and
+ * the picker stays in manual mode.
+ */
 const detected = computed<MediaDescriptor | null>(() => {
-  if (!adapter.mediaPicker.detected) return null;
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  const identity = session.connection.identity;
-  if (!dev || !engine || !identity) return null;
-  return adapter.mediaPicker.detected(
-    identity,
-    compatibleMedia.value,
-    engine,
-    session.printerStatus.value,
-  );
+  const fromStatus = session.activeStatus.value?.detectedMedia;
+  if (!fromStatus) return null;
+  // Try by id first (numeric or string), else fall back to identity equality.
+  const id = (fromStatus as { id?: unknown }).id;
+  if (id !== undefined) {
+    const match = compatibleMedia.value.find(
+      m => (m as { id?: unknown }).id === id,
+    );
+    if (match) return match;
+  }
+  return fromStatus;
 });
 
-const detectionCapability = computed(() => {
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  if (!dev || !engine) return 'none';
-  return adapter.mediaPicker.detectionCapability(dev, engine);
+const detectionCapability = computed<'none' | 'auto-suggest' | 'auto-locked'>(() => {
+  // Drivers expose detection capability per engine via
+  // `engine.capabilities.mediaDetection`. When true AND the status
+  // payload carries detectedMedia, we lock (brother-ql; LW 5xx).
+  // When true but no detected media is reported yet, we suggest the
+  // detected slot will fill in. Otherwise no detection.
+  const engine = activeEngine.value as { capabilities?: { mediaDetection?: boolean } } | null;
+  if (!engine?.capabilities?.mediaDetection) return 'none';
+  return detected.value ? 'auto-locked' : 'auto-suggest';
 });
 
 const defaultMediaId = computed<string | number>(() => {
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  if (!dev || !engine) return '';
-  return adapter.mediaPicker.defaultMediaId(dev, engine);
+  // No adapter-supplied default any more — pick the first compatible
+  // entry as a starting point. Operators almost always change it.
+  const first = compatibleMedia.value[0] as { id?: string | number } | undefined;
+  return first?.id ?? '';
 });
 
 const sectionTitle = computed(() => {
-  const engine = activeEngine.value;
-  if (!engine || !adapter.mediaPicker.sectionTitle) return "Pick what's loaded";
-  return adapter.mediaPicker.sectionTitle(engine);
-});
-
-const transportWarning = computed(() => {
-  if (!adapter.mediaPicker.warning) return null;
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  if (!dev || !engine) return null;
-  return adapter.mediaPicker.warning(dev, engine);
+  const noun = engineNoun(activeEngine.value);
+  if (noun === 'media') return "Pick what's loaded";
+  return `Pick the loaded ${noun}`;
 });
 
 const mediaDot = computed<{ state: 'unknown' | 'good' | 'warn' | 'bad'; label: string } | null>(
   () => {
-    if (!adapter.status) return null;
-    const engine = activeEngine.value;
-    const ctx: { engine?: PrintEngine } = engine ? { engine } : {};
-    const pills = adapter.status.toPills(session.printerStatus.value, ctx);
-    return pills.media ?? null;
+    if (!session.isConnected.value) return null;
+    const noun = engineNoun(activeEngine.value);
+    return statusToMediaPill(session.activeStatus.value, noun);
   },
 );
 
@@ -118,40 +121,22 @@ function onUpdate(next: MediaDescriptor | null): void {
 const swatchFn = adapter.mediaPicker.swatch ?? (() => null);
 const describeFn = adapter.mediaPicker.describe ?? ((m: MediaDescriptor) => m.name);
 
-// Custom-dimensions drawer
-
-const supportsCustom = computed(() => {
-  if (!adapter.mediaPicker.customDimensions) return false;
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  if (!dev || !engine) return false;
-  return adapter.mediaPicker.customDimensions.supports(dev, engine);
+// "Don't see your label?" CTA — opens a prefilled issue against the
+// driver's repo. Replaces the in-app custom-dimensions drawer per
+// the user's harness-v2 split.
+const issueUrl = computed(() => {
+  const title = encodeURIComponent(`[harness] Add support for label type X`);
+  const body = encodeURIComponent(
+    `I tried to use the harness with a label type that isn't in the catalogue.\n\n` +
+      `Driver: ${adapter.driverKey}\n` +
+      `Device: ${session.device.value ? adapter.deviceName(session.device.value) : '(unknown)'}\n\n` +
+      `Label details (please fill in):\n` +
+      `- Manufacturer SKU / part number:\n` +
+      `- Width × length (mm):\n` +
+      `- Where I bought it:\n`,
+  );
+  return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
 });
-
-const showCustom = ref(false);
-const defaultWidth = computed(() => adapter.mediaPicker.customDimensions?.defaultWidthMm ?? 28);
-const defaultLength = computed(() => adapter.mediaPicker.customDimensions?.defaultLengthMm ?? 89);
-const customWidth = ref(String(defaultWidth.value));
-const customLength = ref(String(defaultLength.value));
-
-function applyCustom(): void {
-  const slot = session.activeSession.value;
-  const dev = session.device.value;
-  const engine = activeEngine.value;
-  if (!slot || !dev || !engine || !adapter.mediaPicker.customDimensions) return;
-  const widthMm = Number(customWidth.value);
-  const lengthMm = Number(customLength.value);
-  if (!Number.isFinite(widthMm) || !Number.isFinite(lengthMm) || widthMm <= 0 || lengthMm <= 0) {
-    return;
-  }
-  slot.media = adapter.mediaPicker.customDimensions.build({
-    widthMm,
-    lengthMm,
-    device: dev,
-    engine,
-  });
-  showCustom.value = false;
-}
 </script>
 
 <template>
@@ -169,8 +154,6 @@ function applyCustom(): void {
     </template>
 
     <template v-else>
-      <p v-if="transportWarning" class="warn">{{ transportWarning }}</p>
-
       <MediaPicker
         :model-value="session.activeSession.value.media"
         :available="compatibleMedia"
@@ -182,90 +165,25 @@ function applyCustom(): void {
         :detected="detected"
         @update:model-value="onUpdate"
       />
-    </template>
 
-    <template v-if="session.hasIdentity.value && supportsCustom" #advanced>
-      <p class="muted small">
-        Custom dimensions — bypasses the catalogue. The diagnostic encoder will use these directly;
-        the issue body marks the report as a custom-dimension run.
+      <p class="muted small dont-see">
+        Don't see your label?
+        <a :href="issueUrl" target="_blank" rel="noopener">Add support for label type X →</a>
       </p>
-      <button v-if="!showCustom" class="ghost" type="button" @click="showCustom = true">
-        Set custom dimensions
-      </button>
-      <div v-else class="custom-form">
-        <label>
-          Width (mm)
-          <input v-model="customWidth" inputmode="numeric" />
-        </label>
-        <label>
-          Length (mm)
-          <input v-model="customLength" inputmode="numeric" />
-        </label>
-        <button class="primary" type="button" @click="applyCustom">Apply custom</button>
-        <button class="ghost" type="button" @click="showCustom = false">Cancel</button>
-      </div>
     </template>
   </SectionCard>
 </template>
 
 <style scoped>
-.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
-  border: 1px solid var(--warn);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  font-size: 0.92rem;
-}
-
 .small {
   font-size: 0.85rem;
 }
 
-.custom-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: flex-end;
+.dont-see {
   margin-top: var(--space-3);
 }
 
-.custom-form label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: 0.85rem;
-}
-
-.custom-form input {
-  width: 6rem;
-}
-
-.primary {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.primary:hover {
-  background: var(--accent-hover);
-}
-
-.ghost {
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font-size: 0.9rem;
-}
-
-.ghost:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
+.dont-see a {
+  color: var(--accent);
 }
 </style>

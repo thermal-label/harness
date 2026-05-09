@@ -8,9 +8,13 @@
  * with one normalisation: every device is treated as multi-engine
  * internally (single-engine devices have one entry in
  * `engineSessions` keyed by the engine's role). Tab visibility is
- * decided at HarnessShell render time via the adapter's
- * `multiEngine.isMultiEngine` callback — single-engine devices stay
- * flat regardless.
+ * decided at HarnessShell render time from `device.engines.length`.
+ *
+ * Post-harness-v2: the connection holds a `PrinterAdapter` (from
+ * `@thermal-label/contracts`) — every protocol-level operation is
+ * delegated through the driver, not bypassed. Per-engine status
+ * snapshots come from `printer.getStatus()` polled every 4 s (or
+ * pushed via `printer.onStatus` when the driver supplies it).
  */
 import {
   computed,
@@ -22,19 +26,26 @@ import {
   type InjectionKey,
   type Ref,
 } from 'vue';
-import type { PrintEngine, Transport } from '@thermal-label/contracts';
+import type { PrintEngine, PrinterAdapter, PrinterStatus } from '@thermal-label/contracts';
 import type { IdentitySnapshot, ProposedRung } from '@thermal-label/harness-core/shared';
 import { useAdapter } from './adapterContext';
 import type { EngineSession } from '../types';
 
 export interface ConnectionState {
   /**
-   * Per-engine wire transports keyed by `PrintEngine.role`. Single-
-   * engine devices and Twin-style chassis (in-band roll-select)
-   * carry one entry; Duo carries two — one per USB interface. Empty
-   * map means "not connected".
+   * The connected per-engine `PrinterAdapter` map (keyed by engine
+   * role). Null when not connected. The shell looks up the active
+   * adapter via `printers[selectedRole]` and exposes it through the
+   * `activePrinter` computed for PrintSection / MediaSection /
+   * BitmapPreview so they call `printer.print()` / `createPreview()`
+   * / `getStatus()` without re-implementing the protocol layer.
+   *
+   * Single-engine drivers (LM, QL, most LW) populate a 1-key record;
+   * multi-engine drivers (LW Twin Turbo, LW Duo family) populate one
+   * entry per engine — each scoped to its own engine and (for the
+   * Duo) its own claimed USB interface.
    */
-  transports: Record<string, Transport>;
+  printers: Record<string, PrinterAdapter> | null;
   /** Identity probe results captured at connect time. */
   identity: IdentitySnapshot | null;
   /** Whether the connection is mocked (drives UI labelling). */
@@ -68,27 +79,36 @@ export interface Session<TDevice, TMedia> {
   selectedRole: Ref<string | null>;
   submitState: SubmitState;
   /**
-   * Latest status read keyed by engine role. Multi-engine devices
-   * (LW Duo) get one slot per engine; single-engine and Twin (which
-   * shares one transport across two engines) write to one slot
-   * each. Polling fans out per-engine — see ConnectSection's
-   * connect path.
+   * Latest `PrinterStatus` snapshot, keyed by engine role. Single-engine
+   * drivers populate one slot; multi-engine devices (LW Duo: `label` +
+   * `tape`) populate one slot per engine, each fed by its own poll
+   * loop. The reactive object lets sections read
+   * `printerStatus[role]` directly, and the `activeStatus` computed
+   * routes the active engine's slot to the section pills without the
+   * call sites having to know about engine roles.
+   *
+   * Pre-refactor this was a single `Ref<PrinterStatus | null>` shared
+   * across every poll loop — the Duo's tape and label engines
+   * clobbered each other (whichever wrote last is what every tab
+   * rendered). The keyed shape resolves that.
    */
-  engineStatuses: Record<string, unknown>;
-  /**
-   * Convenience computed pointing at the active engine's status
-   * (`engineStatuses[selectedRole]`). Falls back to the first
-   * engine's status when no engine is selected. Sections that
-   * surface engine-specific UX (MediaSection's loaded-media pill)
-   * read this; sections surfacing chassis-level UX (ConnectSection's
-   * printer-ready pill) currently read this too — chassis-aggregate
-   * is a follow-on.
-   */
-  printerStatus: ComputedRef<unknown>;
+  printerStatus: Record<string, PrinterStatus | null>;
 
   // Derived computeds
   isConnected: ComputedRef<boolean>;
   hasIdentity: ComputedRef<boolean>;
+  /**
+   * The `PrinterAdapter` currently driving section interactions.
+   * Resolves to `printers[selectedRole]` — flips automatically when
+   * the operator switches engine tabs. Null when not connected.
+   */
+  activePrinter: ComputedRef<PrinterAdapter | null>;
+  /**
+   * Currently-displayed engine's status snapshot. Resolves to
+   * `printerStatus[selectedRole]` — flips automatically on tab switch
+   * without restarting either engine's poll loop.
+   */
+  activeStatus: ComputedRef<PrinterStatus | null>;
   activeSession: ComputedRef<EngineSession<TMedia> | null>;
   activeEngine: ComputedRef<PrintEngine | null>;
   assessedCount: ComputedRef<number>;
@@ -117,12 +137,12 @@ function createSession<TDevice, TMedia>(opts: {
    */
   getEngines: (d: TDevice) => readonly PrintEngine[];
 }): Session<TDevice, TMedia> {
-  const connection: ConnectionState = reactive({
-    transports: {},
+  const connection = reactive({
+    printers: null,
     identity: null,
     mocked: false,
     error: null,
-  });
+  }) as ConnectionState;
 
   const device = ref<TDevice | null>(null) as Ref<TDevice | null>;
   // `reactive` widens the value type to a Proxy of the original; a
@@ -134,15 +154,7 @@ function createSession<TDevice, TMedia>(opts: {
     submitted: false,
     issueUrl: null,
   });
-  const engineStatuses = reactive({}) as Record<string, unknown>;
-  const printerStatus = computed<unknown>(() => {
-    const role = selectedRole.value;
-    if (role && role in engineStatuses) return engineStatuses[role];
-    // Fall back to the first available status — covers the case
-    // where `selectedRole` hasn't been set yet (initial render).
-    const firstKey = Object.keys(engineStatuses)[0];
-    return firstKey ? engineStatuses[firstKey] : null;
-  });
+  const printerStatus = reactive({}) as Record<string, PrinterStatus | null>;
 
   function syncEngineSessions(d: TDevice | null): void {
     if (!d) {
@@ -179,7 +191,7 @@ function createSession<TDevice, TMedia>(opts: {
   }
 
   function resetForNewRun(): void {
-    connection.transports = {};
+    connection.printers = null;
     connection.identity = null;
     connection.error = null;
     // `connection.mocked` keeps its value — mock mode is URL-driven.
@@ -191,13 +203,29 @@ function createSession<TDevice, TMedia>(opts: {
     }
     submitState.submitted = false;
     submitState.issueUrl = null;
-    for (const role of Object.keys(engineStatuses)) {
-      Reflect.deleteProperty(engineStatuses, role);
+    for (const role of Object.keys(printerStatus)) {
+      Reflect.deleteProperty(printerStatus, role);
     }
   }
 
-  const isConnected = computed(() => Object.keys(connection.transports).length > 0);
+  const isConnected = computed(() => connection.printers !== null);
   const hasIdentity = computed(() => Boolean(connection.identity && device.value));
+  const activePrinter = computed<PrinterAdapter | null>(() => {
+    const map = connection.printers;
+    if (!map) return null;
+    const role = selectedRole.value;
+    if (role && map[role]) return map[role];
+    // Fallback to the first available adapter — keeps section logic
+    // resilient to a transient null `selectedRole` between connect
+    // and the engine-tabs init.
+    const firstRole = Object.keys(map)[0];
+    return firstRole ? (map[firstRole] ?? null) : null;
+  });
+  const activeStatus = computed<PrinterStatus | null>(() => {
+    const role = selectedRole.value;
+    if (!role) return null;
+    return printerStatus[role] ?? null;
+  });
   const activeSession = computed<EngineSession<TMedia> | null>(() => {
     const role = selectedRole.value;
     if (!role) return null;
@@ -222,10 +250,11 @@ function createSession<TDevice, TMedia>(opts: {
     engineSessions,
     selectedRole,
     submitState,
-    engineStatuses,
     printerStatus,
     isConnected,
     hasIdentity,
+    activePrinter,
+    activeStatus,
     activeSession,
     activeEngine,
     assessedCount,

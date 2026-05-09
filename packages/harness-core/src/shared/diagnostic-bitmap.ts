@@ -11,7 +11,7 @@
  * dimension and return single-plane `LabelBitmap` values. Callers
  * stack and pad as needed; this module doesn't compose layouts.
  */
-import { bytesPerRow, createBitmap, type LabelBitmap } from '@mbtech-nl/bitmap';
+import { bytesPerRow, createBitmap, type LabelBitmap, type RawImageData } from '@mbtech-nl/bitmap';
 
 /**
  * Edge-probe ladder. Each row carries a horizontal bar starting at
@@ -154,4 +154,30 @@ export function sumHeightsWithGaps(sections: readonly LabelBitmap[], gapPx: numb
   const sectionsHeight = sections.reduce((acc, s) => acc + s.heightPx, 0);
   const gapsHeight = gapPx * (sections.length - 1);
   return sectionsHeight + gapsHeight;
+}
+
+/**
+ * Convert a 1bpp `LabelBitmap` to an RGBA `RawImageData`. Set bits
+ * become opaque black; unset bits become opaque white. Used by the
+ * harness's diagnostic-image builders to hand the driver an RGBA
+ * image — the driver runs its own threshold/dither pipeline (so the
+ * harness exercises the real wire path).
+ */
+export function bitmapToRgba(bitmap: LabelBitmap): RawImageData {
+  const { widthPx, heightPx } = bitmap;
+  const bpr = bytesPerRow(widthPx);
+  const data = new Uint8Array(widthPx * heightPx * 4);
+  for (let y = 0; y < heightPx; y += 1) {
+    for (let x = 0; x < widthPx; x += 1) {
+      const byte = bitmap.data[y * bpr + (x >> 3)] ?? 0;
+      const bit = (byte >> (7 - (x & 7))) & 1;
+      const idx = (y * widthPx + x) * 4;
+      const v = bit === 1 ? 0 : 255;
+      data[idx] = v;
+      data[idx + 1] = v;
+      data[idx + 2] = v;
+      data[idx + 3] = 255;
+    }
+  }
+  return { width: widthPx, height: heightPx, data };
 }

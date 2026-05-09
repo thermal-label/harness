@@ -1,199 +1,125 @@
 <script setup lang="ts">
 /**
- * Small "what's about to be printed" canvas. Renders a 1-bit
- * `LabelBitmap` at native resolution into a `<canvas>`; CSS scales
- * the displayed size. Click toggles between thumbnail and an
- * expanded view so the operator can compare bitmap → physical
- * output without leaving the section.
+ * "What's about to be printed" canvas. Renders a `PreviewResult`
+ * (`@thermal-label/contracts`) — one or more 1bpp planes with display
+ * colours — into a `<canvas>`. The driver does the colour splitting
+ * (`createPreview` runs the same code path `print()` uses
+ * internally), so two-colour rolls (DK-22251 etc.) light up red where
+ * red would print, single-colour stays black-on-white.
  *
+ * CSS scales the displayed size; click toggles thumbnail vs expanded.
  * Default thumbnail is ~80 px wide so it doesn't dominate the page;
  * expanded view caps at 320 px wide × 80 vh tall and keeps pixels
  * crisp via `image-rendering: pixelated`.
  *
- * **Dead-zone overlays (plan 08 §7).** When `printableArea` is
- * non-zero, four diagonal-stripe rectangles sit on top of the
- * bitmap covering the leading / trailing / left / right dead-zone
- * edges. When `forcedTrailingFeedMm` is non-zero, an additional
- * striped strip extends below the bitmap rectangle representing the
- * post-print blank tape. The operator sees one continuous "won't
- * print" region collapsed across both phenomena (head can't reach +
- * forced post-print feed); the figure caption discloses the
- * mechanism distinction for triage.
- *
- * Edge case: when no engine / media is resolved, `printableArea`
- * is `null` and no overlays render — same as today's behaviour.
+ * `assumed: true` from the driver (no detected media + no override)
+ * surfaces an inline notice — operators should pick a media entry to
+ * get a faithful preview.
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import type { LabelBitmap } from '@mbtech-nl/bitmap';
-import type { PrintableArea } from '@thermal-label/contracts';
+import type { PreviewResult } from '@thermal-label/contracts';
 
-const props = withDefaults(
-  defineProps<{
-    bitmap: LabelBitmap | null;
-    printableArea?: PrintableArea | null;
-    forcedTrailingFeedMm?: number;
-    dpi?: number;
-  }>(),
-  { printableArea: null, forcedTrailingFeedMm: 0, dpi: 300 },
-);
+const props = defineProps<{ preview: PreviewResult | null }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const expanded = ref(false);
 
-const dimensionsLabel = computed(() =>
-  props.bitmap ? `${props.bitmap.widthPx}×${props.bitmap.heightPx} dots` : '',
-);
+const dimensionsLabel = computed(() => {
+  const first = props.preview?.planes[0];
+  return first ? `${first.bitmap.widthPx}×${first.bitmap.heightPx} dots` : '';
+});
 
-function mmToDots(mm: number): number {
-  return Math.round((mm * props.dpi) / 25.4);
+const planesLabel = computed(() => {
+  const planes = props.preview?.planes ?? [];
+  if (planes.length <= 1) return null;
+  return `${String(planes.length)} planes: ${planes.map(p => p.name).join(' + ')}`;
+});
+
+function parseColor(css: string): { r: number; g: number; b: number } {
+  // Minimal #rrggbb / #rgb parser — drivers emit hex display colours.
+  // Falls back to black on anything we don't recognise.
+  if (css.startsWith('#')) {
+    if (css.length === 7) {
+      return {
+        r: parseInt(css.slice(1, 3), 16),
+        g: parseInt(css.slice(3, 5), 16),
+        b: parseInt(css.slice(5, 7), 16),
+      };
+    }
+    if (css.length === 4) {
+      const c1 = css[1] ?? '0';
+      const c2 = css[2] ?? '0';
+      const c3 = css[3] ?? '0';
+      const r = parseInt(c1 + c1, 16);
+      const g = parseInt(c2 + c2, 16);
+      const b = parseInt(c3 + c3, 16);
+      return { r, g, b };
+    }
+  }
+  return { r: 0, g: 0, b: 0 };
 }
 
-const overlayDots = computed(() => {
-  const area = props.printableArea;
-  return {
-    leading: area ? mmToDots(area.leading) : 0,
-    trailing: area ? mmToDots(area.trailing) : 0,
-    left: area ? mmToDots(area.left) : 0,
-    right: area ? mmToDots(area.right) : 0,
-    forcedFeed: mmToDots(props.forcedTrailingFeedMm),
-  };
-});
-
-const hasOverlay = computed(() => {
-  const o = overlayDots.value;
-  return o.leading > 0 || o.trailing > 0 || o.left > 0 || o.right > 0 || o.forcedFeed > 0;
-});
-
-const overlayCaption = computed(() => {
-  if (!hasOverlay.value) return null;
-  const area = props.printableArea;
-  const parts: string[] = [];
-  if (area && (area.leading > 0 || area.trailing > 0)) {
-    parts.push(
-      `top ${String(area.leading)}mm / bottom ${String(area.trailing)}mm unprintable (head reach)`,
-    );
-  }
-  if (area && (area.left > 0 || area.right > 0)) {
-    parts.push(`left ${String(area.left)}mm / right ${String(area.right)}mm unprintable`);
-  }
-  if (props.forcedTrailingFeedMm > 0) {
-    parts.push(`+${String(props.forcedTrailingFeedMm)}mm forced trailing feed (post-print)`);
-  }
-  return parts.join('; ') + '.';
-});
-
 /**
- * Draw the 1-bit bitmap. We allocate the canvas a bit taller than
- * the bitmap when `forcedTrailingFeedMm > 0` so the post-print-feed
- * extension is visible as part of the same canvas; the extra rows
- * stay all-white but get the striped overlay on top.
+ * Composite every plane onto the canvas. Black plane goes down first;
+ * subsequent planes (red on two-color rolls) overlay using their
+ * display colour.
  */
 function draw(): void {
-  const bitmap = props.bitmap;
+  const preview = props.preview;
   const canvas = canvasRef.value;
-  if (!bitmap || !canvas) return;
-  const extraRows = overlayDots.value.forcedFeed;
-  const totalHeight = bitmap.heightPx + extraRows;
-  canvas.width = bitmap.widthPx;
-  canvas.height = totalHeight;
+  if (!preview || !canvas || preview.planes.length === 0) {
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = 1;
+        canvas.height = 1;
+        ctx.clearRect(0, 0, 1, 1);
+      }
+    }
+    return;
+  }
+  const widthPx = preview.planes[0]!.bitmap.widthPx;
+  const heightPx = preview.planes[0]!.bitmap.heightPx;
+  canvas.width = widthPx;
+  canvas.height = heightPx;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Bitmap → 1-bit white/black.
-  const img = ctx.createImageData(bitmap.widthPx, totalHeight);
-  const bpr = Math.ceil(bitmap.widthPx / 8);
-  for (let y = 0; y < totalHeight; y += 1) {
-    for (let x = 0; x < bitmap.widthPx; x += 1) {
-      let bit = 0;
-      if (y < bitmap.heightPx) {
+  // Start with white background.
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, widthPx, heightPx);
+
+  const img = ctx.getImageData(0, 0, widthPx, heightPx);
+
+  for (const plane of preview.planes) {
+    const bitmap = plane.bitmap;
+    const color = parseColor(plane.displayColor);
+    const bpr = Math.ceil(bitmap.widthPx / 8);
+    const w = Math.min(widthPx, bitmap.widthPx);
+    const h = Math.min(heightPx, bitmap.heightPx);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
         const byte = bitmap.data[y * bpr + (x >> 3)] ?? 0;
-        bit = (byte >> (7 - (x & 7))) & 1;
+        const bit = (byte >> (7 - (x & 7))) & 1;
+        if (bit !== 1) continue;
+        const idx = (y * widthPx + x) * 4;
+        img.data[idx] = color.r;
+        img.data[idx + 1] = color.g;
+        img.data[idx + 2] = color.b;
+        img.data[idx + 3] = 255;
       }
-      const idx = (y * bitmap.widthPx + x) * 4;
-      const v = bit === 1 ? 0 : 255;
-      img.data[idx] = v;
-      img.data[idx + 1] = v;
-      img.data[idx + 2] = v;
-      img.data[idx + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
-
-  // Diagonal-stripe overlays for the four dead-zone edges + the
-  // post-print-feed extension. Drawn semi-transparently so the
-  // user can still see what they authored in the dead zone.
-  if (hasOverlay.value) {
-    drawStripedOverlays(ctx, bitmap.widthPx, bitmap.heightPx, totalHeight);
-  }
-}
-
-function drawStripedOverlays(
-  ctx: CanvasRenderingContext2D,
-  widthPx: number,
-  bitmapHeight: number,
-  totalHeight: number,
-): void {
-  const o = overlayDots.value;
-
-  // Build the diagonal stripe pattern once and reuse for every rect.
-  const patternCanvas = document.createElement('canvas');
-  patternCanvas.width = 8;
-  patternCanvas.height = 8;
-  const pctx = patternCanvas.getContext('2d');
-  if (!pctx) return;
-  pctx.fillStyle = 'rgba(0, 0, 0, 0)';
-  pctx.fillRect(0, 0, 8, 8);
-  pctx.strokeStyle = 'rgba(110, 110, 110, 0.55)';
-  pctx.lineWidth = 1.5;
-  pctx.beginPath();
-  pctx.moveTo(0, 8);
-  pctx.lineTo(8, 0);
-  pctx.moveTo(-2, 2);
-  pctx.lineTo(2, -2);
-  pctx.moveTo(6, 10);
-  pctx.lineTo(10, 6);
-  pctx.stroke();
-  const pattern = ctx.createPattern(patternCanvas, 'repeat');
-  if (!pattern) return;
-
-  ctx.save();
-  ctx.fillStyle = pattern;
-
-  // Leading band.
-  if (o.leading > 0) {
-    ctx.fillRect(0, 0, widthPx, Math.min(o.leading, bitmapHeight));
-  }
-  // Trailing band.
-  if (o.trailing > 0) {
-    const top = Math.max(0, bitmapHeight - o.trailing);
-    ctx.fillRect(0, top, widthPx, bitmapHeight - top);
-  }
-  // Left band.
-  if (o.left > 0) {
-    ctx.fillRect(0, 0, Math.min(o.left, widthPx), bitmapHeight);
-  }
-  // Right band.
-  if (o.right > 0) {
-    const left = Math.max(0, widthPx - o.right);
-    ctx.fillRect(left, 0, widthPx - left, bitmapHeight);
-  }
-  // Forced trailing feed — striped extension below the bitmap.
-  if (o.forcedFeed > 0 && totalHeight > bitmapHeight) {
-    ctx.fillRect(0, bitmapHeight, widthPx, totalHeight - bitmapHeight);
-  }
-
-  ctx.restore();
 }
 
 onMounted(draw);
-watch(() => [props.bitmap, props.printableArea, props.forcedTrailingFeedMm] as const, draw, {
-  deep: true,
-});
+watch(() => props.preview, draw, { deep: true });
 </script>
 
 <template>
   <figure
-    v-if="bitmap"
+    v-if="preview && preview.planes.length > 0"
     class="preview"
     :class="{ expanded }"
     role="button"
@@ -206,7 +132,11 @@ watch(() => [props.bitmap, props.printableArea, props.forcedTrailingFeedMm] as c
     <canvas ref="canvasRef" class="canvas" />
     <figcaption class="caption">
       {{ dimensionsLabel }}<span class="hint"> · click to {{ expanded ? 'shrink' : 'zoom' }}</span>
-      <span v-if="overlayCaption" class="overlay-caption">{{ overlayCaption }}</span>
+      <span v-if="planesLabel" class="planes-label">{{ planesLabel }}</span>
+      <span v-if="preview.assumed" class="assumed">
+        Preview is assumed media — connect a printer or pick a media entry for an accurate
+        rendering.
+      </span>
     </figcaption>
   </figure>
 </template>
@@ -262,7 +192,8 @@ watch(() => [props.bitmap, props.printableArea, props.forcedTrailingFeedMm] as c
   opacity: 0.7;
 }
 
-.overlay-caption {
+.planes-label,
+.assumed {
   font-size: 0.7rem;
   color: var(--muted);
   max-width: 28ch;

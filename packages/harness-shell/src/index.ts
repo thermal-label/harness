@@ -7,22 +7,16 @@
 //
 // The Vue components themselves don't need re-export — they're consumed
 // internally by `<HarnessShell>` and `createHarness` is the only public
-// mounting entry. Lifting them out would expose a much wider API surface
-// than the abstraction needs.
+// mounting entry.
 
 export type {
   DriverAdapter,
   ConnectOptions,
   ConnectResult,
-  StatusPills,
-  StatusPillState,
-  StatusConfig,
   MockSpec,
   MediaPickerConfig,
-  EncoderConfig,
   EngineSession,
-  IdentityExtras,
-  BuildBitmapInput,
+  BuildDiagnosticImageInput,
   BuildReportInput,
 } from './types';
 

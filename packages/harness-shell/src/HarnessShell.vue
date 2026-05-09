@@ -7,9 +7,9 @@
  *   AppFooter
  *
  * Sections read the adapter via `useAdapter()` and the shared session
- * store via `useSession()`. Engine tabs render iff
- * `adapter.multiEngine` is supplied AND the connected device declares
- * more than one engine — single-engine devices stay flat regardless.
+ * store via `useSession()`. Engine tabs render iff the connected
+ * device declares more than one engine — single-engine devices stay
+ * flat regardless.
  *
  * If the browser lacks the required transport API (today: WebUSB),
  * the Connect section is replaced by `<UnsupportedBrowser>` pointing
@@ -34,9 +34,9 @@ const session = useSession();
 const supported = canRunOnThisBrowser();
 
 const isMultiEngine = computed(() => {
-  const dev = session.device.value;
-  if (!dev || !adapter.multiEngine) return false;
-  return adapter.multiEngine.isMultiEngine(dev);
+  const dev = session.device.value as { engines?: readonly unknown[] } | null;
+  if (!dev?.engines) return false;
+  return dev.engines.length > 1;
 });
 
 const heading = computed(

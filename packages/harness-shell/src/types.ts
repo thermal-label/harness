@@ -3,90 +3,67 @@
  * `<HarnessShell>` (driver-agnostic) and the per-driver app
  * (`apps/harness-<driver>/src/adapter.ts`).
  *
- * Design intent: the harness page is the same for every driver
- * (connect → media → print → assess → submit, with optional engine
- * tabs for multi-engine devices). Per-driver behaviour lives in a
- * single `DriverAdapter<TDevice, TMedia, TStatus>` object that wires
- * up:
+ * Design intent (post-harness-v2 refactor): the harness is a *driver
+ * fidelity test*. Every protocol-level operation goes through the
+ * driver's `PrinterAdapter` (`@thermal-label/contracts`), so the
+ * harness exercises the same code paths a real consumer of the driver
+ * would. The shell owns:
  *
- *   - identity (driverKey, displayName, target GitHub repo)
- *   - device + media catalogues (read straight from the driver-core
- *     packages — `DEVICES`, `MEDIA`, `DEFAULT_MEDIA`)
- *   - the connect orchestrator (returns one or more transports +
- *     identity + status probe — handles WebUSB / Web Bluetooth / Web
- *     Serial as the driver's transports demand)
+ *   - connect/disconnect orchestration (delegates to `adapter.connect`,
+ *     which returns a `PrinterAdapter`)
+ *   - status polling (`printer.getStatus()` every 4 s, or `onStatus`
+ *     when the driver supplies push), pill rendering, detected-media
+ *     surfacing
+ *   - bitmap preview (calls `printer.createPreview(rgba, { media })`)
+ *   - print (calls `printer.print(rgba, media)`)
+ *   - submit / report flow / engine-tabs / "rails not walls" CTAs
+ *
+ * The adapter contributes only:
+ *
+ *   - identity (driverKey, displayName, target GitHub repo, versions)
+ *   - device + media catalogues (read straight from driver-core)
+ *   - the connect orchestrator (real path: `requestPrinter()` from the
+ *     driver-web package; mock path: `new WebDymoPrinter(device,
+ *     mockTransport)` etc.)
  *   - mock targets (URL-driven dev-only `?mock=…` aliases)
- *   - status polling (or, for BLE-only drivers, GATT subscriptions)
- *   - media-picker bindings (filter, group, swatch, detection mode)
- *   - encoder + chunked write (`buildBitmap` + `encodeBytes`)
- *   - optional multi-engine support (engine tabs, per-engine encoder
- *     dispatch)
- *   - optional identity-probe extras (LW 5xx NFC SKU, future drivers)
+ *   - media-picker bindings (filter, group, swatch, describe — no
+ *     defaultMediaId / detection / warning / customDimensions; those
+ *     are derived inside the shell from `printer.getStatus()` and the
+ *     driver's media metadata)
+ *   - the diagnostic-image builder (returns RGBA — the driver does
+ *     threshold/dither, exactly like real consumers)
  *   - report-builder (`buildReport(input) → HardwareReport`) for the
  *     submit flow
  *
- * The shell handles UI state, Vue plumbing, polling, the section
- * progression, the engine-tabs strip, the multi-engine submit-coverage
- * list, the URL-too-long fallback, the clipboard textarea, and the
- * "Test the [other-role] engine" CTA. Adding a new driver is then a
- * matter of writing one ~150-line `adapter.ts` plus a 5-line `main.ts`.
- *
  * The four hard rules from plan-09 + maintainer feedback survive
  * intact:
- *  - tabs render iff `multiEngine` is present AND `device.engines
- *    .length > 1` — single-engine devices stay flat.
+ *  - tabs render iff `device.engines.length > 1`. Single-engine devices
+ *    stay flat.
  *  - submit gates on `≥1 engine assessed`, never on full coverage
  *    (plan-09 §rails-not-walls). Submit copy adapts: "Submit
  *    verification report" (full) vs "Submit partial report (1 of 2
  *    engines tested)" (partial). No modals, no nags.
  *  - mock mode is dev-only (`import.meta.env.DEV` gate; the shell
  *    enforces this in its `useMockMode` helper).
- *  - identity-probe extras are an opaque blob (`IdentityExtras`),
- *    surfaced verbatim in the Connect section's Advanced drawer. No
- *    typed shape per driver — every driver returns whatever
- *    diagnostic bytes the operator might want to triage with.
+ *  - "Don't see your label?" is a CTA linking to the driver repo's
+ *    issue tracker, not in-app custom-dimension functionality.
  */
-import type { Ref } from 'vue';
-import type { MediaDescriptor, PrintEngine, Transport } from '@thermal-label/contracts';
-import type { DiagnosticBitmapResult } from '@thermal-label/harness-core/labelmanager';
+import type {
+  MediaDescriptor,
+  PrintEngine,
+  PrinterAdapter,
+  RawImageData,
+} from '@thermal-label/contracts';
 import type {
   HardwareReport,
   IdentitySnapshot,
   ProposedRung,
 } from '@thermal-label/harness-core/shared';
-import type { LabelBitmap } from '@mbtech-nl/bitmap';
-import type {
-  DetectionCapability,
-  MediaGroupKey,
-  MediaSwatch,
-} from '@thermal-label/harness-components/types';
-
-/** Traffic-light state shared with `<StatusPill>`. */
-export type StatusPillState = 'unknown' | 'good' | 'warn' | 'bad';
-
-/**
- * Pair of pills surfaced in section headers. The shell looks for
- * `printer` on the Connect (§1) section and `media` on the Media (§3)
- * section. Adapters omit either to suppress the corresponding pill.
- */
-export interface StatusPills {
-  printer?: { state: StatusPillState; label: string };
-  media?: { state: StatusPillState; label: string };
-}
-
-/**
- * Identity-probe extras stuffed onto `connection.identity.extra` and
- * surfaced verbatim in the Advanced drawer's hex dump. Intentionally
- * opaque — every driver returns whatever bytes are useful for triage
- * (LW: SKU + raw status bytes; LM: raw status bytes; future drivers:
- * BLE-advertisement payloads, MAC addresses, etc.). The shell does
- * not enforce a schema; consumers must defensive-cast at read time.
- */
-export type IdentityExtras = Record<string, unknown>;
+import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 
 // ─── Connect ─────────────────────────────────────────────────────
 
-export interface ConnectOptions<TDevice> {
+export interface ConnectOptions {
   /**
    * True when the operator opened the page with `?mock=<key>` — the
    * adapter should branch to its mock implementation. The shell still
@@ -97,88 +74,41 @@ export interface ConnectOptions<TDevice> {
   /**
    * The mock target key (if `mock === true`). One of the keys in
    * `adapter.mockTargets`. The adapter looks it up and synthesises a
-   * matching `MockTransport` + `TDevice`.
+   * matching mock-backed `PrinterAdapter`.
    */
   mockTarget?: string;
-  /**
-   * Hint from `?device=…` (future). Ignored today — the shell never
-   * supplies it. Reserved so adapters can branch on a forced device
-   * key without having to introspect the URL.
-   */
-  forcedDeviceKey?: string;
-  /**
-   * Helper passed through so adapters can bypass importing it
-   * directly. Future use; today every adapter calls its own connect
-   * orchestrator.
-   */
-  _bound?: TDevice;
 }
 
 /**
- * Connect-orchestrator result. Single-engine devices return one
- * transport keyed by the engine's `role` (or `'primary'` for
- * single-engine drivers that don't bother with role names); Twin-style
- * devices that share a transport across engines return one entry that
- * every role-key points at; Duo-style devices return one transport
- * per engine USB interface.
+ * Connect-orchestrator result. The shell consumes the `PrinterAdapter`
+ * map directly — every protocol-level operation (print, preview, status)
+ * goes through whichever entry the operator's active engine selects.
  *
- * `identity.extra` is the opaque blob — adapters stuff whatever
- * status-probe bytes / SKU info / handshake responses they have. The
- * shell renders it in the Advanced drawer, no schema.
+ * `printers` is keyed by engine role. Single-engine devices (the LM,
+ * the QL family, most LW models) return a 1-key record (the engine's
+ * own role). Multi-engine devices (LW Twin Turbo — `left` / `right`,
+ * LW Duo family — `label` / `tape`) return one entry per engine. Each
+ * entry is an independent `PrinterAdapter` scoped to that engine; for
+ * the Duo specifically each entry holds its own USB-interface-claimed
+ * transport, so writes hit the correct endpoint without any harness-
+ * level facade.
+ *
+ * `device` is the registry entry for tabs / report assembly; `mocked`
+ * drives the dev-only "mock mode" banner.
  */
 export interface ConnectResult<TDevice> {
-  transports: Record<string, Transport>;
+  /** One adapter per drivable engine on the device, keyed by engine role. */
+  printers: Record<string, PrinterAdapter>;
   device: TDevice;
-  identity: IdentitySnapshot;
-  /** True when this is a mock transport. Drives mock-banner UI. */
+  /** True when this is a mock-backed PrinterAdapter. */
   mocked: boolean;
 }
-
-// ─── Status (poll vs subscribe) ──────────────────────────────────
-
-/**
- * Status wiring. Today's drivers (LW, LM) all poll; the union shape
- * is forward-compat for BLE drivers (niimbot, letratag) that subscribe
- * to GATT notifications.
- *
- * `toPills` is invoked on every status update; the shell reads the
- * `printer` + `media` pills out of the returned object and renders
- * them in §1 and §3 headers respectively. Engine-aware pills (the LW
- * tape engine wants "tape loaded" rather than "paper loaded") get the
- * active engine via `ctx.engine`.
- */
-export type StatusConfig<TDevice, TStatus> =
-  | {
-      kind: 'poll';
-      /**
-       * Read status off a transport for a specific engine. Multi-engine
-       * devices spawn one poller per engine — adapters can branch on
-       * `engine.protocol` here (LW Duo: `lw-450` paper engine vs
-       * `d1-tape` tape engine each parse the ESC A reply differently).
-       */
-      read: (transport: Transport, device: TDevice, engine: PrintEngine) => Promise<TStatus>;
-      /** Default: 4000 ms. */
-      intervalMs?: number;
-      toPills: (s: TStatus | null, ctx: { engine?: PrintEngine }) => StatusPills;
-    }
-  | {
-      kind: 'subscribe';
-      subscribe: (
-        transport: Transport,
-        device: TDevice,
-        engine: PrintEngine,
-      ) => Promise<{
-        unsubscribe: () => Promise<void>;
-        latest: Ref<TStatus | null>;
-      }>;
-      toPills: (s: TStatus | null, ctx: { engine?: PrintEngine }) => StatusPills;
-    };
 
 // ─── Mock targets ────────────────────────────────────────────────
 
 /**
  * One mock target — keyed off `?mock=<key>`. The adapter resolves
- * the key to a fake transport + device. `aliases` lets one entry
+ * the key to a synthesised device entry. `aliases` lets one entry
  * accept multiple URL spellings (`?mock=lm280` and `?mock=lm_280` for
  * the same target).
  */
@@ -197,10 +127,11 @@ export interface MockSpec<TDevice> {
 // ─── Media picker ────────────────────────────────────────────────
 
 /**
- * Media-picker bindings. Per-engine on multi-engine devices (the
- * shell calls each callback with the active engine), so an LW Duo's
- * label vs tape tab can return different `compatible[]` sets and
- * different `detectionCapability` values from the same adapter.
+ * Media-picker bindings. Per-engine on multi-engine devices (the shell
+ * calls each callback with the active engine). The shell derives
+ * detection (auto-locked / auto-suggest / none) and the detected
+ * entry from `printer.getStatus().detectedMedia` directly — adapters
+ * supply only the catalogue filtering + visual presentation.
  */
 export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
   filterByDeviceEngine: (
@@ -211,119 +142,16 @@ export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
   groupBy: (m: TMedia) => MediaGroupKey;
   swatch?: (m: TMedia) => MediaSwatch | null;
   describe?: (m: TMedia) => string;
-  /** `defaultMediaId` per engine (LW tape default differs from LW label default). */
-  defaultMediaId: (device: TDevice, engine: PrintEngine) => string | number;
-  detectionCapability: (device: TDevice, engine: PrintEngine) => DetectionCapability;
-  /**
-   * Resolve detected media to a catalogue entry (or null when nothing
-   * matched). Only called when `detectionCapability !== 'none'`.
-   *
-   * Receives both the connect-time `identity.extra` payload AND the
-   * latest live status. Drivers like brother-ql ship media identity
-   * inside the polled status frame (DK-22251 swap mid-session, or
-   * cover closes after a no-media first probe), so reading status
-   * first + falling back to identity is the right pattern. LW 5xx's
-   * NFC SKU comes from a one-shot probe stashed on identity, so its
-   * adapter ignores `status` and reads identity only.
-   *
-   * `status` is the adapter's own `TStatus` shape from `status.read`
-   * (or `subscribe.latest`). May be null when no poll has succeeded
-   * yet — adapters should fall back to identity in that case.
-   */
-  detected?: (
-    identity: IdentitySnapshot,
-    available: readonly TMedia[],
-    engine: PrintEngine,
-    status: unknown,
-  ) => TMedia | null;
-  /**
-   * Optional section-title override per engine ("Pick the loaded
-   * label" vs "Pick the loaded D1 tape"). Defaults to "Pick what's
-   * loaded".
-   */
-  sectionTitle?: (engine: PrintEngine) => string;
-  /**
-   * Optional warning surfaced above the picker — used by LW today to
-   * flag TCP-only models the browser can't reach. Returns null for
-   * "no warning". Reads `device` so adapters can branch on
-   * registry-derived facts.
-   */
-  warning?: (device: TDevice, engine: PrintEngine) => string | null;
-  /**
-   * Optional support for operator-supplied custom dimensions (LW's
-   * "set custom width × length" drawer). The shell renders the
-   * advanced controls; the adapter constructs the resulting media
-   * descriptor. Omit on drivers where custom dimensions don't apply
-   * (LM tape: width is locked by the cassette).
-   */
-  customDimensions?: {
-    /** True when the active engine supports the custom drawer. */
-    supports: (device: TDevice, engine: PrintEngine) => boolean;
-    /** Build a synthesised media descriptor from operator inputs. */
-    build: (input: {
-      widthMm: number;
-      lengthMm: number;
-      device: TDevice;
-      engine: PrintEngine;
-    }) => TMedia;
-    /** Default width hint shown in the input. */
-    defaultWidthMm?: number;
-    /** Default length hint shown in the input. */
-    defaultLengthMm?: number;
-  };
 }
 
-// ─── Encoder ─────────────────────────────────────────────────────
+// ─── Diagnostic image ────────────────────────────────────────────
 
-export interface BuildBitmapInput<TDevice, TMedia> {
+export interface BuildDiagnosticImageInput<TDevice, TMedia> {
   device: TDevice;
   engine: PrintEngine;
   media: TMedia;
   harnessVersion: string;
   driverVersion: string;
-}
-
-export interface EncoderConfig<TDevice, TMedia> {
-  buildBitmap: (input: BuildBitmapInput<TDevice, TMedia>) => DiagnosticBitmapResult;
-  /**
-   * Encode a built wire bitmap to printer-ready bytes. `engine` is
-   * passed for drivers that need engine-protocol-aware wire framing
-   * (Twin's `ESC q` roll-select prefix on LW); single-engine drivers
-   * ignore it.
-   *
-   * `labelLengthDots` is an LW-only label-pitch hint (form-feed /
-   * cut sequencing). Pass `result.authored.heightPx`; ignored on
-   * drivers that don't need it.
-   */
-  encodeBytes: (
-    bitmap: LabelBitmap,
-    device: TDevice,
-    media: TMedia,
-    engine: PrintEngine,
-    labelLengthDots?: number,
-  ) => Uint8Array;
-  /** Bytes per chunked transport write. Default: 64. */
-  chunkSize?: number;
-  /** Delay between chunks, in ms. Default: 5. */
-  chunkDelayMs?: number;
-}
-
-// ─── Multi-engine ────────────────────────────────────────────────
-
-/**
- * Multi-engine support. Tabs render iff this exists AND
- * `device.engines.length > 1`. Single-engine devices skip the strip
- * even when present (plan-09 hard rule: 6-LW renders identically to
- * today). When omitted, the shell treats the device as single-engine
- * regardless.
- *
- * `engineEncoder` lets a driver swap encoders per engine (LW Duo's
- * `lw-450` paper engine + `d1-tape` tape engine). When omitted, the
- * top-level `encoder` is used for every engine.
- */
-export interface MultiEngineConfig<TDevice, TMedia> {
-  isMultiEngine: (device: TDevice) => boolean;
-  engineEncoder?: (engine: PrintEngine) => EncoderConfig<TDevice, TMedia>;
 }
 
 // ─── Report builder ──────────────────────────────────────────────
@@ -370,7 +198,7 @@ export interface BuildReportInput<TDevice, TMedia> {
 
 // ─── DriverAdapter ───────────────────────────────────────────────
 
-export interface DriverAdapter<TDevice, TMedia extends MediaDescriptor, TStatus> {
+export interface DriverAdapter<TDevice, TMedia extends MediaDescriptor> {
   // Identity
   /** Stable key written into HardwareReport.driver and used in URLs. */
   driverKey: string;
@@ -394,37 +222,24 @@ export interface DriverAdapter<TDevice, TMedia extends MediaDescriptor, TStatus>
   /** Page heading. Defaults to "How does your <displayName> actually behave?". */
   pageHeading?: string;
 
-  // Catalogues + connect
-  /**
-   * Resolve a registry device entry from a vid/pid pair returned by
-   * the WebUSB picker. Adapters using non-USB transports return null
-   * here and supply their own resolution path inside `connect`.
-   */
-  findDeviceByVidPid?: (vid: number, pid: number) => TDevice | undefined;
-  /**
-   * Every device entry. Surfaced in the "wrong guess?" override
-   * dropdown so the operator can correct a mis-detect.
-   */
+  // Catalogues
+  /** Every device entry — used for the engine-tabs strip / report rendering. */
   devices: readonly TDevice[];
+  /** Every media entry. */
+  media: readonly TMedia[];
   /** Lookup function — `device.key` from one entry, returns the entry. */
   deviceKey: (d: TDevice) => string;
-  /** Lookup function — `device.name` for the dropdown. */
+  /** Lookup function — `device.name` for display copy. */
   deviceName: (d: TDevice) => string;
+
   /**
-   * Connect orchestrator. The adapter handles WebUSB picker / WebBT /
-   * WebSerial as needed; returns the per-engine transport map +
-   * identity. Throws on user-cancel or hard transport errors.
+   * Connect orchestrator. Real path: call `requestPrinter()` from
+   * driver-web. Mock path: instantiate the driver-web class
+   * (`WebDymoPrinter` etc.) with a `MockTransport` so the returned
+   * `PrinterAdapter` is a real driver instance backed by mock bytes.
+   * Throws on user-cancel or hard transport errors.
    */
-  connect: (opts: ConnectOptions<TDevice>) => Promise<ConnectResult<TDevice>>;
-  /**
-   * Optional cleanup hook, called when the user clicks Disconnect or
-   * navigates away. Drivers that need to release Bluetooth GATT
-   * connections / unclaim USB interfaces beyond what `Transport.close`
-   * does, hook in here. Default: shell calls `transport.close()` on
-   * each unique transport (de-duped on identity, since Twin shares one
-   * transport across engines).
-   */
-  disconnectExtras?: (transports: Record<string, Transport>) => Promise<void>;
+  connect: (opts: ConnectOptions) => Promise<ConnectResult<TDevice>>;
 
   /**
    * Mock targets. Keys become valid `?mock=<key>` aliases (case-
@@ -435,28 +250,13 @@ export interface DriverAdapter<TDevice, TMedia extends MediaDescriptor, TStatus>
   /** Default mock target when `?mock=1` is bare (no key). */
   defaultMockTarget?: string;
 
-  // Status
-  /**
-   * Status wiring (poll or subscribe). Optional — drivers without a
-   * status protocol skip pills entirely and the §1 / §3 headers stay
-   * pillless.
-   */
-  status?: StatusConfig<TDevice, TStatus>;
-
   // Media picker
-  media: readonly TMedia[];
   mediaPicker: MediaPickerConfig<TDevice, TMedia>;
 
-  // Encoder + chunked write
-  encoder: EncoderConfig<TDevice, TMedia>;
-
-  // Optional multi-engine support
-  multiEngine?: MultiEngineConfig<TDevice, TMedia>;
-
-  // Optional identity-probe extras (LW 5xx NFC SKU, future drivers).
-  // Stuffed onto identity.extra; surfaces in the Advanced drawer.
-  // The shell doesn't introspect — the adapter's `mediaPicker.detected`
-  // callback reads its own keys back out at media-section render time.
+  // Diagnostic-image builder. Returns full RGBA — the driver does the
+  // threshold/dither pipeline via `printer.print()` and
+  // `printer.createPreview()`.
+  buildDiagnosticImage: (input: BuildDiagnosticImageInput<TDevice, TMedia>) => RawImageData;
 
   /** Build the HardwareReport from session state. Driver-specific assembly. */
   buildReport: (input: BuildReportInput<TDevice, TMedia>) => HardwareReport;

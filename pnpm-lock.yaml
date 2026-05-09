@@ -6,10 +6,13 @@ settings:
 
 overrides:
   '@thermal-label/brother-ql-core': link:../brother-ql/packages/core
+  '@thermal-label/brother-ql-web': link:../brother-ql/packages/web
   '@thermal-label/contracts': link:../contracts
   '@thermal-label/d1-core': link:../d1-core
   '@thermal-label/labelmanager-core': link:../labelmanager/packages/core
+  '@thermal-label/labelmanager-web': link:../labelmanager/packages/web
   '@thermal-label/labelwriter-core': link:../labelwriter/packages/core
+  '@thermal-label/labelwriter-web': link:../labelwriter/packages/web
   '@thermal-label/transport': link:../transport
 
 importers:
@@ -49,6 +52,9 @@ importers:
       '@thermal-label/brother-ql-core':
         specifier: link:../../../brother-ql/packages/core
         version: link:../../../brother-ql/packages/core
+      '@thermal-label/brother-ql-web':
+        specifier: link:../../../brother-ql/packages/web
+        version: link:../../../brother-ql/packages/web
       '@thermal-label/contracts':
         specifier: link:../../../contracts
         version: link:../../../contracts
@@ -122,6 +128,9 @@ importers:
       '@thermal-label/labelmanager-core':
         specifier: link:../../../labelmanager/packages/core
         version: link:../../../labelmanager/packages/core
+      '@thermal-label/labelmanager-web':
+        specifier: link:../../../labelmanager/packages/web
+        version: link:../../../labelmanager/packages/web
       '@thermal-label/transport':
         specifier: link:../../../transport
         version: link:../../../transport
@@ -177,9 +186,15 @@ importers:
       '@thermal-label/harness-shell':
         specifier: workspace:*
         version: link:../../packages/harness-shell
+      '@thermal-label/labelmanager-core':
+        specifier: link:../../../labelmanager/packages/core
+        version: link:../../../labelmanager/packages/core
       '@thermal-label/labelwriter-core':
         specifier: link:../../../labelwriter/packages/core
         version: link:../../../labelwriter/packages/core
+      '@thermal-label/labelwriter-web':
+        specifier: link:../../../labelwriter/packages/web
+        version: link:../../../labelwriter/packages/web
       '@thermal-label/transport':
         specifier: link:../../../transport
         version: link:../../../transport

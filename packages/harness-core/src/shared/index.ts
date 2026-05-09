@@ -20,6 +20,7 @@ export { renderIssueBody } from './issue-body.js';
 
 export type { EdgeProbeOptions } from './diagnostic-bitmap.js';
 export {
+  bitmapToRgba,
   blankBitmap,
   cropHeight,
   cropToWidth,

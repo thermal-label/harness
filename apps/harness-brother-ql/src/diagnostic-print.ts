@@ -1,43 +1,27 @@
 /**
- * Brother-QL diagnostic-print encoder for the browser harness.
+ * Brother-QL diagnostic-image builder for the browser harness.
  *
- * Mirrors `apps/verify-cli/src/drivers/brother-ql/diagnostic-print.ts`
- * — same content, same orientation, same encoder dispatch — but
- * returns the shell's `DiagnosticBitmapResult` shape so the
- * `<BitmapPreview>` overlay reads the printable-area metadata
- * uniformly across drivers.
+ * Returns full-RGBA `RawImageData` so the driver's `print()` runs the
+ * real palette-split + dither pipeline (two-color rolls like
+ * DK-22251 split into black + red planes inside the driver via
+ * `renderMultiPlaneImage`). The harness's contribution is a single
+ * RGBA composition with red pixels where the second ribbon should
+ * fire — the driver classifies each pixel into the correct plane on
+ * the way out.
  *
- * Brother-QL doesn't expose `engine.printableArea` / forced trailing
- * feed today (the encoder injects feed margins via `ESC i d` from the
- * raster-protocol config rather than off the registry), so we pass
- * `ZERO_PRINTABLE_AREA` + `forcedTrailingFeedMm: 0`. The preview
- * canvas degrades gracefully — no overlay band, but the bitmap itself
- * renders correctly at the engine DPI.
- *
- * Two-color rendering: when `media.palette` is defined (DK-22251 /
- * DK-44205 today), the encoder emits a `redBitmap` alongside the
- * black bitmap. Header text + orientation markers go in the red
- * plane; edge probes, sample text, fill stripes, and the cutter probe
- * go in black. The `wire` bitmap returned to the shell is the black
- * plane only — the preview canvas is single-plane so two-colour media
- * shows the operator-facing content (text + orientation markers in
- * black/red) accurately enough at the preview scale. The actual print
- * receives both planes via the encoder.
- *
- * Bitmap orientation contract (from `brother-ql-core/protocol.ts`):
- *   - `bitmap.widthPx` is the head-perpendicular dimension (across the tape) —
- *     equals the media's `printAreaDots` (e.g. 696 dots for DK-22205 62 mm).
- *   - `bitmap.heightPx` is the feed direction (along the tape).
+ * Layout mirrors the LM/LW builders: identifying header,
+ * orientation markers, edge probes, sample text at two scales, fill
+ * region, cutter-offset ladder. Two-color rolls' header text +
+ * orientation markers get red pixels so the operator immediately
+ * sees the second ink working across a meaningful area.
  */
 import {
-  encodeJobForEngine,
-  flipHorizontal,
   renderText,
   type BrotherQLDevice,
   type BrotherQLMedia,
   type LabelBitmap,
-  type PageData,
   type PrintEngine,
+  type RawImageData,
 } from '@thermal-label/brother-ql-core';
 import { bytesPerRow, createBitmap, padBitmap, stackBitmaps } from '@mbtech-nl/bitmap';
 import {
@@ -46,8 +30,6 @@ import {
   diagonalStripes,
   edgeProbeSection,
 } from '@thermal-label/harness-core/shared';
-import { ZERO_PRINTABLE_AREA } from '@thermal-label/contracts';
-import type { DiagnosticBitmapResult } from '@thermal-label/harness-core/labelmanager';
 
 interface DiagnosticPrintInput {
   device: BrotherQLDevice;
@@ -90,24 +72,19 @@ function resolveWidthDots(media: BrotherQLMedia, engine: PrintEngine): number {
 }
 
 /**
- * Build the head-aligned diagnostic bitmap. Returns the shell's
- * `DiagnosticBitmapResult` shape so the preview canvas reads the same
- * `authored` / `wire` / `printableArea` / `forcedTrailingFeedMm`
- * fields it does for LM/LW.
- *
- * The internal red plane (when applicable for two-color media) is
- * stashed on a module-local map keyed by the returned bitmap so
- * `encodeBytes` can reattach it without changing the shell's
- * single-bitmap encoder signature.
+ * Build the head-aligned diagnostic image as RGBA. Two-color media
+ * gets red pixels where the second ribbon should fire; the driver
+ * classifies pixels into the appropriate plane via its palette
+ * splitter.
  */
-export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBitmapResult {
+export function buildDiagnosticImage(input: DiagnosticPrintInput): RawImageData {
   const widthDots = resolveWidthDots(input.media, input.engine);
   const twoColor = input.media.palette !== undefined;
 
   const sections: Section[] = [];
 
-  // 1. Header strings on the red plane (two-color) so the operator sees
-  //    second-ribbon coverage without measuring; black on single-color.
+  // 1. Header strings on the red plane (two-color); black on
+  //    single-color.
   const headerStrings = [
     `v${input.harnessVersion} brother-ql ${input.driverVersion}`,
     input.device.key,
@@ -122,7 +99,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
   }
 
   // 2. Top orientation marker — asymmetric vs the bottom marker so
-  //    mirror / upside-down jumps out of a photo without measuring.
+  //    mirror / upside-down jumps out of a photo.
   const top = textSection('TOP>', widthDots, 2);
   if (twoColor) {
     sections.push({ black: blankBitmap(widthDots, top.heightPx), red: top });
@@ -130,9 +107,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
     sections.push({ black: top });
   }
 
-  // 3. Edge probes — always black, operator measures margins by which
-  //    bar didn't print. QL's wide head wants 4-dot steps to keep the
-  //    section under ~30 mm.
+  // 3. Edge probes — always black.
   sections.push({ black: edgeProbeSection(widthDots, 'left', { dotsPerStep: 4 }) });
   sections.push({ black: edgeProbeSection(widthDots, 'right', { dotsPerStep: 4 }) });
 
@@ -140,9 +115,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
   sections.push({ black: textSection('TXT 1X SAMPLE', widthDots, 1) });
   sections.push({ black: textSection('2X', widthDots, 2) });
 
-  // 5. Fill region — diagonal stripe pattern. Red on two-color so the
-  //    operator immediately sees the second ink working across a
-  //    meaningful area.
+  // 5. Fill region — diagonal stripe pattern.
   const fill = diagonalStripes(widthDots, FILL_STRIPES_HEIGHT_PX);
   if (twoColor) {
     sections.push({ black: blankBitmap(widthDots, fill.heightPx), red: fill });
@@ -150,9 +123,7 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
     sections.push({ black: fill });
   }
 
-  // 6. Cutter-offset ladder — always black. Lives at the bottom; the
-  //    auto-cut happens shortly after the last row, so the first
-  //    visible bar above the cut tells the head-to-cutter dead zone.
+  // 6. Cutter-offset ladder — always black.
   sections.push({ black: cutterProbeSection(widthDots) });
 
   // 7. Bottom orientation marker — different glyph from `TOP>`.
@@ -174,53 +145,13 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
     blackPlanes.push(blankBitmap(widthDots, ROW_GAP_PX));
     if (twoColor) redPlanes.push(blankBitmap(widthDots, ROW_GAP_PX));
   }
-  // Drop the trailing gap — cutter ladder serves as the last visual.
   blackPlanes.pop();
   if (twoColor) redPlanes.pop();
 
   const black = stackBitmaps(blackPlanes, 'vertical');
-  if (twoColor) {
-    const red = stackBitmaps(redPlanes, 'vertical');
-    redPlaneFor.set(black, red);
-  }
+  const red = twoColor ? stackBitmaps(redPlanes, 'vertical') : null;
 
-  return {
-    authored: black,
-    wire: black,
-    printableArea: ZERO_PRINTABLE_AREA,
-    forcedTrailingFeedMm: 0,
-  };
-}
-
-/**
- * Module-local stash of the red plane keyed by the black bitmap, so
- * `encodeBytes` can reattach it without changing the shell's
- * single-bitmap encoder signature. WeakMap so dropped bitmaps GC
- * cleanly. Empty entries (single-color media) just resolve to
- * undefined.
- */
-const redPlaneFor = new WeakMap<LabelBitmap, LabelBitmap>();
-
-/**
- * Encode the diagnostic bitmap into wire bytes for the device's
- * primary engine. Mirrors the verify-cli encoder: `flipHorizontal` on
- * both planes (QL head pin 0 is on the right of the printed face),
- * then `encodeJobForEngine` with the engine's protocol config picked
- * automatically.
- */
-export function encodeBitmap(
-  bitmap: LabelBitmap,
-  device: BrotherQLDevice,
-  media: BrotherQLMedia,
-  engine: PrintEngine,
-): Uint8Array {
-  const red = redPlaneFor.get(bitmap);
-  const page: PageData = {
-    bitmap: flipHorizontal(bitmap),
-    media,
-    ...(red ? { redBitmap: flipHorizontal(red) } : {}),
-  };
-  return encodeJobForEngine([page], { copies: 1 }, engine, device.name);
+  return composeRgba(black, red);
 }
 
 function textSection(text: string, widthDots: number, scale: number): LabelBitmap {
@@ -256,4 +187,42 @@ function cutterProbeSection(widthDots: number): LabelBitmap {
     }
   }
   return bitmap;
+}
+
+/**
+ * Compose 1bpp black + (optional) red planes into an RGBA buffer.
+ * Set bits in the black plane → opaque black; set bits in the red
+ * plane → opaque red; cleared in both → opaque white. Where black
+ * and red overlap, black wins (matches the driver's plane-split
+ * priority).
+ */
+function composeRgba(black: LabelBitmap, red: LabelBitmap | null): RawImageData {
+  const widthPx = black.widthPx;
+  const heightPx = black.heightPx;
+  const bpr = bytesPerRow(widthPx);
+  const data = new Uint8Array(widthPx * heightPx * 4);
+  for (let y = 0; y < heightPx; y += 1) {
+    for (let x = 0; x < widthPx; x += 1) {
+      const blackByte = black.data[y * bpr + (x >> 3)] ?? 0;
+      const blackBit = (blackByte >> (7 - (x & 7))) & 1;
+      const redBit =
+        red === null ? 0 : ((red.data[y * bpr + (x >> 3)] ?? 0) >> (7 - (x & 7))) & 1;
+      const idx = (y * widthPx + x) * 4;
+      if (blackBit === 1) {
+        data[idx] = 0;
+        data[idx + 1] = 0;
+        data[idx + 2] = 0;
+      } else if (redBit === 1) {
+        data[idx] = 255;
+        data[idx + 1] = 0;
+        data[idx + 2] = 0;
+      } else {
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+      }
+      data[idx + 3] = 255;
+    }
+  }
+  return { width: widthPx, height: heightPx, data };
 }

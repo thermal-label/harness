@@ -19,20 +19,19 @@ import type { DriverAdapter } from '../types';
 
 // `unknown` generics here; consumers cast to the concrete shape.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyAdapter = DriverAdapter<any, any, any>;
+type AnyAdapter = DriverAdapter<any, any>;
 
 const ADAPTER_KEY: InjectionKey<AnyAdapter> = Symbol('thermal-label.harness.adapter');
 
-export function provideAdapter<TDevice, TMedia extends MediaDescriptor, TStatus>(
-  adapter: DriverAdapter<TDevice, TMedia, TStatus>,
+export function provideAdapter<TDevice, TMedia extends MediaDescriptor>(
+  adapter: DriverAdapter<TDevice, TMedia>,
 ): void {
   provide(ADAPTER_KEY, adapter);
 }
 
-export function useAdapter<TDevice, TMedia extends MediaDescriptor, TStatus>(): DriverAdapter<
+export function useAdapter<TDevice, TMedia extends MediaDescriptor>(): DriverAdapter<
   TDevice,
-  TMedia,
-  TStatus
+  TMedia
 > {
   const adapter = inject(ADAPTER_KEY);
   if (!adapter) {
@@ -40,5 +39,5 @@ export function useAdapter<TDevice, TMedia extends MediaDescriptor, TStatus>(): 
       'useAdapter() called outside of HarnessShell — make sure your app uses createHarness()',
     );
   }
-  return adapter as DriverAdapter<TDevice, TMedia, TStatus>;
+  return adapter as DriverAdapter<TDevice, TMedia>;
 }

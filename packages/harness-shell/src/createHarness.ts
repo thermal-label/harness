@@ -19,9 +19,9 @@ import HarnessShell from './HarnessShell.vue';
 import { provideAdapter } from './state/adapterContext';
 import type { DriverAdapter } from './types';
 
-export function createHarness<TDevice, TMedia extends MediaDescriptor, TStatus>(
+export function createHarness<TDevice, TMedia extends MediaDescriptor>(
   rootSelector: string,
-  adapter: DriverAdapter<TDevice, TMedia, TStatus>,
+  adapter: DriverAdapter<TDevice, TMedia>,
 ): App {
   const app = createApp({
     setup() {

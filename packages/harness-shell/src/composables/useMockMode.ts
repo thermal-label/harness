@@ -46,7 +46,7 @@ export function useMockMode<TDevice>(): MockMode<TDevice> {
   if (!isMockMode()) {
     return { isMock: false, target: null, spec: null };
   }
-  const adapter = useAdapter<TDevice, never, never>();
+  const adapter = useAdapter<TDevice, never>();
   const params = new URLSearchParams(window.location.search);
   const raw = (params.get('mock') ?? '').toLowerCase();
   const targets = adapter.mockTargets;
