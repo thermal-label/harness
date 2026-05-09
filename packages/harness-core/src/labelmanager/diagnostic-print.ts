@@ -67,6 +67,7 @@ import {
   buildPrinterStream,
   renderText,
   type LabelManagerDevice,
+  type LabelManagerMedia,
   type LabelManagerPrintOptions,
   type TapeWidth,
 } from '@thermal-label/labelmanager-core';
@@ -81,7 +82,12 @@ import { cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.
 
 export interface DiagnosticPrintInput {
   device: LabelManagerDevice;
-  tapeWidth: TapeWidth;
+  /**
+   * The selected D1 cartridge. Width comes from `media.tapeWidthMm`;
+   * the colour pair (`text` / `background`) drives the `ESC C n`
+   * tape-type byte the encoder emits internally.
+   */
+  media: LabelManagerMedia;
   harnessVersion: string;
   driverVersion: string;
 }
@@ -137,7 +143,7 @@ const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
  * "won't print" picture.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBitmapResult {
-  const headDots = HEAD_DOTS_FOR_TAPE[input.tapeWidth];
+  const headDots = HEAD_DOTS_FOR_TAPE[input.media.tapeWidthMm];
 
   const sections: LabelBitmap[] = [];
 
@@ -195,14 +201,21 @@ export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticBi
  * `engine` is required after the plan-08 refactor — the encoder
  * reads `printableArea` + `forcedTrailingFeedMm` to apply the
  * leading/trailing pads. Pass `device.engines[0]`.
+ *
+ * `media` is forwarded to `buildPrinterStream` so the encoder
+ * resolves the `ESC C n` tape-type byte from the cartridge's
+ * `text` / `background` colours via `tapeTypeFor(media)`. Without
+ * the media argument the encoder would fall back to `n=0` (black-
+ * on-white), which is wrong for any coloured / reverse-print
+ * cartridge.
  */
 export function encodeBitmap(
   bitmap: LabelBitmap,
   engine: LabelManagerDevice['engines'][number],
-  tapeWidth: TapeWidth,
+  media: LabelManagerMedia,
 ): Uint8Array {
-  const options: LabelManagerPrintOptions = { tapeWidth, copies: 1 };
-  return buildPrinterStream(bitmap, engine, options);
+  const options: LabelManagerPrintOptions = { copies: 1 };
+  return buildPrinterStream(bitmap, engine, options, media);
 }
 
 function resolvePrintableArea(input: DiagnosticPrintInput): PrintableArea {
