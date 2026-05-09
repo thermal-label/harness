@@ -1,18 +1,19 @@
 <script setup lang="ts">
 /**
- * D1 cartridge picker — replaces the four-button tape-width picker.
+ * D1 cartridge picker — thin wrapper around the shared
+ * `<MediaPicker>` from `@thermal-label/harness-components`.
  *
  * Filters `MEDIA_LIST` to entries whose `targetModels` overlap with
- * the connected device's `engines[0].mediaCompatibility` so a 12mm-
- * tier chassis only shows 6/9/12 mm SKUs, a 19mm-tier shows
- * 6/9/12/19 mm, etc. Within the compatible set, entries are grouped
- * by `tapeWidthMm` so an operator with 12mm tape doesn't have to
- * scroll past 6 and 9mm options.
+ * the connected device's `engines[0].mediaCompatibility`, then
+ * supplies driver-specific bindings (group-by-tape-width with Rhino
+ * cassettes demoted to `priority: 'secondary'`, swatch from
+ * `media.text` / `media.background`).
  *
  * Labelmanager has no NFC roll-tag detection (the chassis doesn't
  * read cartridge IDs in any documented protocol), so the pick is
- * always operator-driven. The picker carries `DEFAULT_MEDIA` (12mm
- * Black-on-White STANDARD) by default; section state oscillates
+ * always operator-driven (`detectionCapability: 'none'`). The picker
+ * pre-selects `DEFAULT_MEDIA` (12 mm Black-on-White STANDARD) on
+ * mount and fires `update:modelValue` once; section state oscillates
  * between `active` (operator hasn't touched it) and `done` (touched
  * or default kept), driven by a `touched` flag.
  *
@@ -20,13 +21,23 @@
  * (via `tapeWidthMm`) and the `ESC C n` tape-type byte (via
  * `text` / `background` colours, resolved by `tapeTypeFor(media)`
  * inside `buildPrinterStream`).
+ *
+ * Rhino industrial cassettes (`material` starts with `rhino-`) are
+ * grouped as `priority: 'secondary'` and render under a
+ * `Less common (N)` disclosure, collapsed by default. They're
+ * mechanically D1-compatible but DYMO doesn't endorse the cross-use
+ * and the stiffer substrates accelerate wear — visually demoting
+ * them keeps the common-case picker uncluttered.
  */
 import { computed, ref } from 'vue';
 import {
+  DEFAULT_MEDIA,
   MEDIA_LIST,
   type LabelManagerMedia,
   type TapeWidth,
 } from '@thermal-label/labelmanager-core';
+import MediaPicker from '@thermal-label/harness-components/media-picker';
+import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 import { device, hasIdentity, media } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
@@ -46,12 +57,6 @@ const compatibleMedia = computed<readonly LabelManagerMedia[]>(() => {
   });
 });
 
-interface WidthGroup {
-  width: TapeWidth;
-  headDots: number;
-  entries: readonly LabelManagerMedia[];
-}
-
 const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
   6: 32,
   9: 48,
@@ -59,70 +64,54 @@ const HEAD_DOTS_FOR_TAPE: Record<TapeWidth, number> = {
   19: 64,
 };
 
-const widthGroups = computed<readonly WidthGroup[]>(() => {
-  const byWidth = new Map<TapeWidth, LabelManagerMedia[]>();
-  for (const m of compatibleMedia.value) {
-    const list = byWidth.get(m.tapeWidthMm) ?? [];
-    list.push(m);
-    byWidth.set(m.tapeWidthMm, list);
-  }
-  const widths = Array.from(byWidth.keys()).sort((a, b) => a - b);
-  return widths.map(width => ({
-    width,
-    headDots: HEAD_DOTS_FOR_TAPE[width],
-    entries: byWidth.get(width) ?? [],
-  }));
-});
-
 /**
- * Per-group expanded state. Default: collapse every group except the
- * one carrying the currently-selected media. On selection change the
- * matching group stays open so the operator can see what they picked.
+ * Group key — by tape width for STANDARD/specialty entries; a single
+ * `rhino` bucket per width for the industrial line, demoted to
+ * `priority: 'secondary'` so they render under the disclosure. The
+ * Rhino discriminator is `media.material` starting with `rhino-`
+ * (matches d1-core's catalogue: `rhino-vinyl`, `rhino-heat-shrink`,
+ * `rhino-permanent-polyester`, `rhino-flexible-nylon`,
+ * `rhino-non-adhesive-tag`).
  */
-const expandedWidths = ref<Set<TapeWidth>>(new Set([media.value.tapeWidthMm]));
-
-function toggleGroup(width: TapeWidth): void {
-  const next = new Set(expandedWidths.value);
-  if (next.has(width)) {
-    next.delete(width);
-  } else {
-    next.add(width);
+function groupBy(m: LabelManagerMedia): MediaGroupKey {
+  const isRhino = typeof m.material === 'string' && m.material.startsWith('rhino-');
+  if (isRhino) {
+    return {
+      key: `rhino-${String(m.tapeWidthMm)}mm`,
+      label: `Rhino industrial — ${String(m.tapeWidthMm)} mm`,
+      priority: 'secondary',
+      // Sort widths ascending within the secondary disclosure.
+      sort: m.tapeWidthMm,
+    };
   }
-  expandedWidths.value = next;
+  return {
+    key: `${String(m.tapeWidthMm)}mm`,
+    label: `${String(m.tapeWidthMm)} mm  ·  head ${String(HEAD_DOTS_FOR_TAPE[m.tapeWidthMm])} dots`,
+    priority: 'primary',
+    sort: m.tapeWidthMm,
+  };
 }
 
-function pick(m: LabelManagerMedia): void {
-  media.value = m;
-  touched.value = true;
-  // Keep the selected group open after picking.
-  const next = new Set(expandedWidths.value);
-  next.add(m.tapeWidthMm);
-  expandedWidths.value = next;
+function swatch(m: LabelManagerMedia): MediaSwatch | null {
+  const out: MediaSwatch = {};
+  if (m.text !== undefined) out.fg = m.text;
+  if (m.background !== undefined) out.bg = m.background;
+  return out;
+}
+
+function describe(m: LabelManagerMedia): string {
+  return m.name;
+}
+
+function onUpdate(next: LabelManagerMedia | null): void {
+  if (!next) return;
+  // Treat the very first auto-default as "untouched"; only flip
+  // `touched` once the operator deliberately changes the pick.
+  if (next.id !== media.value.id) touched.value = true;
+  media.value = next;
 }
 
 const currentHeadDots = computed(() => HEAD_DOTS_FOR_TAPE[media.value.tapeWidthMm]);
-
-/**
- * Best-effort CSS colour for a swatch. The d1-core media schema
- * names colours plainly (`black`, `white`, `clear`, `red`, …); most
- * survive `color: <name>` directly. `clear` and `silver` / `gold` /
- * fluorescent variants don't map cleanly — we surface them with a
- * neutral grey and let the textual `text on background` label do
- * the disambiguation.
- */
-const NAMED_COLOUR_FALLBACK: Record<string, string> = {
-  clear: '#e7e7e7',
-  silver: '#c0c0c0',
-  gold: '#d4af37',
-  'fluorescent-green': '#39ff14',
-  'fluorescent-red': '#ff355e',
-};
-
-function cssColour(name: string | undefined): string {
-  if (!name) return 'transparent';
-  if (NAMED_COLOUR_FALLBACK[name]) return NAMED_COLOUR_FALLBACK[name];
-  return name;
-}
 
 function colourLabel(m: LabelManagerMedia): string {
   const fg = m.text ?? '?';
@@ -143,47 +132,16 @@ function colourLabel(m: LabelManagerMedia): string {
         Labelmanager has no way to detect the cartridge automatically.
       </p>
 
-      <div class="groups">
-        <section v-for="g in widthGroups" :key="g.width" class="group">
-          <button
-            type="button"
-            class="group-header"
-            :aria-expanded="expandedWidths.has(g.width)"
-            @click="toggleGroup(g.width)"
-          >
-            <span class="group-title">{{ g.width }} mm</span>
-            <span class="group-hint"
-              >{{ g.entries.length }} SKU{{ g.entries.length === 1 ? '' : 's' }} · head
-              {{ g.headDots }} dots</span
-            >
-            <span class="group-caret">{{ expandedWidths.has(g.width) ? '−' : '+' }}</span>
-          </button>
-
-          <ul v-if="expandedWidths.has(g.width)" class="entries">
-            <li v-for="m in g.entries" :key="String(m.id)">
-              <button
-                type="button"
-                class="entry"
-                :class="{ selected: media.id === m.id }"
-                @click="pick(m)"
-              >
-                <span
-                  class="swatch"
-                  :title="colourLabel(m)"
-                  :style="{
-                    background: cssColour(m.background),
-                    color: cssColour(m.text),
-                    borderColor: cssColour(m.background) === 'transparent' ? '#888' : 'transparent',
-                  }"
-                  >Aa</span
-                >
-                <span class="entry-name">{{ m.name }}</span>
-                <code class="entry-id">{{ m.id }}</code>
-              </button>
-            </li>
-          </ul>
-        </section>
-      </div>
+      <MediaPicker
+        :model-value="media"
+        :available="compatibleMedia"
+        :default-media-id="DEFAULT_MEDIA.id"
+        :group-by="groupBy"
+        :swatch="swatch"
+        :describe="describe"
+        detection-capability="none"
+        @update:model-value="onUpdate"
+      />
 
       <p class="muted small">
         Currently selected: <strong>{{ media.name }}</strong>
@@ -195,120 +153,6 @@ function colourLabel(m: LabelManagerMedia): string {
 </template>
 
 <style scoped>
-.groups {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: var(--space-3) 0;
-}
-
-.group {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-}
-
-.group-header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  width: 100%;
-  background: transparent;
-  color: inherit;
-  border: none;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-
-.group-header:hover {
-  background: var(--bg-hover);
-}
-
-.group-title {
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.group-hint {
-  flex: 1;
-  font-size: 0.78rem;
-  color: var(--fg-muted, var(--muted));
-}
-
-.group-caret {
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  width: 1em;
-  text-align: center;
-}
-
-.entries {
-  list-style: none;
-  padding: 0 var(--space-2) var(--space-2);
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.entry {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  transition:
-    border-color 100ms,
-    background-color 100ms;
-}
-
-.entry:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
-}
-
-.entry.selected {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-.swatch {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  font-size: 0.7rem;
-  font-weight: 700;
-  flex: 0 0 auto;
-}
-
-.entry-name {
-  flex: 1;
-}
-
-.entry-id {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  opacity: 0.75;
-}
-
-.entry.selected .entry-id {
-  opacity: 0.9;
-}
-
 .inline-id {
   font-family: var(--font-mono);
   font-size: 0.78rem;
