@@ -57,7 +57,8 @@ import {
  * authored 64-dot content to 128, doubling the visual size and
  * pushing half off the tape edge.
  *
- * Round 1 numbers: 12 → 64, 19 → 96, 24 → 128 (maintainer's read).
+ * Round 1 numbers: 12 → 64, 19 → 96, 24 → 128 (looked roughly right).
+ * Round 2: try 12 → 96 to double-check whether 64 was undersized.
  * Bench-confirm by printing on each tape width; revise if wrong.
  *
  * This is a poc-stage workaround. Long-term the band table belongs
@@ -67,7 +68,7 @@ import {
 const TAPE_BANDS_FOR_HEAD_DOTS_128: Record<number, number> = {
   6: 32,
   9: 48,
-  12: 64,
+  12: 96,
   19: 96,
   24: 128,
 };
