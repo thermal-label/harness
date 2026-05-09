@@ -46,42 +46,6 @@ import { HARNESS_VERSION, DRIVER_VERSION } from './version';
 // re-export here documents the intent.
 void renderIssueBody;
 
-/**
- * LM-specific D1 status parser. ESC A returns 8 bytes per LW Tech
- * Ref; only byte 0 is the status byte. Bench-confirmed bit map
- * (LM_PNP, 2026-05-09):
- *
- *   bit 6 — cassette detection (set = inserted)
- *   bit 4 — cutter jammed (may not fire on manual cutters)
- *   bit 2 — general error (1 = error, 0 = no error)
- *
- *   loaded + ready → 0x40 (bit 6 only)
- *   no media       → 0x00
- *
- * d1-core's documented `parseStatus` reads byte 0 with a different
- * spec convention (bit 1 = no tape) that doesn't match LM_PNP wire
- * — so we keep an LM-local parser and leave d1-core's alone for the
- * Duo tape side until that's bench-confirmed too.
- */
-function parseLabelmanagerStatus(bytes: Uint8Array): PrinterStatus {
-  const status = bytes[0] ?? 0;
-  const mediaLoaded = (status & 0x40) !== 0;
-  const cutterJam = (status & 0x10) !== 0;
-  const generalError = (status & 0x04) !== 0;
-  const errors: { code: string; message: string }[] = [];
-  if (!mediaLoaded) errors.push({ code: 'no_media', message: 'No tape inserted' });
-  if (cutterJam) errors.push({ code: 'paper_jam', message: 'Cutter jammed' });
-  if (generalError && !cutterJam && mediaLoaded) {
-    errors.push({ code: 'printer_error', message: 'Printer reported an error' });
-  }
-  return {
-    ready: errors.length === 0,
-    mediaLoaded,
-    errors,
-    rawBytes: bytes,
-  };
-}
-
 const DRIVER_KEY = 'labelmanager';
 const TARGET_REPO = 'thermal-label/labelmanager';
 
@@ -313,7 +277,7 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia, Print
     read: async transport => {
       await transport.write(STATUS_REQUEST);
       const response = await transport.read(STATUS_RESPONSE_BYTES, STATUS_POLL_TIMEOUT_MS);
-      return parseLabelmanagerStatus(response);
+      return parseStatus(response);
     },
     toPills: status => {
       // §1 Connect: printer-ready pill.
