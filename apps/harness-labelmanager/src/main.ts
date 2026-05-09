@@ -1,5 +1,5 @@
-import { createApp } from 'vue';
-import App from './App.vue';
-import './styles/global.css';
+import { createHarness } from '@thermal-label/harness-shell';
+import '@thermal-label/harness-shell/styles';
+import { adapter } from './adapter';
 
-createApp(App).mount('#app');
+createHarness('#app', adapter);
