@@ -208,14 +208,26 @@ export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
   defaultMediaId: (device: TDevice, engine: PrintEngine) => string | number;
   detectionCapability: (device: TDevice, engine: PrintEngine) => DetectionCapability;
   /**
-   * Resolve `identity.extra` payload + the engine's compatible set to
-   * a single detected media descriptor (or null when nothing
+   * Resolve detected media to a catalogue entry (or null when nothing
    * matched). Only called when `detectionCapability !== 'none'`.
+   *
+   * Receives both the connect-time `identity.extra` payload AND the
+   * latest live status. Drivers like brother-ql ship media identity
+   * inside the polled status frame (DK-22251 swap mid-session, or
+   * cover closes after a no-media first probe), so reading status
+   * first + falling back to identity is the right pattern. LW 5xx's
+   * NFC SKU comes from a one-shot probe stashed on identity, so its
+   * adapter ignores `status` and reads identity only.
+   *
+   * `status` is the adapter's own `TStatus` shape from `status.read`
+   * (or `subscribe.latest`). May be null when no poll has succeeded
+   * yet — adapters should fall back to identity in that case.
    */
   detected?: (
     identity: IdentitySnapshot,
     available: readonly TMedia[],
     engine: PrintEngine,
+    status: unknown,
   ) => TMedia | null;
   /**
    * Optional section-title override per engine ("Pick the loaded

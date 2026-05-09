@@ -425,7 +425,17 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia, BrotherQLSt
      * MediaPicker pre-selects an entry from the catalogue (and not a
      * detached object).
      */
-    detected: (identity, available) => {
+    detected: (identity, available, _engine, status) => {
+      // Prefer the live status frame — brother-ql swaps DK rolls
+      // mid-session, and cover-open at connect time means the
+      // initial probe might have missed media that's now there.
+      // The polling status carries the freshest media identity.
+      const live = (status as { detectedMedia?: BrotherQLMedia } | null)?.detectedMedia;
+      if (live && typeof live.id === 'number') {
+        const fromCatalogue = available.find(m => m.id === live.id);
+        if (fromCatalogue) return fromCatalogue;
+      }
+      // Fallback: connect-time identity.extra (set by runStatusProbe).
       const extra = identity.extra as { detectedMedia?: { id?: number } } | undefined;
       const id = extra?.detectedMedia?.id;
       if (typeof id !== 'number') return null;

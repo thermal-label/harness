@@ -414,7 +414,11 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia, Prin
       if (engine.protocol === 'd1-tape') return 'none';
       return engine.capabilities?.mediaDetection === true ? 'auto-suggest' : 'none';
     },
-    detected: (identity, available, engine) => {
+    // LW 5xx's NFC SKU comes from a one-shot probe at connect time
+    // (stashed on `identity.extra.detectedSku`), not from polled
+    // status — so we ignore the new `status` arg here.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    detected: (identity, available, engine, _status) => {
       if (engine.protocol === 'd1-tape') return null;
       const sku = identity.extra?.detectedSku;
       if (typeof sku !== 'string') return null;

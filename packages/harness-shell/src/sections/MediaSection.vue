@@ -59,7 +59,12 @@ const detected = computed<MediaDescriptor | null>(() => {
   const engine = activeEngine.value;
   const identity = session.connection.identity;
   if (!dev || !engine || !identity) return null;
-  return adapter.mediaPicker.detected(identity, compatibleMedia.value, engine);
+  return adapter.mediaPicker.detected(
+    identity,
+    compatibleMedia.value,
+    engine,
+    session.printerStatus.value,
+  );
 });
 
 const detectionCapability = computed(() => {

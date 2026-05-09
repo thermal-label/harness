@@ -102,7 +102,7 @@ describe('brother-ql adapter — auto-locked MediaPicker mode', () => {
         },
       },
     };
-    const detected = adapter.mediaPicker.detected?.(identity, compatible, engine);
+    const detected = adapter.mediaPicker.detected?.(identity, compatible, engine, null);
     expect(detected).toBeTruthy();
     expect(detected?.id).toBe(259);
     // The detected entry is the SAME reference as the catalogue
@@ -123,7 +123,7 @@ describe('brother-ql adapter — auto-locked MediaPicker mode', () => {
       pid: 0x209c,
       extra: { mediaLoaded: false, ready: true },
     };
-    const detected = adapter.mediaPicker.detected?.(identity, compatible, engine);
+    const detected = adapter.mediaPicker.detected?.(identity, compatible, engine, null);
     expect(detected).toBeNull();
   });
 
@@ -138,7 +138,7 @@ describe('brother-ql adapter — auto-locked MediaPicker mode', () => {
       pid: 0x209c,
       extra: { detectedMedia: { id: 259 } },
     };
-    const detected = adapter.mediaPicker.detected!(identity, compatible, engine);
+    const detected = adapter.mediaPicker.detected!(identity, compatible, engine, null);
     const detectionCapability = adapter.mediaPicker.detectionCapability(ql810, engine);
     const wrapper = mount(MediaPicker<BrotherQLMedia>, {
       props: {
