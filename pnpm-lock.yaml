@@ -109,6 +109,9 @@ importers:
       '@thermal-label/harness-core':
         specifier: workspace:*
         version: link:../../packages/harness-core
+      '@thermal-label/harness-shell':
+        specifier: workspace:*
+        version: link:../../packages/harness-shell
       '@thermal-label/labelwriter-core':
         specifier: link:../../../labelwriter/packages/core
         version: link:../../../labelwriter/packages/core
