@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { transportInstructions } from '@thermal-label/harness-core/shared';
-import { connection, device, isConnected } from '../state/session';
+import { connection, device, isConnected, syncEngineSessions } from '../state/session';
 import { connectToLabelwriter } from '../transport/connect';
 import { IS_MOCK_MODE } from '../composables/useMockMode';
 import { findDeviceByVidPid } from '../transport/webusb-filters';
@@ -19,10 +19,11 @@ async function connect(): Promise<void> {
   connecting.value = true;
   try {
     const result = await connectToLabelwriter();
-    connection.transport = result.transport;
+    connection.transports = result.transports;
     connection.identity = result.identity;
     connection.mocked = result.mocked;
     device.value = result.device;
+    syncEngineSessions(result.device);
     if (result.skuInfo) {
       // Stash for the media section to consume.
       connection.identity = {
@@ -38,12 +39,19 @@ async function connect(): Promise<void> {
 }
 
 async function disconnect(): Promise<void> {
-  if (connection.transport) {
-    await connection.transport.close();
+  // Close every per-engine transport. On Duo this releases both
+  // interfaces; on single-engine devices both entries point at the
+  // same Transport instance and the second close is a no-op.
+  const closed = new Set<unknown>();
+  for (const t of Object.values(connection.transports)) {
+    if (closed.has(t)) continue;
+    closed.add(t);
+    await t.close();
   }
-  connection.transport = null;
+  connection.transports = {};
   connection.identity = null;
   device.value = null;
+  syncEngineSessions(null);
   connection.error = null;
 }
 
@@ -67,6 +75,7 @@ function applyManualVidPid(): void {
       'Continuing anyway with the device label, but encoder behaviour is undefined.';
   }
   device.value = matched ?? null;
+  syncEngineSessions(matched ?? null);
 }
 </script>
 

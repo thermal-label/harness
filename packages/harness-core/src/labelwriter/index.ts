@@ -10,9 +10,5 @@
 export type { DiagnosticBitmapResult, DiagnosticPrintInput } from './diagnostic-print.js';
 export { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 
-export type {
-  DispatchedEncoder,
-  DispatchInput,
-  MultiEngineBitmapResult,
-} from './multi-engine.js';
+export type { DispatchedEncoder, DispatchInput, MultiEngineBitmapResult } from './multi-engine.js';
 export { dispatchEncoder, roleSelectPrefix } from './multi-engine.js';

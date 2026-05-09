@@ -8,14 +8,17 @@
  * leave it empty; that's fine.
  */
 import { computed } from 'vue';
-import { assessment, hasAssessment, hasPrinted } from '../state/session';
+import { activeSession } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
-  if (!hasPrinted.value) return 'pending';
-  if (!hasAssessment.value) return 'active';
+  const s = activeSession.value;
+  if (!s || !s.printed) return 'pending';
+  if (s.rung === null) return 'active';
   return 'done';
 });
+
+const hasPrinted = computed(() => Boolean(activeSession.value?.printed));
 
 const choices = [
   {
@@ -45,12 +48,12 @@ const choices = [
   <SectionCard :step="5" title="What does it look like?" :state="sectionState">
     <p v-if="!hasPrinted" class="muted">Print the diagnostic first, then come back here.</p>
 
-    <template v-else>
+    <template v-else-if="activeSession">
       <p>Pick the option that best matches the print you're holding.</p>
 
       <div class="radios">
         <label v-for="c in choices" :key="c.value" class="radio">
-          <input v-model="assessment.rung" type="radio" :value="c.value" />
+          <input v-model="activeSession.rung" type="radio" :value="c.value" />
           <span class="radio-body">
             <strong>{{ c.title }}</strong>
             <span class="muted small">{{ c.blurb }}</span>
@@ -61,7 +64,7 @@ const choices = [
       <label class="notes">
         Notes (optional)
         <textarea
-          v-model="assessment.notes"
+          v-model="activeSession.notes"
           rows="3"
           placeholder="e.g. left edge clipped by 2 dots; density uneven on the lower half; trailing marker landed 5 mm short"
         />

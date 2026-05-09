@@ -2,9 +2,16 @@
 /**
  * Media-picker section.
  *
- * Filters `MEDIA` to entries whose `targetModels` overlap with the
- * connected device's `engines[0].mediaCompatibility` — labelwriter
- * label media for label engines, D1 tape for the Duo's tape engine.
+ * Reads + writes the currently-active engine's session slot
+ * (`activeSession.media`). Filters `MEDIA` to entries whose
+ * `targetModels` overlap with the active engine's `mediaCompatibility`
+ * — labelwriter label media for label engines, D1 tape for the Duo's
+ * tape engine.
+ *
+ * Multi-engine devices route into this same component per tab; the
+ * EngineTabs shell flips `selectedRole`, the component re-resolves the
+ * active engine + catalogue, and the operator picks media for that
+ * engine. Single-engine devices use the same path with one engine.
  *
  * LW 5xx: prefills from the SKU probe (`detectedSku` stash on
  * `connection.identity.extra`). LW 3xx/4xx: mandatory manual pick.
@@ -16,15 +23,22 @@
  * the chosen device declares no USB transport.
  */
 import { computed, ref, watch } from 'vue';
-import { MEDIA, type LabelWriterMedia } from '@thermal-label/labelwriter-core';
-import { connection, device, hasIdentity, media } from '../state/session';
+import {
+  MEDIA,
+  type LabelWriterAnyMedia,
+  type LabelWriterMedia,
+  type LabelWriterTapeMedia,
+} from '@thermal-label/labelwriter-core';
+import { activeSession, connection, device, hasIdentity } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
-  if (!hasIdentity.value) return 'pending';
-  if (media.value === null) return 'active';
+  if (!hasIdentity.value || !activeSession.value) return 'pending';
+  if (activeSession.value.media === null) return 'active';
   return 'done';
 });
+
+const isTapeEngine = computed(() => activeSession.value?.engine.protocol === 'd1-tape');
 
 function isLabelMedia(m: unknown): m is LabelWriterMedia {
   if (typeof m !== 'object' || m === null) return false;
@@ -32,14 +46,22 @@ function isLabelMedia(m: unknown): m is LabelWriterMedia {
   return t === 'die-cut' || t === 'continuous';
 }
 
-const allLabelMedia = computed(() => {
-  return (Object.values(MEDIA) as readonly unknown[]).filter(isLabelMedia);
+function isTapeMedia(m: unknown): m is LabelWriterTapeMedia {
+  if (typeof m !== 'object' || m === null) return false;
+  return (m as { type?: string }).type === 'tape';
+}
+
+const allMediaForActiveEngine = computed<readonly LabelWriterAnyMedia[]>(() => {
+  const all = Object.values(MEDIA) as readonly unknown[];
+  return isTapeEngine.value ? all.filter(isTapeMedia) : all.filter(isLabelMedia);
 });
 
-const compatibleMedia = computed(() => {
-  if (!device.value) return [];
-  const compat = device.value.engines[0]?.mediaCompatibility ?? [];
-  return allLabelMedia.value.filter(m => {
+const compatibleMedia = computed<readonly LabelWriterAnyMedia[]>(() => {
+  const session = activeSession.value;
+  if (!session) return [];
+  const compat = session.engine.mediaCompatibility;
+  if (compat === undefined) return allMediaForActiveEngine.value;
+  return allMediaForActiveEngine.value.filter(m => {
     const targets = m.targetModels ?? [];
     return targets.some(t => compat.includes(t));
   });
@@ -56,34 +78,45 @@ const transportWarning = computed(() => {
   );
 });
 
-// Prefill from the SKU probe when present.
+// Prefill from the SKU probe when present — only on label engines;
+// tape engines have no NFC SKU equivalent.
 function prefillFromSku(): void {
+  if (isTapeEngine.value) return;
+  const session = activeSession.value;
+  if (!session) return;
   const sku = connection.identity?.extra?.detectedSku;
   if (typeof sku !== 'string') return;
   for (const m of compatibleMedia.value) {
-    if (m.skus?.includes(sku)) {
-      media.value = m;
+    const labelM = m as LabelWriterMedia;
+    if (labelM.skus?.includes(sku)) {
+      session.media = m;
       return;
     }
   }
 }
 
 watch(
-  () => [device.value, connection.identity?.extra?.detectedSku] as const,
+  () => [activeSession.value, connection.identity?.extra?.detectedSku] as const,
   () => {
-    if (media.value === null) prefillFromSku();
+    if (activeSession.value && activeSession.value.media === null) prefillFromSku();
   },
   { immediate: true },
 );
 
 const pickKey = ref<string>('');
-watch(media, m => {
-  pickKey.value = m ? String(m.id) : '';
-});
+watch(
+  () => activeSession.value?.media,
+  m => {
+    pickKey.value = m ? String(m.id) : '';
+  },
+  { immediate: true },
+);
 
 function applyPick(): void {
+  const session = activeSession.value;
+  if (!session) return;
   const found = compatibleMedia.value.find(m => String(m.id) === pickKey.value);
-  if (found) media.value = found;
+  if (found) session.media = found;
 }
 
 const showCustom = ref(false);
@@ -91,6 +124,15 @@ const customWidth = ref('28');
 const customLength = ref('89');
 
 function applyCustom(): void {
+  const session = activeSession.value;
+  if (!session) return;
+  if (isTapeEngine.value) {
+    // Tape engines don't take custom dimensions — width is locked to
+    // the cassette and the encoder rejects unknown widths. Hide the
+    // affordance there. (Belt-and-braces guard: should be unreachable
+    // because the drawer is gated by the same flag.)
+    return;
+  }
   const width = Number(customWidth.value);
   const length = Number(customLength.value);
   if (!Number.isFinite(width) || !Number.isFinite(length) || width <= 0 || length <= 0) {
@@ -98,11 +140,8 @@ function applyCustom(): void {
   }
   // Synthetic media descriptor — the encoder reads `widthMm` and
   // `lengthDots` (or `heightMm`); we set both. `id` is `custom-` so
-  // the issue body indicates the operator overrode the catalog. We
-  // coerce through `unknown` because `category` is a closed literal
-  // union in `MediaDescriptor`; `'die-cut'` is the closest fit for a
-  // synthetic operator override and matches the encoder's branching.
-  media.value = {
+  // the issue body indicates the operator overrode the catalog.
+  session.media = {
     id: `custom-${String(width)}x${String(length)}`,
     name: `Custom ${String(width)}×${String(length)} mm`,
     category: 'die-cut',
@@ -113,45 +152,67 @@ function applyCustom(): void {
   } as unknown as LabelWriterMedia;
   showCustom.value = false;
 }
+
+const sectionTitle = computed(() =>
+  isTapeEngine.value ? 'Pick the loaded D1 tape' : 'Pick the loaded label',
+);
+const pickLabel = computed(() => (isTapeEngine.value ? 'Loaded tape' : 'Loaded label'));
 </script>
 
 <template>
-  <SectionCard :step="3" title="Pick the loaded label" :state="sectionState">
+  <SectionCard :step="3" :title="sectionTitle" :state="sectionState">
     <p v-if="!hasIdentity" class="muted">Confirm the model first, then pick a label.</p>
+
+    <template v-else-if="!activeSession">
+      <p class="muted">Pick an engine tab first.</p>
+    </template>
 
     <template v-else>
       <p v-if="transportWarning" class="warn">{{ transportWarning }}</p>
 
-      <p v-if="connection.identity?.extra?.detectedSku">
+      <p
+        v-if="!isTapeEngine && connection.identity?.extra?.detectedSku"
+        :key="String(connection.identity.extra.detectedSku)"
+      >
         Detected SKU <code>{{ connection.identity.extra.detectedSku }}</code> from the printer's NFC
         roll-tag. Pre-selected below if we recognised it; pick a different entry if the prefill is
         wrong.
       </p>
-      <p v-else class="muted">
+      <p v-else-if="!isTapeEngine" class="muted">
         This model doesn't auto-detect its roll, so pick the loaded label manually.
+      </p>
+      <p v-else class="muted">
+        Pick the D1 cassette currently loaded in the tape slot. Width is locked by the cassette;
+        colour drives the wire palette byte (<code>ESC C</code>).
       </p>
 
       <div class="picker">
         <label>
-          Loaded label
+          {{ pickLabel }}
           <select v-model="pickKey" @change="applyPick">
             <option value="" disabled>— choose —</option>
             <option v-for="m in compatibleMedia" :key="String(m.id)" :value="String(m.id)">
               {{ m.name }}
-              <template v-if="m.skus && m.skus.length > 0">
-                [SKUs: {{ m.skus.join(', ') }}]</template
+              <template
+                v-if="(m as LabelWriterMedia).skus && (m as LabelWriterMedia).skus!.length > 0"
+              >
+                [SKUs: {{ (m as LabelWriterMedia).skus!.join(', ') }}]</template
               >
             </option>
           </select>
         </label>
-        <p v-if="media" class="muted small">
-          {{ media.widthMm }} × {{ media.heightMm ?? 'continuous' }} mm
-          <template v-if="media.heightMm"> · {{ media.lengthDots ?? '?' }} dots length</template>
+        <p v-if="activeSession.media" class="muted small">
+          {{ (activeSession.media as LabelWriterMedia).widthMm }} ×
+          {{ (activeSession.media as LabelWriterMedia).heightMm ?? 'continuous' }} mm
+          <template v-if="(activeSession.media as LabelWriterMedia).heightMm">
+            · {{ (activeSession.media as LabelWriterMedia).lengthDots ?? '?' }} dots
+            length</template
+          >
         </p>
       </div>
     </template>
 
-    <template v-if="hasIdentity" #advanced>
+    <template v-if="hasIdentity && activeSession && !isTapeEngine" #advanced>
       <p class="muted small">
         Custom dimensions — bypasses the catalogue. The diagnostic encoder will use these directly;
         the issue body marks the report as a custom-dimension run.

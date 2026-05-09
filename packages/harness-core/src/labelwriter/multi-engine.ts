@@ -172,7 +172,10 @@ export function dispatchEncoder(input: DispatchInput): DispatchedEncoder {
           driverVersion,
         });
       },
-      encodeBitmap(bitmap, _labelLengthDots): Uint8Array {
+      encodeBitmap(bitmap): Uint8Array {
+        // `labelLengthDots` is the LW-only label-pitch override; the
+        // d1-tape encoder pads its own trailing rows internally and
+        // doesn't take a label-length argument.
         const lmMediaShim = tapeMedia as unknown as LabelManagerMedia;
         const body = encodeLabelmanagerBitmap(bitmap, engine, lmMediaShim);
         return prepend(prefix, body);

@@ -258,13 +258,8 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
   // the actual label pitch for form-feed/cut sequencing. The dispatch
   // helper prepends Twin's `ESC q <addr>` prefix internally; on
   // d1-tape the labelLengthDots argument is ignored.
-  const identity = await runConnectAndPrint(
-    device,
-    engine,
-    transport,
-    host,
-    options,
-    () => dispatched.encodeBitmap(result.wire, result.authored.heightPx),
+  const identity = await runConnectAndPrint(device, engine, transport, host, options, () =>
+    dispatched.encodeBitmap(result.wire, result.authored.heightPx),
   );
 
   const rung = await resolveRung(options, ctx);
