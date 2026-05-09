@@ -120,7 +120,7 @@ const hasPrinted = computed(() => Boolean(activeSession.value?.printed));
 </script>
 
 <template>
-  <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
+  <SectionCard :step="3" title="Print the diagnostic" :state="sectionState">
     <p v-if="!hasMedia" class="muted">
       Pick a label first — the bitmap dimensions come from there.
     </p>

@@ -28,7 +28,16 @@ defineProps<{
       <span v-if="$slots['header-aside']" class="header-aside">
         <slot name="header-aside" />
       </span>
-      <span v-if="state === 'done'" class="badge done" aria-label="completed">done</span>
+      <!-- Suppress the "done" badge when the section already shows a
+           live status pill — the pill carries the "we're good"
+           signal more meaningfully. "Waiting" still shows for
+           pending sections (pill isn't rendered yet then). -->
+      <span
+        v-if="state === 'done' && !$slots['header-aside']"
+        class="badge done"
+        aria-label="completed"
+        >done</span
+      >
       <span v-else-if="state === 'pending'" class="badge pending" aria-label="not yet active"
         >waiting</span
       >

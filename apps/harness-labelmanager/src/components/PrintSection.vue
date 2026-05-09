@@ -106,7 +106,7 @@ function formatHexPreview(bytes: Uint8Array): string {
 </script>
 
 <template>
-  <SectionCard :step="4" title="Print the diagnostic" :state="sectionState">
+  <SectionCard :step="3" title="Print the diagnostic" :state="sectionState">
     <p v-if="!hasMedia" class="muted">
       Pick what's loaded first — the bitmap dimensions and tape-type byte come from there.
     </p>

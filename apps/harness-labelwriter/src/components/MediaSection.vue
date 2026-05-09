@@ -189,7 +189,7 @@ const pickLabel = computed(() => (isTapeEngine.value ? 'Loaded tape' : 'Loaded l
 </script>
 
 <template>
-  <SectionCard :step="3" :title="sectionTitle" :state="sectionState">
+  <SectionCard :step="2" :title="sectionTitle" :state="sectionState">
     <template v-if="hasIdentity" #header-aside>
       <StatusPill :state="mediaDot.state" :label="mediaDot.label" />
     </template>

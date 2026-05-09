@@ -42,7 +42,7 @@ const choices = [
 </script>
 
 <template>
-  <SectionCard :step="5" title="What does it look like?" :state="sectionState">
+  <SectionCard :step="4" title="What does it look like?" :state="sectionState">
     <p v-if="!hasPrinted" class="muted">Print the diagnostic first, then come back here.</p>
 
     <template v-else>

@@ -134,7 +134,7 @@ const cassetteDot = computed<{ state: DotState; label: string }>(() => {
 </script>
 
 <template>
-  <SectionCard :step="3" title="Pick what's loaded" :state="sectionState">
+  <SectionCard :step="2" title="Pick what's loaded" :state="sectionState">
     <template v-if="hasIdentity" #header-aside>
       <StatusPill :state="cassetteDot.state" :label="cassetteDot.label" />
     </template>

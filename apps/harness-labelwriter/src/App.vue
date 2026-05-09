@@ -20,7 +20,6 @@ import { computed } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ConnectSection from './components/ConnectSection.vue';
-import IdentitySection from './components/IdentitySection.vue';
 import MediaSection from './components/MediaSection.vue';
 import PrintSection from './components/PrintSection.vue';
 import AssessmentSection from './components/AssessmentSection.vue';
@@ -48,7 +47,6 @@ const isMultiEngine = computed(() => (device.value?.engines.length ?? 0) > 1);
     <UnsupportedBrowser v-if="!supported" />
     <template v-else>
       <ConnectSection />
-      <IdentitySection />
       <EngineTabs v-if="isMultiEngine" />
       <MediaSection />
       <PrintSection />

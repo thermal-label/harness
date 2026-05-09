@@ -107,7 +107,7 @@ const mailtoFallback = computed(() => {
 </script>
 
 <template>
-  <SectionCard :step="6" title="Submit the report" :state="sectionState">
+  <SectionCard :step="5" title="Submit the report" :state="sectionState">
     <template v-if="!hasAssessment">
       <p class="muted">Pick a verdict in the section above first.</p>
     </template>

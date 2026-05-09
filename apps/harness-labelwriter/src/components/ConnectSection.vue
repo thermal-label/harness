@@ -12,11 +12,40 @@ import {
 } from '../state/session';
 import { connectToLabelwriter } from '../transport/connect';
 import type { PrinterStatus } from '@thermal-label/contracts';
+import { DEVICES } from '@thermal-label/labelwriter-core';
 import StatusPill from '@thermal-label/harness-components/status-pill';
 import { IS_MOCK_MODE } from '../composables/useMockMode';
 import { findDeviceByVidPid } from '../transport/webusb-filters';
 import { MockTransport } from '../transport/mock';
 import SectionCard from './SectionCard.vue';
+import { watch } from 'vue';
+
+// ─── Wrong-guess override (was IdentitySection — combined here) ──
+
+const overrideOpen = ref(false);
+const overridePick = ref<string>('');
+
+watch(device, d => {
+  if (d) overridePick.value = d.key;
+});
+
+const knownDevices = computed(() => Object.values(DEVICES));
+
+function applyDeviceOverride(): void {
+  const next = knownDevices.value.find(d => d.key === overridePick.value);
+  if (!next) return;
+  device.value = next;
+  syncEngineSessions(next);
+  overrideOpen.value = false;
+}
+
+const rawStatusBytes = computed(() => {
+  const raw = connection.identity?.extra?.raw;
+  if (Array.isArray(raw)) {
+    return raw.map(b => (typeof b === 'number' ? b.toString(16).padStart(2, '0') : '??')).join(' ');
+  }
+  return '(no status response captured)';
+});
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() =>
   isConnected.value ? 'done' : 'active',
@@ -135,7 +164,7 @@ function applyManualVidPid(): void {
 </script>
 
 <template>
-  <SectionCard :step="1" title="Connect to your printer" :state="sectionState">
+  <SectionCard :step="1" title="Connect & confirm" :state="sectionState">
     <template v-if="isConnected" #header-aside>
       <StatusPill :state="printerDot.state" :label="printerDot.label" />
     </template>
@@ -159,10 +188,40 @@ function applyManualVidPid(): void {
 
     <div v-else class="connected-summary">
       <p>
-        Connected to <strong>{{ device?.name ?? 'unknown device' }}</strong
-        ><span v-if="connection.mocked"> (mock)</span>.
+        Detected: <strong>{{ device?.name ?? 'unknown device' }}</strong>
+        <span v-if="device" class="key">[{{ device.key }}]</span>
+        <span v-if="connection.mocked" class="muted small"> · mock</span>
       </p>
       <button class="ghost" type="button" @click="disconnect">Disconnect</button>
+    </div>
+
+    <p v-if="isConnected && connection.identity?.vid !== undefined" class="muted small">
+      vid = 0x{{ connection.identity.vid.toString(16).padStart(4, '0') }}, pid = 0x{{
+        connection.identity.pid?.toString(16).padStart(4, '0')
+      }}
+    </p>
+    <p v-if="connection.identity?.extra?.statusProbeError" class="warn small">
+      Status probe didn't respond — that's fine for many models, but the connection might still hang
+      on the first print. If it does, unplug + replug and try again.
+    </p>
+
+    <div v-if="isConnected && !overrideOpen" class="actions">
+      <button class="ghost" type="button" @click="overrideOpen = true">
+        Wrong guess? Pick a different model
+      </button>
+    </div>
+
+    <div v-else-if="isConnected" class="override-form">
+      <label>
+        Model
+        <select v-model="overridePick">
+          <option v-for="d in knownDevices" :key="d.key" :value="d.key">
+            {{ d.name }} [{{ d.key }}]
+          </option>
+        </select>
+      </label>
+      <button class="primary" type="button" @click="applyDeviceOverride">Use this model</button>
+      <button class="ghost" type="button" @click="overrideOpen = false">Cancel</button>
     </div>
 
     <p v-if="connection.error" class="error">
@@ -185,6 +244,14 @@ function applyManualVidPid(): void {
         </label>
         <button type="button" class="ghost" @click="applyManualVidPid">Apply manual VID/PID</button>
       </div>
+
+      <template v-if="isConnected">
+        <p class="muted small">Raw status response (first 32 bytes, hex):</p>
+        <pre>{{ rawStatusBytes }}</pre>
+        <p v-if="connection.identity?.extra?.detectedSku" class="small">
+          SKU probe returned: <code>{{ connection.identity.extra.detectedSku }}</code>
+        </p>
+      </template>
     </template>
   </SectionCard>
 </template>
@@ -205,6 +272,52 @@ function applyManualVidPid(): void {
 
 .connected-summary p {
   margin: 0;
+}
+
+.actions {
+  margin-top: var(--space-3);
+}
+
+.override-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  margin-top: var(--space-3);
+}
+
+.override-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 14rem;
+}
+
+.override-form select {
+  font-family: inherit;
+}
+
+.key {
+  color: var(--fg-faint, var(--muted));
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+pre {
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .primary {
