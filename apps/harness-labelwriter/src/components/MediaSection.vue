@@ -22,7 +22,7 @@
  * registry might list a model with TCP only. We surface a warning if
  * the chosen device declares no USB transport.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import {
   MEDIA,
   type LabelWriterAnyMedia,
@@ -30,7 +30,9 @@ import {
   type LabelWriterTapeMedia,
 } from '@thermal-label/labelwriter-core';
 import { activeSession, connection, device, hasIdentity, printerStatus } from '../state/session';
+import MediaPicker from '@thermal-label/harness-components/media-picker';
 import StatusPill from '@thermal-label/harness-components/status-pill';
+import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
@@ -107,45 +109,105 @@ const transportWarning = computed(() => {
   );
 });
 
-// Prefill from the SKU probe when present — only on label engines;
-// tape engines have no NFC SKU equivalent.
-function prefillFromSku(): void {
-  if (isTapeEngine.value) return;
-  const session = activeSession.value;
-  if (!session) return;
+// ─── MediaPicker bindings ────────────────────────────────────────
+
+/**
+ * Per-engine default selection. Tape engines pre-select 12 mm
+ * Black-on-White STANDARD (the most common D1 cassette); label
+ * engines pre-select the standard address label, which exists in
+ * almost every LW model's compatible set. If the default isn't in
+ * the engine's compatible set, the picker falls back to the first
+ * available entry (defensive logic in the shared component).
+ */
+const defaultMediaId = computed<string>(() =>
+  isTapeEngine.value ? 'd1-standard-bw-12' : 'address-standard',
+);
+
+/**
+ * Detected media — only populated on label engines that support NFC
+ * SKU detection (LW 5xx). Resolves the operator's loaded SKU to a
+ * media descriptor in the catalogue; the picker either pre-selects
+ * it (`auto-suggest`) or locks to it (`auto-locked`). LW 5xx is
+ * `auto-suggest` — operator can override the firmware's reading.
+ */
+const detected = computed<LabelWriterAnyMedia | null>(() => {
+  if (isTapeEngine.value) return null;
   const sku = connection.identity?.extra?.detectedSku;
-  if (typeof sku !== 'string') return;
-  for (const m of compatibleMedia.value) {
-    const labelM = m as LabelWriterMedia;
-    if (labelM.skus?.includes(sku)) {
-      session.media = m;
-      return;
+  if (typeof sku !== 'string') return null;
+  return compatibleMedia.value.find(m => (m as LabelWriterMedia).skus?.includes(sku)) ?? null;
+});
+
+const detectionCapability = computed<'none' | 'auto-suggest' | 'auto-locked'>(() => {
+  if (isTapeEngine.value) return 'none';
+  // LW 5xx engines declare `capabilities.mediaDetection` — engine
+  // can read the loaded SKU via NFC. Other label engines (3xx/4xx)
+  // have no detection.
+  const dev = device.value;
+  if (!dev) return 'none';
+  const detects = dev.engines.some(e => e.capabilities?.mediaDetection === true);
+  return detects ? 'auto-suggest' : 'none';
+});
+
+/**
+ * Group-by descriptor for both engines:
+ *  - Tape engine: by tape width. Demote Rhino industrial cassettes
+ *    (`material` starts with `rhino-`) to `priority: 'secondary'`,
+ *    same convention as the labelmanager harness. LW's tape
+ *    catalogue is currently STANDARD-only (no Rhino), but the
+ *    discriminator is harmless extra and stays consistent.
+ *  - Label engine: by category (address / shipping / multi-purpose
+ *    are the common buckets — primary; barcode / file-folder /
+ *    name-badge / price-tag / continuous demote to secondary so
+ *    the picker doesn't sprawl on first paint).
+ */
+const PRIMARY_LABEL_CATEGORIES = new Set(['address', 'shipping', 'multi-purpose']);
+
+function groupBy(m: LabelWriterAnyMedia): MediaGroupKey {
+  if (isTapeMedia(m)) {
+    const isRhino = typeof m.material === 'string' && m.material.startsWith('rhino-');
+    if (isRhino) {
+      return {
+        key: `rhino-${String(m.tapeWidthMm)}mm`,
+        label: `Rhino industrial — ${String(m.tapeWidthMm)} mm`,
+        priority: 'secondary',
+        sort: m.tapeWidthMm,
+      };
     }
+    return {
+      key: `tape-${String(m.tapeWidthMm)}mm`,
+      label: `${String(m.tapeWidthMm)} mm tape`,
+      priority: 'primary',
+      sort: m.tapeWidthMm,
+    };
   }
+  const cat = (m as LabelWriterMedia).category ?? 'other';
+  const isPrimary = PRIMARY_LABEL_CATEGORIES.has(cat);
+  return {
+    key: `cat-${cat}`,
+    label: cat
+      .split('-')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' '),
+    priority: isPrimary ? 'primary' : 'secondary',
+  };
 }
 
-watch(
-  () => [activeSession.value, connection.identity?.extra?.detectedSku] as const,
-  () => {
-    if (activeSession.value && activeSession.value.media === null) prefillFromSku();
-  },
-  { immediate: true },
-);
+function swatch(m: LabelWriterAnyMedia): MediaSwatch | null {
+  if (!isTapeMedia(m)) return null;
+  const out: MediaSwatch = {};
+  if (m.text !== undefined) out.fg = m.text;
+  if (m.background !== undefined) out.bg = m.background;
+  return out;
+}
 
-const pickKey = ref<string>('');
-watch(
-  () => activeSession.value?.media,
-  m => {
-    pickKey.value = m ? String(m.id) : '';
-  },
-  { immediate: true },
-);
+function describe(m: LabelWriterAnyMedia): string {
+  return m.name;
+}
 
-function applyPick(): void {
+function onUpdate(next: LabelWriterAnyMedia | null): void {
   const session = activeSession.value;
   if (!session) return;
-  const found = compatibleMedia.value.find(m => String(m.id) === pickKey.value);
-  if (found) session.media = found;
+  session.media = next;
 }
 
 const showCustom = ref(false);
@@ -185,7 +247,6 @@ function applyCustom(): void {
 const sectionTitle = computed(() =>
   isTapeEngine.value ? 'Pick the loaded D1 tape' : 'Pick the loaded label',
 );
-const pickLabel = computed(() => (isTapeEngine.value ? 'Loaded tape' : 'Loaded label'));
 </script>
 
 <template>
@@ -203,46 +264,25 @@ const pickLabel = computed(() => (isTapeEngine.value ? 'Loaded tape' : 'Loaded l
     <template v-else>
       <p v-if="transportWarning" class="warn">{{ transportWarning }}</p>
 
-      <p
-        v-if="!isTapeEngine && connection.identity?.extra?.detectedSku"
-        :key="String(connection.identity.extra.detectedSku)"
-      >
-        Detected SKU <code>{{ connection.identity.extra.detectedSku }}</code> from the printer's NFC
-        roll-tag. Pre-selected below if we recognised it; pick a different entry if the prefill is
-        wrong.
-      </p>
-      <p v-else-if="!isTapeEngine" class="muted">
-        This model doesn't auto-detect its roll, so pick the loaded label manually.
+      <p v-if="!isTapeEngine" class="muted">
+        Pick the loaded label — drives the bitmap dimensions sent to the printer.
       </p>
       <p v-else class="muted">
-        Pick the D1 cassette currently loaded in the tape slot. Width is locked by the cassette;
-        colour drives the wire palette byte (<code>ESC C</code>).
+        Pick the D1 cassette currently loaded. Width is locked by the cassette; colour drives the
+        wire palette byte (<code>ESC C</code>).
       </p>
 
-      <div class="picker">
-        <label>
-          {{ pickLabel }}
-          <select v-model="pickKey" @change="applyPick">
-            <option value="" disabled>— choose —</option>
-            <option v-for="m in compatibleMedia" :key="String(m.id)" :value="String(m.id)">
-              {{ m.name }}
-              <template
-                v-if="(m as LabelWriterMedia).skus && (m as LabelWriterMedia).skus!.length > 0"
-              >
-                [SKUs: {{ (m as LabelWriterMedia).skus!.join(', ') }}]</template
-              >
-            </option>
-          </select>
-        </label>
-        <p v-if="activeSession.media" class="muted small">
-          {{ (activeSession.media as LabelWriterMedia).widthMm }} ×
-          {{ (activeSession.media as LabelWriterMedia).heightMm ?? 'continuous' }} mm
-          <template v-if="(activeSession.media as LabelWriterMedia).heightMm">
-            · {{ (activeSession.media as LabelWriterMedia).lengthDots ?? '?' }} dots
-            length</template
-          >
-        </p>
-      </div>
+      <MediaPicker
+        :model-value="activeSession.media"
+        :available="compatibleMedia"
+        :default-media-id="defaultMediaId"
+        :group-by="groupBy"
+        :swatch="swatch"
+        :describe="describe"
+        :detection-capability="detectionCapability"
+        :detected="detected"
+        @update:model-value="onUpdate"
+      />
     </template>
 
     <template v-if="hasIdentity && activeSession && !isTapeEngine" #advanced>
