@@ -185,7 +185,8 @@ function pick(m: T): void {
     return;
   }
   emit('update:modelValue', m);
-  // Make sure the group containing the pick is expanded.
+  // Make sure the group containing the pick is expanded — relevant
+  // if the user re-expands the catalogue later.
   const g = props.groupBy(m);
   if (g.priority === 'primary') {
     const next = new Set(expandedPrimary.value);
@@ -194,6 +195,33 @@ function pick(m: T): void {
   } else {
     secondaryOpen.value = true;
   }
+  // Collapse the catalogue down to the compact summary so the next
+  // section is one short scroll away. The user can re-expand via the
+  // summary's "Change" affordance.
+  catalogueExpanded.value = false;
+}
+
+// ─── Collapsed-when-selected state ───────────────────────────────
+
+/**
+ * The catalogue starts collapsed when there's already a selection
+ * (the default-on-mount path always lands here). The summary shows
+ * the swatch + name + "Change" affordance; clicking expands the full
+ * catalogue. After the user picks, we auto-collapse back to the
+ * summary so the rest of the page is a short scroll.
+ *
+ * `auto-locked` mode skips this entirely — the catalogue is part of
+ * the read-only display, no need to hide it.
+ */
+const catalogueExpanded = ref<boolean>(false);
+
+const showCollapsedSummary = computed<boolean>(() => {
+  if (detectionMode.value === 'auto-locked') return false;
+  return props.modelValue !== null && !catalogueExpanded.value;
+});
+
+function expandCatalogue(): void {
+  catalogueExpanded.value = true;
 }
 
 // ─── Display helpers ─────────────────────────────────────────────
@@ -262,7 +290,34 @@ function swatchTitle(m: T): string {
       No media detected — pick manually below.
     </p>
 
-    <div class="groups">
+    <!-- Collapsed summary: shown when something is selected and the
+         catalogue isn't explicitly expanded. Single-row chip with
+         swatch + name + "Change" affordance, keeping the next
+         section close. -->
+    <button
+      v-if="showCollapsedSummary && modelValue"
+      type="button"
+      class="selected-summary"
+      @click="expandCatalogue"
+    >
+      <span
+        v-if="swatchFor(modelValue)"
+        class="swatch"
+        :title="swatchTitle(modelValue)"
+        :style="{
+          background: cssColour(swatchFor(modelValue)?.bg),
+          color: cssColour(swatchFor(modelValue)?.fg),
+          borderColor:
+            cssColour(swatchFor(modelValue)?.bg) === 'transparent' ? '#888' : 'transparent',
+        }"
+        >Aa</span
+      >
+      <span class="summary-name">{{ describeMedia(modelValue) }}</span>
+      <code class="summary-id">{{ modelValue.id }}</code>
+      <span class="summary-change">Change ▾</span>
+    </button>
+
+    <div v-show="!showCollapsedSummary" class="groups">
       <section
         v-for="g in primaryGroups"
         :key="g.key"
@@ -385,6 +440,46 @@ function swatchTitle(m: T): string {
 
 .detection-pending {
   color: var(--fg-muted, var(--muted));
+}
+
+.selected-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition:
+    border-color 100ms,
+    background-color 100ms;
+}
+
+.selected-summary:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.summary-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.summary-id {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.summary-change {
+  font-size: 0.78rem;
+  color: var(--fg-muted, var(--muted));
+  white-space: nowrap;
 }
 
 .groups {
