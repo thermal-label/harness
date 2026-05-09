@@ -337,9 +337,7 @@ function resolveMedia(device: LabelManagerDevice, options: VerifyOptions): Label
     const match = MEDIA[options.media];
     if (!match) {
       const known = MEDIA_LIST.map(m => `  ${String(m.id)}  (${m.name})`).join('\n');
-      throw new Error(
-        `Unknown labelmanager media "${options.media}". Known cartridges:\n${known}`,
-      );
+      throw new Error(`Unknown labelmanager media "${options.media}". Known cartridges:\n${known}`);
     }
     media = match;
   } else if (options.tapeWidth !== undefined) {
