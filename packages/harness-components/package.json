@@ -1,0 +1,38 @@
+{
+  "name": "@thermal-label/harness-components",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Driver-agnostic Vue components shared across the thermal-label harness apps. Workspace-internal — never published. Ships .vue source; consuming Vite app handles compilation.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mannes Brak",
+  "sideEffects": false,
+  "exports": {
+    "./media-picker": "./src/MediaPicker.vue",
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./src/types.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src"
+  },
+  "peerDependencies": {
+    "@thermal-label/contracts": "^0.6.0",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@mbtech-nl/eslint-config": "^1.1.0",
+    "@mbtech-nl/tsconfig": "^1.1.0",
+    "@thermal-label/contracts": "^0.6.0",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "@vue/test-utils": "^2.4.0",
+    "happy-dom": "^15.0.0",
+    "typescript": "~5.5.0",
+    "vitest": "^2.0.0",
+    "vue": "^3.5.0",
+    "vue-tsc": "^2.1.0"
+  }
+}
