@@ -56,6 +56,13 @@ export interface VerifyOptions {
   host: string | undefined;
   /** TCP-9100 port (default 9100). Brother-ql tcp transport only. */
   port: number | undefined;
+  /**
+   * Engine role to drive on multi-engine devices (LW Twin Turbo:
+   * `left` / `right`; LW Duo: `label` / `tape`). Default is the
+   * device's first declared engine. Single-engine devices ignore this
+   * flag.
+   */
+  engine: string | undefined;
 }
 
 export async function runVerify(options: VerifyOptions): Promise<void> {

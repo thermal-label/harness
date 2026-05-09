@@ -29,7 +29,7 @@ import {
   type SkuInfo,
 } from '@thermal-label/labelwriter-core';
 import { TcpTransport, UsbTransport } from '@thermal-label/transport/node';
-import type { Transport } from '@thermal-label/contracts';
+import type { PrintEngine, Transport } from '@thermal-label/contracts';
 import type { IdentitySnapshot } from '@thermal-label/harness-core/shared';
 
 export interface ConnectedSession<T extends Transport = Transport> {
@@ -50,6 +50,7 @@ const STATUS_TIMEOUT_MS = 2_000;
  */
 export async function connectLabelwriterUsb(
   device: LabelWriterDevice,
+  engine?: PrintEngine,
 ): Promise<ConnectedSession<UsbTransport>> {
   const usb = device.transports.usb;
   if (!usb) {
@@ -60,13 +61,34 @@ export async function connectLabelwriterUsb(
   const vid = parseInt(usb.vid, 16);
   const pid = parseInt(usb.pid, 16);
 
-  const transport = await UsbTransport.open(vid, pid);
+  // Multi-engine devices with per-engine USB-interface routing (Duo:
+  // label = interface 0, tape = interface 1) need `claimInterface(N)`
+  // on the right interface for the active engine. Single-engine
+  // devices and Twin-style chassis (in-band roll-select, one
+  // interface) ignore the bind hint.
+  const bInterfaceNumber = engine?.bind?.usb?.bInterfaceNumber;
+  const transport =
+    bInterfaceNumber !== undefined
+      ? await UsbTransport.open(vid, pid, { bInterfaceNumber })
+      : await UsbTransport.open(vid, pid);
 
   const identity: IdentitySnapshot = {
     advertisedName: device.name,
     vid,
     pid,
+    ...(engine
+      ? {
+          extra: { engineRole: engine.role, engineProtocol: engine.protocol },
+        }
+      : {}),
   };
+
+  // Status probe on the tape engine speaks D1 (1-byte status reply),
+  // not lw-450/550 — skip the LW probe there. The labelwriter probe
+  // would either time out or echo garbage on a D1 head.
+  if (engine?.protocol === 'd1-tape') {
+    return { transport, identity };
+  }
 
   await runStatusProbe(transport, device, identity);
 

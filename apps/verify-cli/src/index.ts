@@ -43,6 +43,8 @@ interface VerifyCommandOptions {
   host?: string;
   /** TCP-9100 port (default 9100). Brother-ql TCP only. */
   port?: number;
+  /** Engine role for multi-engine LabelWriter devices (Twin/Duo). */
+  engine?: string;
 }
 
 function parseChoice<T extends string>(label: string, allowed: readonly T[]): (value: string) => T {
@@ -119,6 +121,10 @@ program
   .option('--port <port>', 'TCP-9100 port (default 9100). Brother-ql tcp transport only.', v =>
     Number.parseInt(v, 10),
   )
+  .option(
+    '--engine <role>',
+    'Engine role on multi-engine LabelWriter devices (Twin Turbo: left/right; Duo: label/tape). Defaults to the first engine declared on the model. Ignored on single-engine devices.',
+  )
   .action(async (driver: string, model: string | undefined, options: VerifyCommandOptions) => {
     if (!(SUPPORTED_DRIVERS as readonly string[]).includes(driver)) {
       console.error(
@@ -148,6 +154,7 @@ program
         media: options.media,
         host: options.host,
         port: options.port,
+        engine: options.engine,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

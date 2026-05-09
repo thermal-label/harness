@@ -37,24 +37,27 @@
 import {
   DEVICES,
   MEDIA,
+  type LabelWriterAnyMedia,
   type LabelWriterDevice,
   type LabelWriterMedia,
+  type LabelWriterTapeMedia,
 } from '@thermal-label/labelwriter-core';
 import {
   DeviceNotFoundError,
   TransportClosedError,
+  type PrintEngine,
   type Transport,
   type TransportType,
 } from '@thermal-label/contracts';
 import {
   renderIssueBody,
   transportInstructions,
+  type EngineReport,
   type HardwareReport,
   type IdentitySnapshot,
   type ProposedRung,
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
-import type { LabelBitmap } from '@mbtech-nl/bitmap';
 import type { VerifyOptions } from '../../verify.js';
 import {
   NoPromptError,
@@ -69,7 +72,7 @@ import {
   probeLabelwriterMedia,
   writeDiagnosticPrint,
 } from './connect.js';
-import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelwriter';
+import { dispatchEncoder } from '@thermal-label/harness-core/labelwriter';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp } from '../../bitmap-png.js';
@@ -109,21 +112,24 @@ export async function runLabelwriterVerify(options: VerifyOptions): Promise<void
   const ctx: PromptContext = { noPrompt: !options.wizard };
 
   const device = await resolveDevice(options, ctx);
-  const media = await resolveMedia(device, options, ctx);
+  const engine = resolveEngine(device, options);
+  const media = await resolveMedia(device, engine, options, ctx);
 
   const availableTransports = deviceTransports(device);
   if (availableTransports.length === 0) {
     throw new Error(`Device ${device.key} has no recognised transports declared.`);
   }
 
-  printSessionHeader(device, media);
+  printSessionHeader(device, engine, media);
 
   // Multi-transport loop. The first iteration honours `--transport`
   // (or auto-picks if exactly one is available); subsequent iterations
   // present the unused transports and let the operator pick or stop.
   const runs: TransportReport[] = [];
+  const engineRuns: EngineReport[] = [];
   await runOneTransport({
     device,
+    engine,
     media,
     options,
     ctx,
@@ -131,6 +137,7 @@ export async function runLabelwriterVerify(options: VerifyOptions): Promise<void
     availableTransports,
     usedTransports: new Set(),
     runs,
+    engineRuns,
   });
 
   // For dry-run, the first iteration short-circuits inside
@@ -157,6 +164,7 @@ export async function runLabelwriterVerify(options: VerifyOptions): Promise<void
 
     await runOneTransport({
       device,
+      engine,
       media,
       options,
       ctx,
@@ -164,24 +172,35 @@ export async function runLabelwriterVerify(options: VerifyOptions): Promise<void
       availableTransports,
       usedTransports: usedNames,
       runs,
+      engineRuns,
     });
   }
 }
 
 interface RunOneTransportInput {
   device: LabelWriterDevice;
-  media: LabelWriterMedia;
+  engine: PrintEngine;
+  media: LabelWriterAnyMedia;
   options: VerifyOptions;
   ctx: PromptContext;
   isFirstIteration: boolean;
   availableTransports: readonly TransportType[];
   usedTransports: ReadonlySet<TransportType>;
   runs: TransportReport[];
+  engineRuns: EngineReport[];
 }
 
 async function runOneTransport(input: RunOneTransportInput): Promise<void> {
-  const { device, media, options, ctx, isFirstIteration, availableTransports, usedTransports } =
-    input;
+  const {
+    device,
+    engine,
+    media,
+    options,
+    ctx,
+    isFirstIteration,
+    availableTransports,
+    usedTransports,
+  } = input;
 
   const transport = await resolveTransport(
     options,
@@ -199,16 +218,17 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
   console.log('');
 
   // Build the bitmap up front so `--preview` works hardware-free.
-  // The diagnostic encoder reads chassis-mechanical dead zones from
-  // `engine.printableArea` (registry-resolved) — no operator-facing
-  // override surface; the maintainer revises registry values per
-  // bench measurement.
-  const result = buildDiagnosticBitmap({
+  // The dispatch helper picks the right encoder pair per
+  // `engine.protocol` (lw-450/550 vs d1-tape) and prepends the Twin
+  // roll-select prefix when the engine carries `bind.address`.
+  const dispatched = dispatchEncoder({
     device,
+    engine,
     media,
     harnessVersion: HARNESS_VERSION,
     driverVersion: DRIVER_VERSION,
   });
+  const result = dispatched.buildBitmap();
 
   if (options.preview) {
     // Preview the AUTHORED bitmap — it shows the operator the full
@@ -220,7 +240,10 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
   }
 
   if (options.previewPng) {
-    const pngPath = writeBitmapPngToTmp(result.authored, `verify-${device.key}-${transport}`);
+    const pngPath = writeBitmapPngToTmp(
+      result.authored,
+      `verify-${device.key}-${engine.role}-${transport}`,
+    );
     console.log(`Wrote PNG preview: ${pngPath}`);
     const launcher = openInBrowser(pngPath);
     if (launcher) {
@@ -232,14 +255,16 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
   // Pass `result.authored.heightPx` as the label pitch — `result.wire`
   // may be shorter than the label (the LW mechanical leading offset
   // is skipped from the raster stream) but the printer still needs
-  // the actual label pitch for form-feed/cut sequencing.
+  // the actual label pitch for form-feed/cut sequencing. The dispatch
+  // helper prepends Twin's `ESC q <addr>` prefix internally; on
+  // d1-tape the labelLengthDots argument is ignored.
   const identity = await runConnectAndPrint(
     device,
+    engine,
     transport,
     host,
     options,
-    result.wire,
-    result.authored.heightPx,
+    () => dispatched.encodeBitmap(result.wire, result.authored.heightPx),
   );
 
   const rung = await resolveRung(options, ctx);
@@ -255,11 +280,25 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
 
   input.runs.push(transportReport);
 
+  const engineReport: EngineReport = {
+    role: engine.role,
+    mediaKey: String(media.id),
+    rung,
+    ...(notes ? { notes } : {}),
+  };
+  // One entry per engine — `runs` is keyed by transport, but multiple
+  // transports on the same engine should not duplicate the engine
+  // report. Replace if we already have an entry for this role.
+  const existingIndex = input.engineRuns.findIndex(e => e.role === engineReport.role);
+  if (existingIndex >= 0) input.engineRuns[existingIndex] = engineReport;
+  else input.engineRuns.push(engineReport);
+
   const report = buildReport({
     device,
     media,
     detectedIdentity: identity,
     transports: input.runs,
+    engines: device.engines.length > 1 ? input.engineRuns : undefined,
     reporter: options.reporter,
   });
 
@@ -343,31 +382,84 @@ function buildIssueTitle(report: HardwareReport): string {
   return `[harness] ${model} — ${transports || 'unverified'}`;
 }
 
-function printSessionHeader(device: LabelWriterDevice, media: LabelWriterMedia): void {
+function printSessionHeader(
+  device: LabelWriterDevice,
+  engine: PrintEngine,
+  media: LabelWriterAnyMedia,
+): void {
   console.log('');
   console.log(`Driver:    ${DRIVER_KEY} (core ${DRIVER_VERSION}, harness ${HARNESS_VERSION})`);
   console.log(`Model:     ${device.name}  [${device.key}]`);
+  if (device.engines.length > 1) {
+    console.log(`Engine:    ${engine.role} (${engine.protocol})`);
+  }
   console.log(`Label:     ${media.name}  [${String(media.id)}]`);
   console.log('');
 }
 
+/**
+ * Resolve which engine to drive on this device.
+ *
+ * `--engine <role>` always wins. Without the flag, default to
+ * `engines[0]` for back-compat; single-engine devices ignore the flag
+ * entirely. On a multi-engine device with no flag passed, we still
+ * default to the first engine but flag it visibly so the operator
+ * knows the other engines are not being exercised.
+ */
+function resolveEngine(device: LabelWriterDevice, options: VerifyOptions): PrintEngine {
+  const requested = options.engine;
+  if (requested !== undefined) {
+    const match = device.engines.find(e => e.role === requested);
+    if (!match) {
+      const roles = device.engines.map(e => e.role).join(', ');
+      throw new Error(
+        `Device ${device.key} has no engine with role "${requested}". Available: ${roles}.`,
+      );
+    }
+    return match;
+  }
+  const first = device.engines[0];
+  if (!first) {
+    throw new Error(`Device ${device.key} declares no engines.`);
+  }
+  if (device.engines.length > 1) {
+    const others = device.engines
+      .slice(1)
+      .map(e => e.role)
+      .join(', ');
+    console.log(
+      `[labelwriter] ${device.key} is multi-engine; defaulting to "${first.role}". ` +
+        `Pass --engine <role> to drive ${others} instead.`,
+    );
+  }
+  return first;
+}
+
 async function runConnectAndPrint(
   device: LabelWriterDevice,
+  engine: PrintEngine,
   transport: TransportType,
   host: string | undefined,
   options: VerifyOptions,
-  bitmap: LabelBitmap,
-  labelLengthDots: number,
+  encode: () => Uint8Array,
 ): Promise<IdentitySnapshot> {
   if (options.dryRun) {
-    return synthesiseIdentity(device, transport, host);
+    // Materialise the encoded bytes so dry-run smoke tests can
+    // observe the encoder dispatch (per-engine, per-protocol). The
+    // bytes themselves go nowhere — `--dry-run` doesn't open
+    // hardware.
+    void encode();
+    return synthesiseIdentity(device, engine, transport, host);
   }
 
   console.log(`Connecting over ${transport}${host !== undefined ? ` to ${host}:9100` : ''}...`);
   let session: { transport: Transport; identity: IdentitySnapshot };
   try {
     if (transport === 'usb') {
-      session = await connectLabelwriterUsb(device);
+      // Duo's `tape` engine sits on a different USB interface from
+      // its `label` engine. Pass the engine through so `connect.ts`
+      // claims the right `bInterfaceNumber`.
+      session = await connectLabelwriterUsb(device, engine);
     } else {
       if (host === undefined) {
         throw new Error('Internal: TCP transport selected without a host.');
@@ -394,7 +486,7 @@ async function runConnectAndPrint(
   );
 
   console.log('Encoding diagnostic print...');
-  const bytes = encodeBitmap(bitmap, device, labelLengthDots);
+  const bytes = encode();
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
   try {
     await writeDiagnosticPrint(session.transport, bytes);
@@ -457,26 +549,36 @@ async function resolveDevice(
  */
 async function resolveMedia(
   device: LabelWriterDevice,
+  engine: PrintEngine,
   options: VerifyOptions,
   ctx: PromptContext,
-): Promise<LabelWriterMedia> {
-  const labelMedia = labelwriterLabelMedia();
+): Promise<LabelWriterAnyMedia> {
+  const isTapeEngine = engine.protocol === 'd1-tape';
+  const compatible = isTapeEngine ? labelwriterTapeMedia() : labelwriterLabelMedia();
 
   if (options.media !== undefined) {
-    const match = findMediaByKeyOrSku(options.media);
+    const match = findMediaByKeyOrSku(options.media, isTapeEngine);
     if (!match) {
-      throw new Error(formatUnknownLabel(options.media, labelMedia));
+      throw new Error(formatUnknownLabel(options.media, compatible, isTapeEngine));
+    }
+    if (!isMediaCompatibleWithEngine(match, engine)) {
+      throw new Error(
+        `--media "${options.media}" is not compatible with engine "${engine.role}" ` +
+          `(media targets: ${(match.targetModels ?? []).join(', ') || '(none)'}, ` +
+          `engine accepts: ${(engine.mediaCompatibility ?? []).join(', ') || '(any)'}).`,
+      );
     }
     return match;
   }
 
   // Try printer auto-detection on capable models. Skip on dry-run —
-  // synthesised identity, no hardware contact.
-  const detectsMedia = device.engines[0]?.capabilities?.mediaDetection === true;
+  // synthesised identity, no hardware contact. Only the label engine
+  // does NFC SKU detection; the tape engine has no comparable probe.
+  const detectsMedia = !isTapeEngine && engine.capabilities?.mediaDetection === true;
   if (detectsMedia && !options.dryRun) {
     const detected = await probeLabelwriterMedia(device);
     if (detected) {
-      const match = findMediaByKeyOrSku(detected.sku);
+      const match = findMediaByKeyOrSku(detected.sku, false);
       if (match) {
         console.log(
           `[labelwriter] Detected media from printer NFC: ${detected.sku} (${match.name}).`,
@@ -490,31 +592,31 @@ async function resolveMedia(
   }
 
   if (ctx.noPrompt) {
-    const reason = detectsMedia
-      ? `${device.key} has media detection but the probe returned nothing usable`
-      : `${device.key} has no media detection`;
-    throw new Error(
-      `--media is required for labelwriter (${reason}). ` +
-        `Pass --media <key|sku> (e.g. --media ADDRESS_STANDARD or --media 30334).`,
-    );
+    const reason = isTapeEngine
+      ? `${device.key} engine "${engine.role}" is a tape engine (no auto-detection)`
+      : detectsMedia
+        ? `${device.key} has media detection but the probe returned nothing usable`
+        : `${device.key} has no media detection`;
+    const example = isTapeEngine
+      ? '--media STANDARD_BLACK_ON_WHITE_12 or --media d1-standard-bw-12'
+      : '--media ADDRESS_STANDARD or --media 30334';
+    throw new Error(`--media is required for labelwriter (${reason}). Pass ${example}.`);
   }
 
-  // Filter to media compatible with the device's primary engine
-  // (rough cut: `targetModels` overlaps `mediaCompatibility`).
-  const choices = labelMedia
-    .filter(m => isMediaCompatibleWithDevice(m, device))
-    .map(m => ({
-      value: String(m.id),
-      name: `${m.name}  [${String(m.id)}]`,
-    }));
+  // Filter to media compatible with the active engine.
+  const filtered = compatible.filter(m => isMediaCompatibleWithEngine(m, engine));
+  const choices = (filtered.length > 0 ? filtered : compatible).map(m => ({
+    value: String(m.id),
+    name: `${m.name}  [${String(m.id)}]`,
+  }));
 
   const picked = await promptSelect<string>(
     ctx,
     'media',
-    'Pick the loaded label:',
-    choices.length > 0 ? choices : labelMedia.map(m => ({ value: String(m.id), name: m.name })),
+    isTapeEngine ? 'Pick the loaded D1 tape:' : 'Pick the loaded label:',
+    choices,
   );
-  const found = labelMedia.find(m => String(m.id) === picked);
+  const found = compatible.find(m => String(m.id) === picked);
   if (!found) throw new Error(`Picked unknown media ${picked}`);
   return found;
 }
@@ -529,15 +631,31 @@ function labelwriterLabelMedia(): readonly LabelWriterMedia[] {
   return (Object.values(MEDIA) as readonly unknown[]).filter(isLabelWriterLabelMedia);
 }
 
-function findMediaByKeyOrSku(value: string): LabelWriterMedia | undefined {
-  const upper = value.toUpperCase();
-  // First try MEDIA-registry key (e.g. ADDRESS_STANDARD).
-  const byKey = (MEDIA as Record<string, unknown>)[upper];
-  if (byKey !== undefined && isLabelWriterLabelMedia(byKey)) return byKey;
+function labelwriterTapeMedia(): readonly LabelWriterTapeMedia[] {
+  return (Object.values(MEDIA) as readonly unknown[]).filter(isLabelWriterTapeMedia);
+}
 
-  // Then try SKU lookup (e.g. 30334 → which media carries this SKU).
-  for (const m of labelwriterLabelMedia()) {
-    if (m.skus?.includes(value)) return m;
+function findMediaByKeyOrSku(value: string, prefersTape: boolean): LabelWriterAnyMedia | undefined {
+  const upper = value.toUpperCase();
+  // First try MEDIA-registry key (e.g. ADDRESS_STANDARD,
+  // STANDARD_BLACK_ON_WHITE_12).
+  const byKey = (MEDIA as Record<string, unknown>)[upper];
+  if (byKey !== undefined) {
+    if (prefersTape && isLabelWriterTapeMedia(byKey)) return byKey;
+    if (!prefersTape && isLabelWriterLabelMedia(byKey)) return byKey;
+  }
+
+  // Then try id / SKU lookup (e.g. `d1-standard-bw-12` for tape;
+  // `30334` for paper). The id may be the lower-case dashed form.
+  if (prefersTape) {
+    for (const m of labelwriterTapeMedia()) {
+      if (String(m.id) === value) return m;
+    }
+  } else {
+    for (const m of labelwriterLabelMedia()) {
+      if (m.skus?.includes(value)) return m;
+      if (String(m.id) === value) return m;
+    }
   }
   return undefined;
 }
@@ -548,17 +666,28 @@ function isLabelWriterLabelMedia(m: unknown): m is LabelWriterMedia {
   return t === 'die-cut' || t === 'continuous';
 }
 
-function isMediaCompatibleWithDevice(media: LabelWriterMedia, device: LabelWriterDevice): boolean {
+function isLabelWriterTapeMedia(m: unknown): m is LabelWriterTapeMedia {
+  if (typeof m !== 'object' || m === null) return false;
+  return (m as { type?: string }).type === 'tape';
+}
+
+function isMediaCompatibleWithEngine(media: LabelWriterAnyMedia, engine: PrintEngine): boolean {
   const targets = media.targetModels ?? [];
-  const compat = device.engines[0]?.mediaCompatibility ?? [];
+  const compat = engine.mediaCompatibility;
+  if (compat === undefined) return true;
   return targets.some(t => compat.includes(t));
 }
 
-function formatUnknownLabel(value: string, media: readonly LabelWriterMedia[]): string {
+function formatUnknownLabel(
+  value: string,
+  media: readonly LabelWriterAnyMedia[],
+  isTape: boolean,
+): string {
   const lines: string[] = [];
-  lines.push(`Unknown labelwriter label "${value}". Pass either a media key or a SKU.`);
+  const noun = isTape ? 'tape' : 'label';
+  lines.push(`Unknown labelwriter ${noun} "${value}". Pass either a media key or an id/SKU.`);
   lines.push('');
-  lines.push('Known labels:');
+  lines.push(isTape ? 'Known tapes:' : 'Known labels:');
   for (const m of media) {
     const skus = m.skus && m.skus.length > 0 ? `  (skus: ${m.skus.join(', ')})` : '';
     lines.push(`  ${String(m.id)} — ${m.name}${skus}`);
@@ -662,14 +791,16 @@ async function resolveNotes(
 
 interface BuildReportInput {
   device: LabelWriterDevice;
-  media: LabelWriterMedia;
+  media: LabelWriterAnyMedia;
   detectedIdentity: IdentitySnapshot;
   transports: readonly TransportReport[];
+  engines: readonly EngineReport[] | undefined;
   reporter: string | undefined;
 }
 
 function synthesiseIdentity(
   device: LabelWriterDevice,
+  engine: PrintEngine,
   transport: TransportType,
   host: string | undefined,
 ): IdentitySnapshot {
@@ -683,6 +814,8 @@ function synthesiseIdentity(
       synthesised: true,
       source: 'dry-run-fallback',
       transport,
+      engineRole: engine.role,
+      engineProtocol: engine.protocol,
       ...(host !== undefined ? { host } : {}),
     },
   };
@@ -705,6 +838,7 @@ function buildReport(input: BuildReportInput): HardwareReport {
       },
     },
     transports: input.transports,
+    ...(input.engines && input.engines.length > 0 ? { engines: input.engines } : {}),
     submittedAt: new Date().toISOString(),
     ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };
