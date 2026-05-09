@@ -4,6 +4,11 @@
  * `?mock=1` (or any truthy value) enables mock-transport mode. An
  * explicit `?mock=lm280` etc. selects which model to pretend to be.
  *
+ * Gated to dev builds (`import.meta.env.DEV === true`). Production
+ * bundles published to `thermal-label.github.io/harness/labelmanager/`
+ * ignore `?mock=` entirely — public users don't need it, and a
+ * silently-mocked report submission is a footgun.
+ *
  * Read once at module load — the URL doesn't change during the
  * session, so we don't need reactivity.
  */
@@ -11,6 +16,7 @@ import type { MockTarget } from '../transport/mock';
 
 function parseQuery(): { mock: boolean; target: MockTarget } {
   if (typeof window === 'undefined') return { mock: false, target: 'lm_pnp' };
+  if (!import.meta.env.DEV) return { mock: false, target: 'lm_pnp' };
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('mock');
   if (raw === null) return { mock: false, target: 'lm_pnp' };

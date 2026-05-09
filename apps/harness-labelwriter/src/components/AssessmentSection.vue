@@ -8,7 +8,7 @@
  * leave it empty; that's fine.
  */
 import { computed } from 'vue';
-import { activeSession, device, engineSessions, selectedRole } from '../state/session';
+import { activeSession } from '../state/session';
 import SectionCard from './SectionCard.vue';
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() => {
@@ -19,41 +19,6 @@ const sectionState = computed<'pending' | 'active' | 'done'>(() => {
 });
 
 const hasPrinted = computed(() => Boolean(activeSession.value?.printed));
-
-// ─── Multi-engine "now do the other one" CTA ──────────────────────
-
-const isMultiEngine = computed(() => (device.value?.engines.length ?? 0) > 1);
-
-/**
- * Next engine that hasn't been assessed yet, ranked after the
- * currently-active one. Returns `null` when there's no other engine
- * left to test (single-engine device, or every other engine already
- * has a rung). Drives the CTA at the bottom of this section.
- */
-const nextUnassessedRole = computed<string | null>(() => {
-  const dev = device.value;
-  if (!dev) return null;
-  const current = selectedRole.value;
-  for (const eng of dev.engines) {
-    if (eng.role === current) continue;
-    const session = engineSessions[eng.role];
-    if (session && session.rung !== null) continue;
-    return eng.role;
-  }
-  return null;
-});
-
-function switchToNextEngine(): void {
-  const next = nextUnassessedRole.value;
-  if (!next) return;
-  selectedRole.value = next;
-  // Scroll back up to the engine tabs so the operator sees the
-  // change of context — the page jumping into a new tab without
-  // visual continuity is jarring.
-  setTimeout(() => {
-    document.getElementById('engine-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 50);
-}
 
 const choices = [
   {
@@ -104,25 +69,6 @@ const choices = [
           placeholder="e.g. left edge clipped by 2 dots; density uneven on the lower half; trailing marker landed 5 mm short"
         />
       </label>
-
-      <!-- Multi-engine "rails not walls" CTA: when this engine has a
-           rung set and there's another engine left to test, offer
-           the switch. Operator can ignore it and submit a partial
-           report instead — the Submit card adapts copy + matrix
-           cell goes amber. -->
-      <div
-        v-if="isMultiEngine && activeSession.rung !== null && nextUnassessedRole"
-        class="next-engine-cta"
-      >
-        <p class="cta-blurb">
-          You can also test the <strong>{{ nextUnassessedRole }}</strong> engine on this printer.
-          Both engines on one report = one fully verified cell. Skip if you want — partial reports
-          help too.
-        </p>
-        <button class="cta-button" type="button" @click="switchToNextEngine">
-          Now test the {{ nextUnassessedRole }} engine →
-        </button>
-      </div>
     </template>
   </SectionCard>
 </template>
@@ -180,44 +126,5 @@ const choices = [
   font-family: inherit;
   resize: vertical;
   min-height: 4rem;
-}
-
-.next-engine-cta {
-  margin-top: var(--space-5);
-  padding: var(--space-4);
-  background: var(--bg-elev);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: flex-start;
-}
-
-.cta-blurb {
-  margin: 0;
-  font-size: 0.92rem;
-  color: var(--fg-muted, var(--muted));
-}
-
-.cta-blurb strong {
-  text-transform: capitalize;
-  color: var(--fg);
-}
-
-.cta-button {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-transform: capitalize;
-}
-
-.cta-button:hover {
-  background: var(--accent-hover);
 }
 </style>

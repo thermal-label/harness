@@ -26,7 +26,6 @@ import {
   totalEngines,
 } from '../state/session';
 import {
-  FALLBACK_EMAIL,
   TARGET_REPO,
   buildReport,
   copyToClipboard,
@@ -49,6 +48,36 @@ const sectionState = computed<'pending' | 'active' | 'done'>(() => {
 const reporterHandle = ref('');
 const errorMessage = ref<string | null>(null);
 const fallbackBody = ref<string | null>(null);
+const copyState = ref<'idle' | 'copied'>('idle');
+
+// ─── Multi-engine "test the other engine" CTA ────────────────────
+
+/**
+ * Next engine that hasn't been assessed yet. Surfaced inline in the
+ * coverage list so the operator can keep going without scrolling
+ * back. Returns null when there's no other engine left (single-engine
+ * device, or every engine already has a rung).
+ */
+const nextUnassessedRole = computed<string | null>(() => {
+  const dev = device.value;
+  if (!dev) return null;
+  for (const eng of dev.engines) {
+    const session = engineSessions[eng.role];
+    if (session && session.rung !== null) continue;
+    return eng.role;
+  }
+  return null;
+});
+
+function switchToEngine(role: string): void {
+  selectedRole.value = role;
+  // Scroll back up to the engine tabs so the operator sees the
+  // change of context — the page jumping to a new tab without
+  // visual continuity is jarring.
+  setTimeout(() => {
+    document.getElementById('engine-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+}
 
 const partialCoverage = computed(
   () => isMultiEngine.value && assessedCount.value < totalEngines.value,
@@ -104,11 +133,14 @@ async function doSubmit(): Promise<void> {
   }
 }
 
-async function copyBodyAgain(): Promise<void> {
+async function copyBody(): Promise<void> {
   if (!fallbackBody.value) return;
   try {
     await copyToClipboard(fallbackBody.value);
-    errorMessage.value = 'Copied to clipboard again.';
+    copyState.value = 'copied';
+    setTimeout(() => {
+      copyState.value = 'idle';
+    }, 2000);
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : String(err);
   }
@@ -129,13 +161,6 @@ const previewUrlTooLong = computed(() => {
     mocked: connection.mocked,
   });
   return urlExceedsLimit(buildPrefillUrl(TARGET_REPO, buildIssueTitle(report), renderBody(report)));
-});
-
-const mailtoFallback = computed(() => {
-  if (!fallbackBody.value) return '';
-  const subject = encodeURIComponent('thermal-label labelwriter harness report');
-  const body = encodeURIComponent(fallbackBody.value);
-  return `mailto:${FALLBACK_EMAIL}?subject=${subject}&body=${body}`;
 });
 
 interface CoverageRow {
@@ -209,6 +234,19 @@ function activate(role: string): void {
           {{ totalEngines }} engines. The matrix cell will reflect partial coverage. That's fine —
           partial reports help too.
         </p>
+
+        <!-- "Rails not walls" CTA: when there's another engine left
+             to test, offer the switch alongside Submit. Operator picks
+             whichever — keep going or submit what they have. -->
+        <div v-if="nextUnassessedRole" class="next-engine-cta">
+          <p class="cta-blurb">
+            You can also test the <strong>{{ nextUnassessedRole }}</strong> engine on this printer
+            for a fully covered report.
+          </p>
+          <button class="cta-button" type="button" @click="switchToEngine(nextUnassessedRole)">
+            Test the {{ nextUnassessedRole }} engine →
+          </button>
+        </div>
       </div>
 
       <p v-if="connection.mocked" class="warn">
@@ -217,8 +255,8 @@ function activate(role: string): void {
       </p>
 
       <p v-if="previewUrlTooLong" class="muted small">
-        Heads up: this report's body would exceed GitHub's URL limit. We'll copy the JSON to your
-        clipboard automatically and you can paste it into a fresh issue manually.
+        Heads up: this report's body exceeds GitHub's URL limit. After submit, use the Copy button
+        below to grab the body and paste it into a fresh issue manually.
       </p>
 
       <label class="reporter">
@@ -248,8 +286,8 @@ function activate(role: string): void {
       </p>
 
       <p class="muted small">
-        If the issue tab didn't open or the URL was too long, the report body is on your clipboard.
-        Paste it into a fresh issue at
+        If the issue tab didn't open or the URL was too long, copy the report body below and paste
+        into a fresh issue at
         <a :href="`https://github.com/${TARGET_REPO}/issues/new`" target="_blank" rel="noopener">
           {{ TARGET_REPO }}/issues/new </a
         >.
@@ -259,11 +297,12 @@ function activate(role: string): void {
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
     <div v-if="fallbackBody" class="fallback">
-      <p class="muted small">Report body (copy this into a fresh issue if the tab didn't open):</p>
+      <p class="muted small">Report body — copy and paste into a fresh issue manually:</p>
       <textarea readonly rows="10" :value="fallbackBody" />
       <div class="fallback-actions">
-        <button class="ghost" type="button" @click="copyBodyAgain">Copy again</button>
-        <a class="ghost" :href="mailtoFallback">Email to {{ FALLBACK_EMAIL }}</a>
+        <button class="primary" type="button" @click="copyBody">
+          {{ copyState === 'copied' ? 'Copied ✓' : 'Copy to clipboard' }}
+        </button>
       </div>
     </div>
   </SectionCard>
@@ -365,6 +404,45 @@ function activate(role: string): void {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-3);
+}
+
+.next-engine-cta {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.cta-blurb {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--fg-muted, var(--muted));
+}
+
+.cta-blurb strong {
+  text-transform: capitalize;
+  color: var(--fg);
+}
+
+.cta-button {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.cta-button:hover {
+  background: var(--accent-hover);
 }
 
 .coverage {

@@ -151,23 +151,26 @@ export interface SubmitResult {
  * handler. We do best-effort detection of a blocked pop-up and
  * fall back gracefully.
  */
+/* The browser harness signature stays async so callers can await
+ * the fallback-render path uniformly with the no-fallback path. */
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function submitReport(report: HardwareReport): Promise<SubmitResult> {
   const body = renderIssueBody(report);
   const title = buildIssueTitle(report);
   const url = buildPrefillUrl(TARGET_REPO, title, body);
 
   if (urlExceedsLimit(url)) {
-    await copyToClipboard(body);
     return { path: 'clipboard-fallback', error: 'URL would exceed GitHub limits' };
   }
 
   const opened = window.open(url, '_blank', 'noopener,noreferrer');
   if (!opened) {
-    // Pop-up blocker fired. Copy and tell the user.
-    await copyToClipboard(body);
+    // Pop-up blocker fired. The fallback textarea + Copy button
+    // below give the operator a way to recover; we don't
+    // auto-copy on their behalf.
     return {
       path: 'clipboard-fallback',
-      error: 'Browser blocked the new tab — body copied to clipboard.',
+      error: 'Browser blocked the new tab — use the Copy button below to grab the report body.',
       url,
     };
   }

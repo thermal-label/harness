@@ -18,7 +18,6 @@ import {
   submitState,
 } from '../state/session';
 import {
-  FALLBACK_EMAIL,
   TARGET_REPO,
   buildReport,
   copyToClipboard,
@@ -74,11 +73,16 @@ async function doSubmit(): Promise<void> {
   }
 }
 
-async function copyBodyAgain(): Promise<void> {
+const copyState = ref<'idle' | 'copied'>('idle');
+
+async function copyBody(): Promise<void> {
   if (!fallbackBody.value) return;
   try {
     await copyToClipboard(fallbackBody.value);
-    errorMessage.value = 'Copied to clipboard again.';
+    copyState.value = 'copied';
+    setTimeout(() => {
+      copyState.value = 'idle';
+    }, 2000);
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : String(err);
   }
@@ -96,13 +100,6 @@ const previewUrlTooLong = computed(() => {
     mocked: connection.mocked,
   });
   return urlExceedsLimit(buildPrefillUrl(TARGET_REPO, buildIssueTitle(report), renderBody(report)));
-});
-
-const mailtoFallback = computed(() => {
-  if (!fallbackBody.value) return '';
-  const subject = encodeURIComponent('thermal-label labelmanager harness report');
-  const body = encodeURIComponent(fallbackBody.value);
-  return `mailto:${FALLBACK_EMAIL}?subject=${subject}&body=${body}`;
 });
 </script>
 
@@ -124,8 +121,8 @@ const mailtoFallback = computed(() => {
       </p>
 
       <p v-if="previewUrlTooLong" class="muted small">
-        Heads up: this report's body would exceed GitHub's URL limit. We'll copy the JSON to your
-        clipboard automatically and you can paste it into a fresh issue manually.
+        Heads up: this report's body exceeds GitHub's URL limit. After submit, use the Copy button
+        below to grab the body and paste into a fresh issue manually.
       </p>
 
       <label class="reporter">
@@ -155,8 +152,8 @@ const mailtoFallback = computed(() => {
       </p>
 
       <p class="muted small">
-        If the issue tab didn't open or the URL was too long, the report body is on your clipboard.
-        Paste it into a fresh issue at
+        If the issue tab didn't open or the URL was too long, copy the report body below and paste
+        into a fresh issue at
         <a :href="`https://github.com/${TARGET_REPO}/issues/new`" target="_blank" rel="noopener">
           {{ TARGET_REPO }}/issues/new </a
         >.
@@ -166,11 +163,12 @@ const mailtoFallback = computed(() => {
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
     <div v-if="fallbackBody" class="fallback">
-      <p class="muted small">Report body (copy this into a fresh issue if the tab didn't open):</p>
+      <p class="muted small">Report body — copy and paste into a fresh issue manually:</p>
       <textarea readonly rows="10" :value="fallbackBody" />
       <div class="fallback-actions">
-        <button class="ghost" type="button" @click="copyBodyAgain">Copy again</button>
-        <a class="ghost" :href="mailtoFallback">Email to {{ FALLBACK_EMAIL }}</a>
+        <button class="primary" type="button" @click="copyBody">
+          {{ copyState === 'copied' ? 'Copied ✓' : 'Copy to clipboard' }}
+        </button>
       </div>
     </div>
   </SectionCard>
