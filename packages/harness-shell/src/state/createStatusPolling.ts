@@ -97,12 +97,31 @@ export function startStatusPolling<TDevice, TStatus>(opts: {
         opts.device,
       );
       opts.target.value = status;
-    } catch {
+      // Dev-only: surface poll cadence + raw bytes so the operator
+      // can watch in DevTools whether the firmware is updating its
+      // status response in real time (e.g. when removing the tape
+      // mid-session). Production builds skip this.
+      if (import.meta.env.DEV) {
+        const raw = (status as { rawBytes?: Uint8Array } | null)?.rawBytes;
+        const hex = raw
+          ? Array.from(raw)
+              .slice(0, 16)
+              .map(b => b.toString(16).padStart(2, '0'))
+              .join(' ')
+          : '(no raw)';
+        // eslint-disable-next-line no-console -- dev-mode diagnostic; gated by import.meta.env.DEV
+        console.debug('[status] poll →', hex, status);
+      }
+    } catch (err) {
       // Silent — a missed poll keeps the LAST known status so
       // downstream computeds (status pills, mediaPicker.detected)
       // don't flicker between known-good and null on every transient
       // read failure. Sustained outage just freezes the snapshot;
       // disconnect clears it via the caller's stop() path.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- dev-mode diagnostic; gated by import.meta.env.DEV
+        console.debug('[status] poll failed →', err);
+      }
     } finally {
       inFlight = false;
     }
