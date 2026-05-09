@@ -13,7 +13,7 @@
  * bytes live in the Advanced drawer.
  */
 import { computed, onUnmounted, ref, watch } from 'vue';
-import type { PrintEngine, Transport } from '@thermal-label/contracts';
+import type { PrintEngine } from '@thermal-label/contracts';
 import { transportInstructions } from '@thermal-label/harness-core/shared';
 import StatusPill from '@thermal-label/harness-components/status-pill';
 import { useAdapter } from '../state/adapterContext';
@@ -26,7 +26,13 @@ const adapter = useAdapter();
 const session = useSession();
 const mockMode = useMockMode();
 
-let poll: PollHandle | null = null;
+// One poll handle per engine role — multi-engine devices (Duo) get
+// concurrent pollers, one per USB interface. Twin-style chassis
+// share a transport across roles; the shell still spawns one poller
+// per role, which means twin issues two ESC A queries on the same
+// transport per cycle. Acceptable bandwidth waste for now; could
+// dedupe by transport identity if it becomes a problem.
+const pollHandles: Record<string, PollHandle> = {};
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() =>
   session.isConnected.value ? 'done' : 'active',
@@ -96,18 +102,28 @@ async function connect(): Promise<void> {
     session.device.value = result.device;
     session.syncEngineSessions(result.device);
 
-    // Status polling — driver-supplied. Pick the first engine's
-    // transport (LW Duo polls the label engine; tape status is
-    // unchecked — documented placeholder per plan-09).
+    // Status polling — driver-supplied. Spawn one poller per
+    // engine on multi-engine devices (Duo): each engine polls its
+    // own transport and writes its slot in `engineStatuses`. The
+    // active-tab pill picks up the right engine via the session
+    // store's `printerStatus` computed. Single-engine devices and
+    // Twin (one transport, two engine roles) get one poller per
+    // declared role — same shape, fewer concurrent reads.
     if (adapter.status) {
-      const firstRole = (Object.keys(result.transports) as string[])[0];
-      const firstTransport = firstRole ? result.transports[firstRole] : undefined;
-      if (firstTransport) {
-        poll = startStatusPolling({
+      const dev = result.device as { engines?: readonly PrintEngine[] };
+      const engineList: readonly PrintEngine[] = Array.isArray(dev.engines) ? dev.engines : [];
+      for (const engine of engineList) {
+        const transport = result.transports[engine.role];
+        if (!transport) continue;
+        const role = engine.role;
+        pollHandles[role] = startStatusPolling({
           config: adapter.status,
-          transport: firstTransport as Transport,
+          transport,
           device: result.device,
-          target: session.printerStatus,
+          engine,
+          sink: status => {
+            session.engineStatuses[role] = status;
+          },
         });
       }
     }
@@ -119,9 +135,13 @@ async function connect(): Promise<void> {
 }
 
 async function disconnect(): Promise<void> {
-  if (poll) {
-    await poll.stop();
-    poll = null;
+  for (const role of Object.keys(pollHandles)) {
+    try {
+      await pollHandles[role]?.stop();
+    } catch {
+      // Best-effort.
+    }
+    delete pollHandles[role];
   }
   // De-dupe transports — Twin shares one transport across engines, so
   // closing each role-keyed entry would call close() twice on the same
@@ -149,9 +169,9 @@ async function disconnect(): Promise<void> {
 }
 
 onUnmounted(() => {
-  if (poll) {
-    void poll.stop();
-    poll = null;
+  for (const role of Object.keys(pollHandles)) {
+    void pollHandles[role]?.stop();
+    delete pollHandles[role];
   }
 });
 

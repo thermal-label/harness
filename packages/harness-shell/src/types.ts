@@ -150,7 +150,13 @@ export interface ConnectResult<TDevice> {
 export type StatusConfig<TDevice, TStatus> =
   | {
       kind: 'poll';
-      read: (transport: Transport, device: TDevice) => Promise<TStatus>;
+      /**
+       * Read status off a transport for a specific engine. Multi-engine
+       * devices spawn one poller per engine — adapters can branch on
+       * `engine.protocol` here (LW Duo: `lw-450` paper engine vs
+       * `d1-tape` tape engine each parse the ESC A reply differently).
+       */
+      read: (transport: Transport, device: TDevice, engine: PrintEngine) => Promise<TStatus>;
       /** Default: 4000 ms. */
       intervalMs?: number;
       toPills: (s: TStatus | null, ctx: { engine?: PrintEngine }) => StatusPills;
@@ -160,6 +166,7 @@ export type StatusConfig<TDevice, TStatus> =
       subscribe: (
         transport: Transport,
         device: TDevice,
+        engine: PrintEngine,
       ) => Promise<{
         unsubscribe: () => Promise<void>;
         latest: Ref<TStatus | null>;

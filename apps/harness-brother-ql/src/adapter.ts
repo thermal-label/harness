@@ -361,9 +361,7 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia, BrotherQLSt
   status: {
     kind: 'poll',
     intervalMs: 4000,
-    read: async (transport, device) => {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- every brother-ql device declares ≥1 engine.
-      const engine = device.engines[0]!;
+    read: async (transport, _device, engine) => {
       await transport.write(STATUS_REQUEST);
       const response = await transport.read(STATUS_RESPONSE_BYTES, STATUS_POLL_TIMEOUT_MS);
       return parseStatus(response, engine);

@@ -274,7 +274,8 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia, Print
   status: {
     kind: 'poll',
     intervalMs: 4000,
-    read: async transport => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- single-engine; engine arg ignored
+    read: async (transport, _device, _engine) => {
       await transport.write(STATUS_REQUEST);
       const response = await transport.read(STATUS_RESPONSE_BYTES, STATUS_POLL_TIMEOUT_MS);
       return parseStatus(response);

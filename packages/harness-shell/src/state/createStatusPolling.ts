@@ -15,25 +15,39 @@
  * follow-on. The helper accepts a `transport` argument so adapters
  * can drive per-engine polling later by calling it once per engine.
  */
-import type { Transport } from '@thermal-label/contracts';
-import type { Ref } from 'vue';
+import type { PrintEngine, Transport } from '@thermal-label/contracts';
 import type { StatusConfig } from '../types';
 
 export interface PollHandle {
   stop: () => void | Promise<void>;
 }
 
+/**
+ * Setter for status snapshots — abstract so the caller can route
+ * them per-engine (`engineStatuses[role] = status`) or into a
+ * single ref. The shell uses the per-engine variant on multi-engine
+ * devices so the active-tab pill reflects the right engine.
+ */
+export type StatusSink<TStatus> = (status: TStatus | null) => void;
+
 export function startStatusPolling<TDevice, TStatus>(opts: {
   config: StatusConfig<TDevice, TStatus>;
   transport: Transport;
   device: TDevice;
+  /**
+   * The engine this poller is running against. Passed through to
+   * `read(transport, device, engine)` so adapters can branch on
+   * `engine.protocol` (LW Duo: `lw-450` paper vs `d1-tape` tape
+   * use different parsers off the same `ESC A` reply byte).
+   */
+  engine: PrintEngine;
   /** Where to write status snapshots. */
-  target: Ref<unknown>;
-  /** Optional initial seed — set the ref once before the first read lands. */
+  sink: StatusSink<TStatus>;
+  /** Optional initial seed — set once before the first read lands. */
   initial?: TStatus | null;
 }): PollHandle {
   if (opts.initial !== undefined) {
-    opts.target.value = opts.initial;
+    opts.sink(opts.initial);
   }
 
   if (opts.config.kind === 'subscribe') {
@@ -47,7 +61,7 @@ export function startStatusPolling<TDevice, TStatus>(opts: {
     const cancelled: { value: boolean } = { value: false };
     void (async () => {
       try {
-        const handle = await subConfig.subscribe(opts.transport, opts.device);
+        const handle = await subConfig.subscribe(opts.transport, opts.device, opts.engine);
         if (cancelled.value) {
           await handle.unsubscribe();
           return;
@@ -60,14 +74,14 @@ export function startStatusPolling<TDevice, TStatus>(opts: {
         watch(
           handle.latest,
           v => {
-            opts.target.value = v;
+            opts.sink(v);
           },
           { immediate: true },
         );
       } catch {
         // Subscribe failed — leave target null. Caller surfaces
         // via the Connect-section error path if relevant.
-        opts.target.value = null;
+        opts.sink(null);
       }
     })();
     return {
@@ -95,8 +109,9 @@ export function startStatusPolling<TDevice, TStatus>(opts: {
       const status = await (opts.config as Extract<typeof opts.config, { kind: 'poll' }>).read(
         opts.transport,
         opts.device,
+        opts.engine,
       );
-      opts.target.value = status;
+      opts.sink(status);
       // Dev-only: surface poll cadence + raw bytes so the operator
       // can watch in DevTools whether the firmware is updating its
       // status response in real time (e.g. when removing the tape

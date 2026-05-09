@@ -67,8 +67,24 @@ export interface Session<TDevice, TMedia> {
   /** Active engine role; drives which session slot the sections read/write. */
   selectedRole: Ref<string | null>;
   submitState: SubmitState;
-  /** Latest status read (poll-driven or subscribe-driven). */
-  printerStatus: Ref<unknown>;
+  /**
+   * Latest status read keyed by engine role. Multi-engine devices
+   * (LW Duo) get one slot per engine; single-engine and Twin (which
+   * shares one transport across two engines) write to one slot
+   * each. Polling fans out per-engine — see ConnectSection's
+   * connect path.
+   */
+  engineStatuses: Record<string, unknown>;
+  /**
+   * Convenience computed pointing at the active engine's status
+   * (`engineStatuses[selectedRole]`). Falls back to the first
+   * engine's status when no engine is selected. Sections that
+   * surface engine-specific UX (MediaSection's loaded-media pill)
+   * read this; sections surfacing chassis-level UX (ConnectSection's
+   * printer-ready pill) currently read this too — chassis-aggregate
+   * is a follow-on.
+   */
+  printerStatus: ComputedRef<unknown>;
 
   // Derived computeds
   isConnected: ComputedRef<boolean>;
@@ -118,7 +134,15 @@ function createSession<TDevice, TMedia>(opts: {
     submitted: false,
     issueUrl: null,
   });
-  const printerStatus = ref<unknown>(null);
+  const engineStatuses = reactive({}) as Record<string, unknown>;
+  const printerStatus = computed<unknown>(() => {
+    const role = selectedRole.value;
+    if (role && role in engineStatuses) return engineStatuses[role];
+    // Fall back to the first available status — covers the case
+    // where `selectedRole` hasn't been set yet (initial render).
+    const firstKey = Object.keys(engineStatuses)[0];
+    return firstKey ? engineStatuses[firstKey] : null;
+  });
 
   function syncEngineSessions(d: TDevice | null): void {
     if (!d) {
@@ -167,7 +191,9 @@ function createSession<TDevice, TMedia>(opts: {
     }
     submitState.submitted = false;
     submitState.issueUrl = null;
-    printerStatus.value = null;
+    for (const role of Object.keys(engineStatuses)) {
+      Reflect.deleteProperty(engineStatuses, role);
+    }
   }
 
   const isConnected = computed(() => Object.keys(connection.transports).length > 0);
@@ -196,6 +222,7 @@ function createSession<TDevice, TMedia>(opts: {
     engineSessions,
     selectedRole,
     submitState,
+    engineStatuses,
     printerStatus,
     isConnected,
     hasIdentity,

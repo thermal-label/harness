@@ -26,6 +26,10 @@
 import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
 import type { PrintEngine, PrinterStatus, Transport } from '@thermal-label/contracts';
 import { dispatchEncoder } from '@thermal-label/harness-core/labelwriter';
+import {
+  STATUS_REQUEST as D1_STATUS_REQUEST,
+  parseStatus as parseD1Status,
+} from '@thermal-label/d1-core';
 import type {
   HardwareReport,
   IdentitySnapshot,
@@ -367,7 +371,16 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia, Prin
   status: {
     kind: 'poll',
     intervalMs: 4000,
-    read: async (transport, device) => {
+    read: async (transport, device, engine) => {
+      // LW Duo's tape engine speaks D1, not lw-450/lw-550 — its
+      // status reply (8 bytes per spec, byte 0 carries the bits)
+      // is parsed by d1-core, not labelwriter-core. Branch on
+      // engine.protocol so the right parser handles the right wire.
+      if (engine.protocol === 'd1-tape') {
+        await transport.write(D1_STATUS_REQUEST);
+        const response = await transport.read(8, STATUS_POLL_TIMEOUT_MS);
+        return parseD1Status(response);
+      }
       await transport.write(buildStatusRequest(device, 0));
       const response = await transport.read(statusByteCount(device), STATUS_POLL_TIMEOUT_MS);
       return parseStatus(device, response);
