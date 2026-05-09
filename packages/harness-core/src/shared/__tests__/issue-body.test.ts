@@ -101,4 +101,35 @@ describe('renderIssueBody', () => {
     const parsed = JSON.parse(match[1]!) as HardwareReport;
     expect(parsed).toEqual(baseReport);
   });
+
+  it('renders an Engines block when report.engines is populated', () => {
+    const multi: HardwareReport = {
+      ...baseReport,
+      engines: [
+        { role: 'label', mediaKey: 'address-standard', rung: 'verified' },
+        { role: 'tape', mediaKey: 'd1-standard-bw-12', rung: 'partial', notes: 'faint print' },
+      ],
+    };
+    const out = renderIssueBody(multi);
+    expect(out).toContain('**Engines**');
+    expect(out).toContain('- `label` (address-standard) — verified');
+    expect(out).toContain('- `tape` (d1-standard-bw-12) — partial — faint print');
+  });
+
+  it('omits the Engines block on single-engine reports (back-compat)', () => {
+    const out = renderIssueBody(baseReport);
+    expect(out).not.toContain('**Engines**');
+  });
+
+  it('emits a partial engines array (one of N engines tested) without a fuss', () => {
+    const partial: HardwareReport = {
+      ...baseReport,
+      engines: [{ role: 'label', mediaKey: 'address-standard', rung: 'verified' }],
+    };
+    const out = renderIssueBody(partial);
+    expect(out).toContain('**Engines**');
+    expect(out).toContain('- `label` (address-standard) — verified');
+    // Only the assessed engine appears; the omitted one is the partial-coverage signal.
+    expect(out).not.toContain('`tape`');
+  });
 });

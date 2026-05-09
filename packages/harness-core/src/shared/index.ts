@@ -5,6 +5,7 @@
 
 export type {
   DeviceIdentity,
+  EngineReport,
   HardwareReport,
   IdentitySnapshot,
   PatternResult,

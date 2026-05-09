@@ -1,4 +1,4 @@
-import type { HardwareReport, TransportReport } from './hardware-report.js';
+import type { EngineReport, HardwareReport, TransportReport } from './hardware-report.js';
 
 const RUNG_LABEL: Record<TransportReport['rung'], string> = {
   verified: 'verified',
@@ -29,9 +29,11 @@ const RESULT_GLYPH = {
 export function renderIssueBody(report: HardwareReport): string {
   const headline = renderHeadline(report);
   const transportLines = report.transports.map(renderTransportLine);
+  const engineBlock = renderEnginesBlock(report);
   const notesBlock = renderOperatorNotes(report);
 
   const sections = [headline, ...transportLines];
+  if (engineBlock) sections.push(engineBlock);
   if (notesBlock) sections.push(notesBlock);
   sections.push(renderJsonBlock(report));
 
@@ -64,6 +66,28 @@ function renderTransportLine(transport: TransportReport): string {
   const head = `**${transport.name}** — ${RUNG_LABEL[transport.rung]}`;
   const note = transport.notes ? ` — ${transport.notes}` : '';
   return `${head}\n\n${glyphs}${note}`;
+}
+
+/**
+ * Per-engine block rendered for multi-engine devices (Twin Turbo,
+ * Duo). Absent on single-engine reports — the parser falls back to the
+ * transport-level rung in that case.
+ *
+ * Each engine line: role, label/cassette key, rung, optional note.
+ * Coverage is communicated by which engines appear: a Duo report with
+ * only `label` listed signals "tape was not exercised", which plan
+ * 04's triage maps to amber-with-`(label only)` on the matrix cell.
+ */
+function renderEnginesBlock(report: HardwareReport): string | undefined {
+  const engines = report.engines;
+  if (!engines || engines.length === 0) return undefined;
+  const lines = engines.map(renderEngineLine);
+  return ['**Engines**', ...lines].join('\n');
+}
+
+function renderEngineLine(engine: EngineReport): string {
+  const note = engine.notes ? ` — ${engine.notes}` : '';
+  return `- \`${engine.role}\` (${engine.mediaKey}) — ${RUNG_LABEL[engine.rung]}${note}`;
 }
 
 function renderOperatorNotes(report: HardwareReport): string | undefined {
