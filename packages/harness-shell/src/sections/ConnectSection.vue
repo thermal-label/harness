@@ -124,22 +124,13 @@ async function connect(): Promise<void> {
     // display routing through `session.activeStatus`; no poll teardown
     // or rebind happens on selection change.
     //
-    // Deferred via `nextTick` so the first `getStatus()` (which writes
-    // a 200-byte `buildInvalidate()` preamble + `ESC @` + status req
-    // through `device.transferOut()`) doesn't run on the same
-    // microtask checkpoint as Vue's render flush. Bench observation:
-    // on a freshly-claimed Brother QL composite USB device, the first
-    // post-claim `transferOut()` can stall the JS thread for ~1 s
-    // (suspected OS-level wait for the device's bulk pipe to drain
-    // after `claimInterface`). When that ran inside the connect()
-    // continuation, the connected layout (`v-else` branch on
-    // `!session.isConnected.value`) didn't paint until the stall
-    // resolved — a 1 s blank gap after picker dismissal. nextTick
-    // pushes the first USB I/O strictly after Vue's flush, so the
-    // connected UI renders before any transferOut is initiated. The
-    // same delay would affect labelmanager / labelwriter for the same
-    // reason; this fix lives in the shared shell so every adapter
-    // benefits.
+    // Deferred via `nextTick` so the first `getStatus()` runs after
+    // Vue's render flush rather than on the same microtask checkpoint.
+    // Defensive ordering only — bench measurement showed the bigger
+    // post-`claimInterface` UI gap (~1 s on macOS / Windows on freshly-
+    // claimed composite devices) lives inside Chrome's WebUSB stack
+    // holding the microtask queue, not in our scheduling. We accept
+    // that wait; this nextTick keeps our own work tidy regardless.
     void nextTick(() => {
       for (const [role, printer] of Object.entries(result.printers)) {
         const handle = startStatusPolling({
