@@ -24,24 +24,30 @@ export interface DiagnosticImageInput {
   driverVersion: string;
 }
 
-const DPI = 300;
-const CONTINUOUS_DEFAULT_HEIGHT_DOTS = 1200;
+/** Diagnostic feed length, mm, for engines/media without a fixed length. */
+const TAPE_DEFAULT_MM = 35;
+const CONTINUOUS_LABEL_DEFAULT_MM = 100;
 const TAPE_FALLBACK: Record<number, number> = { 6: 32, 9: 48, 12: 64, 19: 96, 24: 128 };
-const mmToDots = (mm: number): number => Math.round((mm * DPI) / 25.4);
+const mmToDots = (mm: number, dpi: number): number => Math.round((mm * dpi) / 25.4);
 
 export function buildDiagnosticImage(input: DiagnosticImageInput): RawImageData {
   const headDots = input.engine.headDots;
+  const dpi = input.engine.dpi;
   const m = input.media;
   let widthDots: number;
   let heightDots: number;
   if (input.engine.protocol === 'd1-tape') {
     const tape = m as LabelWriterTapeMedia;
     widthDots = Math.min(tape.printableDots ?? TAPE_FALLBACK[tape.tapeWidthMm] ?? headDots, headDots);
-    heightDots = CONTINUOUS_DEFAULT_HEIGHT_DOTS;
+    // 180 dpi engine — anchor the diagnostic feed length in mm so a
+    // 1200-dot fixed default doesn't burn 169 mm of cassette per print.
+    heightDots = mmToDots(TAPE_DEFAULT_MM, dpi);
   } else {
     const lbl = m as LabelWriterMedia;
-    widthDots = Math.min(mmToDots(lbl.widthMm), headDots);
-    heightDots = lbl.lengthDots ?? (lbl.heightMm !== undefined ? mmToDots(lbl.heightMm) : CONTINUOUS_DEFAULT_HEIGHT_DOTS);
+    widthDots = Math.min(mmToDots(lbl.widthMm, dpi), headDots);
+    heightDots =
+      lbl.lengthDots ??
+      (lbl.heightMm !== undefined ? mmToDots(lbl.heightMm, dpi) : mmToDots(CONTINUOUS_LABEL_DEFAULT_MM, dpi));
   }
   return buildShared({
     widthDots,

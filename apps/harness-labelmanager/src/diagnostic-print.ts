@@ -19,19 +19,23 @@ export interface DiagnosticPrintInput {
   driverVersion: string;
 }
 
-/** Default feed length for the diagnostic on tape — ~70 mm @ 300 dpi. */
-const DEFAULT_HEIGHT_DOTS = 800;
+/** Diagnostic feed length on tape, in mm. Anchored in mm and scaled
+ *  by `engine.dpi` so a single fixed dot-count doesn't produce wildly
+ *  different physical lengths across engines (LM_PNP is 180 dpi). */
+const TAPE_DEFAULT_MM = 35;
 const TAPE_WIDTH_FALLBACK_DOTS: Record<number, number> = { 6: 32, 9: 48, 12: 64, 19: 96 };
 
 export function buildDiagnosticImage(input: DiagnosticPrintInput): RawImageData {
-  const headDots = input.device.engines[0]?.headDots ?? 64;
+  const engine = input.device.engines[0];
+  const headDots = engine?.headDots ?? 64;
+  const dpi = engine?.dpi ?? 180;
   const fromMedia =
     typeof input.media.printableDots === 'number'
       ? input.media.printableDots
       : (TAPE_WIDTH_FALLBACK_DOTS[input.media.tapeWidthMm] ?? headDots);
   return buildShared({
     widthDots: Math.min(fromMedia, headDots),
-    heightDots: DEFAULT_HEIGHT_DOTS,
+    heightDots: Math.round((TAPE_DEFAULT_MM * dpi) / 25.4),
     harnessVersion: input.harnessVersion,
     driverVersion: input.driverVersion,
     driverKey: 'labelmanager',
