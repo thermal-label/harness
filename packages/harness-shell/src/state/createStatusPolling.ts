@@ -37,11 +37,21 @@ export function startStatusPolling(opts: {
   const { printer, sink } = opts;
   const interval = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
 
-  // Push path — driver supplies `onStatus`. Subscribe and forward.
+  // Push path — driver supplies `onStatus`. Subscribe AND poll
+  // periodically: pushes deliver state changes (lid open, media
+  // insert, errors) in real time; the periodic getStatus() keeps the
+  // pill fresh between events and acts as a heartbeat. Brother QL
+  // doesn't push on a timer — without polling, the pill stays at the
+  // last-seen state until something physically changes on the
+  // printer.
   if (printer.onStatus) {
     let unsubscribe: (() => void) | null = null;
     try {
       unsubscribe = printer.onStatus(status => {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- dev-mode diagnostic
+          console.debug('[status] push frame →', status);
+        }
         sink(status);
       });
     } catch (err) {
@@ -52,17 +62,25 @@ export function startStatusPolling(opts: {
         console.debug('[status] onStatus subscribe failed →', err);
       }
     }
-    // Kick a one-shot getStatus() to seed the first snapshot — drivers
-    // that push only on state changes won't fire `cb` until something
-    // moves; the explicit getStatus() ensures pills render immediately.
-    void printer.getStatus().catch((err: unknown) => {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console -- dev-mode diagnostic
-        console.debug('[status] initial getStatus failed →', err);
-      }
-    });
+    // Kick getStatus() periodically. The driver's response goes
+    // through the same read pipe → onStatus subscriber → sink, so we
+    // don't need to await/process the result here. Errors are
+    // expected (transient timeouts when the printer is busy
+    // responding to other commands) and are swallowed so the loop
+    // keeps ticking.
+    const tick = (): void => {
+      void printer.getStatus().catch((err: unknown) => {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- dev-mode diagnostic
+          console.debug('[status] poll getStatus failed →', err);
+        }
+      });
+    };
+    tick();
+    const handle = setInterval(tick, interval);
     return {
       stop: () => {
+        clearInterval(handle);
         if (unsubscribe) {
           try {
             unsubscribe();

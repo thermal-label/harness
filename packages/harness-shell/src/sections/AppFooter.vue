@@ -13,11 +13,11 @@ const adapter = useAdapter();
 <template>
   <footer class="footer">
     <p class="muted">
-      thermal-label · {{ adapter.driverKey }} hardware harness · source on
+      thermal-label · {{ adapter.driverDisplayName }} hardware harness · source on
       <a href="https://github.com/thermal-label/harness" rel="noopener" target="_blank">github</a>.
       Reports go to the
       <a :href="`https://github.com/${adapter.targetRepo}/issues`" rel="noopener" target="_blank">
-        {{ adapter.driverKey }} repo
+        {{ adapter.driverDisplayName }} repo
       </a>
       .
     </p>

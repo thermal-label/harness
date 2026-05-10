@@ -42,7 +42,7 @@ function capitalise(s: string): string {
  */
 export function statusToPrinterPill(status: PrinterStatus | null, noun: string): Pill {
   if (!status) {
-    return { state: 'unknown', label: 'Printer: checking…' };
+    return { state: 'unknown', label: 'Probing printer…' };
   }
   const codes = status.errors.map(e => e.code);
   const lowMedia = codes.includes('low_media');
@@ -62,7 +62,7 @@ export function statusToPrinterPill(status: PrinterStatus | null, noun: string):
  */
 export function statusToMediaPill(status: PrinterStatus | null, noun: string): Pill {
   if (!status) {
-    return { state: 'unknown', label: `${capitalise(noun)}: checking…` };
+    return { state: 'unknown', label: `Detecting ${noun}…` };
   }
   const codes = status.errors.map(e => e.code);
   const lowMedia = codes.includes('low_media');

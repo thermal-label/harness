@@ -144,8 +144,8 @@ const hasPrinted = computed(() => Boolean(session.activeSession.value?.printed))
       </div>
 
       <p v-if="hasPrinted && !lastError" class="muted small">
-        Take a quick look at what came out — you'll need it for the next section. Snap a photo if
-        you want; you'll have a chance to drop it into the GitHub issue after submit.
+        Take a quick look — your verdict is the core of the report. Snap a photo if you can; you'll
+        have a chance to attach it to the GitHub issue after submit.
       </p>
 
       <p v-if="lastError" class="error">

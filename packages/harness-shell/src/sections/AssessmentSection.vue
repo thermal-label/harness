@@ -31,22 +31,25 @@ const choices = [
   {
     value: 'verified',
     title: 'Looks right',
-    blurb: 'Print is legible, density is even, no glaring artefacts.',
+    blurb:
+      'Both text samples readable, the fill region is even (or each ink band is solid for ' +
+      'two-colour rolls), edge probes drop where expected, orientation markers in the right place.',
   },
   {
     value: 'partial',
     title: 'Works but with caveats',
     blurb:
-      'Something the printer itself produces wrong — faint output, dropped rows, jammed cuts. ' +
-      "An empty border at the top or bottom is NOT partial: that's the head's mechanical reach " +
-      "(the preview shows where it lands). Authoring around it is the user's job, not the driver's.",
+      'Smaller text sample fuzzy or clipped, density bands across the fill, edge probes drop ' +
+      "earlier than the head's reach should allow, colour bands bleed into each other, content " +
+      "shifted within the head's reach.",
   },
   {
     value: 'unsupported',
     title: 'Not usable',
     blurb:
-      'Bytes went out, but the printer produced nothing the user could ship. Empty borders are ' +
-      'expected chassis geometry — not a defect.',
+      'Bytes went out but nothing usable came back — blank output, garbled rows, completely off ' +
+      "the tape, or wrong colours throughout. The driver isn't producing a useful print for this " +
+      "device. Empty borders alone aren't a defect — that's the head's mechanical reach.",
   },
 ] as const;
 </script>

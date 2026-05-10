@@ -26,8 +26,8 @@ const mockUrl = (() => {
     <h2>This browser can't connect to the printer</h2>
     <p>
       The harness needs <strong>{{ summary }}</strong> to talk to a USB-connected
-      {{ adapter.driverKey }} printer. Your current browser doesn't expose it, so the connect button
-      would just fail.
+      {{ adapter.driverDisplayName }} printer. Your current browser doesn't expose it, so the
+      connect button would just fail.
     </p>
 
     <p>You have a few options:</p>

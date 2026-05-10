@@ -12,7 +12,7 @@
  * VID/PID + "wrong guess?" overrides are gone — the driver's
  * registry resolves the picked device.
  */
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, markRaw, nextTick, onUnmounted, ref } from 'vue';
 import { transportInstructions } from '@thermal-label/harness-core/shared';
 import StatusPill from '@thermal-label/harness-components/status-pill';
 import { useAdapter } from '../state/adapterContext';
@@ -79,7 +79,15 @@ async function connect(): Promise<void> {
       mock: mockMode.isMock,
       ...(mockMode.target ? { mockTarget: mockMode.target } : {}),
     });
-    session.connection.printers = result.printers;
+    // `markRaw` each printer so Vue's deep `reactive()` on `connection`
+    // doesn't try to recursively proxy the class instances. Their
+    // internal Sets / Maps / pending I/O state aren't intended to be
+    // tracked as reactive deps; Vue just treats them as opaque values.
+    const rawPrinters: Record<string, (typeof result.printers)[string]> = {};
+    for (const [role, printer] of Object.entries(result.printers)) {
+      rawPrinters[role] = markRaw(printer);
+    }
+    session.connection.printers = rawPrinters;
     session.connection.mocked = result.mocked;
     session.device.value = result.device;
     session.syncEngineSessions(result.device);
@@ -115,17 +123,36 @@ async function connect(): Promise<void> {
     // label engines never clobber each other. Tab flips are pure
     // display routing through `session.activeStatus`; no poll teardown
     // or rebind happens on selection change.
-    for (const [role, printer] of Object.entries(result.printers)) {
-      const handle = startStatusPolling({
-        printer,
-        sink: status => {
-          // Reactive write — `printerStatus` is a `reactive({})`, so
-          // assigning a new key triggers downstream computeds.
-          session.printerStatus[role] = status;
-        },
-      });
-      pollHandles.set(role, handle);
-    }
+    //
+    // Deferred via `nextTick` so the first `getStatus()` (which writes
+    // a 200-byte `buildInvalidate()` preamble + `ESC @` + status req
+    // through `device.transferOut()`) doesn't run on the same
+    // microtask checkpoint as Vue's render flush. Bench observation:
+    // on a freshly-claimed Brother QL composite USB device, the first
+    // post-claim `transferOut()` can stall the JS thread for ~1 s
+    // (suspected OS-level wait for the device's bulk pipe to drain
+    // after `claimInterface`). When that ran inside the connect()
+    // continuation, the connected layout (`v-else` branch on
+    // `!session.isConnected.value`) didn't paint until the stall
+    // resolved — a 1 s blank gap after picker dismissal. nextTick
+    // pushes the first USB I/O strictly after Vue's flush, so the
+    // connected UI renders before any transferOut is initiated. The
+    // same delay would affect labelmanager / labelwriter for the same
+    // reason; this fix lives in the shared shell so every adapter
+    // benefits.
+    void nextTick(() => {
+      for (const [role, printer] of Object.entries(result.printers)) {
+        const handle = startStatusPolling({
+          printer,
+          sink: status => {
+            // Reactive write — `printerStatus` is a `reactive({})`, so
+            // assigning a new key triggers downstream computeds.
+            session.printerStatus[role] = status;
+          },
+        });
+        pollHandles.set(role, handle);
+      }
+    });
   } catch (err) {
     session.connection.error = err instanceof Error ? err.message : String(err);
   } finally {

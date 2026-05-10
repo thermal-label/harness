@@ -1,13 +1,17 @@
 /**
- * Labelmanager diagnostic-print encoder — shared by both harness apps
- * (CLI: `apps/verify-cli/`; browser: `apps/harness-labelmanager/`).
+ * Labelmanager 1bpp diagnostic-print encoder — verify-cli-internal.
  *
- * Lifted out of `apps/verify-cli/src/drivers/labelmanager/` so the
- * browser app can import the same wire-byte producer the CLI does;
- * follows the same pattern as `harness-core/labelwriter`. See that
- * sibling for the rationale behind keeping driver-named subpaths
- * inside otherwise-agnostic harness-core rather than spinning a new
- * workspace package.
+ * INLINED COPY (was `harness-core/labelmanager/diagnostic-print.ts`).
+ * The browser harness apps now build their diagnostic via the unified
+ * `buildDiagnosticImage` in `harness-core/shared/diagnostic-image.ts`
+ * (RGBA out, driver does threshold/dither). verify-cli still wants
+ * pre-encoded wire bytes from this 1bpp path because its `connect.ts`
+ * writes raw bytes to the bulk endpoint instead of going through a
+ * `PrinterAdapter`. Migrating verify-cli to `printer.print(rgba, …)`
+ * is an out-of-scope follow-up; until then this file stays parked
+ * here. New diagnostic-image work should land in the shared shape and
+ * be reflected through to verify-cli once the print path is
+ * converged.
  *
  * One comprehensive print, not T1–T7. Layout (per plan 06 §UX shape
  * and plan 05 §hard rules):
@@ -78,7 +82,7 @@ import {
   ZERO_PRINTABLE_AREA,
   type PrintableArea,
 } from '@thermal-label/contracts';
-import { cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.js';
+import { cropToWidth, diagonalStripes, edgeProbeSection } from '@thermal-label/harness-core/shared';
 
 export interface DiagnosticPrintInput {
   device: LabelManagerDevice;

@@ -67,4 +67,26 @@ defineProps<{
 .s-unknown {
   color: var(--fg-muted, #8a8a8a);
 }
+
+/* Pulse the dot in the unknown state so the pill reads as
+   "pending / probing" rather than "no idea". */
+.s-unknown .dot {
+  animation: status-pill-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes status-pill-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .s-unknown .dot {
+    animation: none;
+  }
+}
 </style>

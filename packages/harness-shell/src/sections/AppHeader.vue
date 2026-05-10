@@ -3,8 +3,8 @@
  * Page header — brand on the left, theme toggle on the right.
  *
  * `app-name` reads `adapter.driverDisplayName` so the same component
- * renders "labelmanager harness", "labelwriter harness",
- * "brother-ql harness" — one place to change the format.
+ * renders "LabelManager harness", "LabelWriter harness",
+ * "Brother QL harness" — one place to change the format.
  */
 import { useTheme } from '../composables/useTheme';
 import { useAdapter } from '../state/adapterContext';
@@ -18,7 +18,7 @@ const { theme, toggleTheme } = useTheme();
     <div class="title">
       <span class="brand">thermal-label</span>
       <span class="sep">·</span>
-      <span class="app-name">{{ adapter.driverKey }} harness</span>
+      <span class="app-name">{{ adapter.driverDisplayName }} harness</span>
     </div>
     <button
       class="theme-toggle"

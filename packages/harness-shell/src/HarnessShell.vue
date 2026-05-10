@@ -40,12 +40,12 @@ const isMultiEngine = computed(() => {
 });
 
 const heading = computed(
-  () => adapter.pageHeading ?? `How does your ${adapter.driverDisplayName} actually behave?`,
+  () => adapter.pageHeading ?? `Verify your ${adapter.driverDisplayName} for thermal-label`,
 );
 const blurb = computed(
   () =>
     adapter.introBlurb ??
-    'This page walks you through one diagnostic print and one short report. It takes about two minutes — the printer prints once, you eyeball the output, you pick a verdict, you submit.',
+    `This page captures one diagnostic print and turns it into a hardware verification report on github.com/${adapter.targetRepo}. You'll need a GitHub account to submit. It takes about two minutes — print once, eyeball the output, pick a verdict, submit. Your report is what populates the supported-hardware matrix.`,
 );
 </script>
 

@@ -88,9 +88,17 @@ const detectionCapability = computed<'none' | 'auto-suggest' | 'auto-locked'>(()
 });
 
 const defaultMediaId = computed<string | number>(() => {
-  // No adapter-supplied default any more — pick the first compatible
-  // entry as a starting point. Operators almost always change it.
-  const first = compatibleMedia.value[0] as { id?: string | number } | undefined;
+  // For D1 tape engines (standalone LM + LW Duo tape side) prefer the
+  // 12 mm Black on White cassette — the most common stock and the
+  // "boring baseline" maintainers want operators to test against
+  // unless they specifically pick something else.
+  const list = compatibleMedia.value;
+  if (activeEngine.value?.protocol === 'd1-tape') {
+    const bw12 = list.find(m => (m as { id?: string }).id === 'd1-standard-bw-12');
+    if (bw12) return (bw12 as { id: string }).id;
+  }
+  // Fallback: first compatible entry. Operators almost always change it.
+  const first = list[0] as { id?: string | number } | undefined;
   return first?.id ?? '';
 });
 
@@ -127,7 +135,7 @@ const describeFn = adapter.mediaPicker.describe ?? ((m: MediaDescriptor) => m.na
 const issueUrl = computed(() => {
   const title = encodeURIComponent(`[harness] Add support for label type X`);
   const body = encodeURIComponent(
-    `I tried to use the harness with a label type that isn't in the catalogue.\n\n` +
+    `Reporting a label type not yet in the thermal-label catalogue.\n\n` +
       `Driver: ${adapter.driverKey}\n` +
       `Device: ${session.device.value ? adapter.deviceName(session.device.value) : '(unknown)'}\n\n` +
       `Label details (please fill in):\n` +

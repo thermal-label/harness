@@ -1,28 +1,16 @@
 /**
- * Labelwriter diagnostic-print encoder — shared by both harness apps
- * (CLI: `apps/verify-cli/`; browser: `apps/harness-labelwriter/`).
+ * Labelwriter 1bpp diagnostic-print encoder — verify-cli-internal.
  *
- * Lifted out of `apps/verify-cli/src/drivers/labelwriter/` so the
- * browser app can import the same wire-byte producer the CLI does;
- * the alternative (a sibling `apps/harness-labelwriter-shared/`
- * package) trades a bigger workspace for a thinner harness-core. We
- * picked the subpath instead because:
- *
- *   - harness-core is workspace-internal and never published, so a
- *     driver-shaped subpath inside it costs nothing externally;
- *   - `harness-core/shared` already hosts the cross-driver bitmap
- *     primitives this encoder composes — keeping the labelwriter
- *     composition next to those primitives is clearer than a third
- *     workspace member;
- *   - per-driver subpaths (`harness-core/labelwriter`,
- *     `/labelmanager`, `/brother-ql`) scale naturally as each driver
- *     gets its harness-app, without one-off package boilerplate.
- *
- * The driver-agnostic boundary is preserved by file path rather than
- * package boundary: the `labelwriter/` subdirectory states the scope
- * up front. `harness-core/shared` stays free of any driver-specific
- * imports; this file is the only place a driver-core import shows up
- * in harness-core, and its subpath name discloses that.
+ * INLINED COPY (was `harness-core/labelwriter/diagnostic-print.ts`).
+ * The browser harness app now builds its diagnostic via the unified
+ * `buildDiagnosticImage` in `harness-core/shared/diagnostic-image.ts`
+ * (RGBA out, driver does threshold/dither + the LW "send fewer rows"
+ * leading-edge skip). verify-cli still wants pre-encoded wire bytes
+ * from this 1bpp path because its `connect.ts` writes raw bytes
+ * directly to the transport rather than going through a
+ * `PrinterAdapter`. Migrating verify-cli to `printer.print(rgba, …)`
+ * is an out-of-scope follow-up; until then this file stays parked
+ * here.
  *
  * One comprehensive print, not T1–T7. Layout (per plan 06 §UX shape
  * and plan 05 §hard rules):
@@ -105,7 +93,7 @@ import {
   ZERO_PRINTABLE_AREA,
   type PrintableArea,
 } from '@thermal-label/contracts';
-import { cropHeight, cropToWidth, diagonalStripes, edgeProbeSection } from '../shared/index.js';
+import { cropHeight, cropToWidth, diagonalStripes, edgeProbeSection } from '@thermal-label/harness-core/shared';
 
 export interface DiagnosticPrintInput {
   device: LabelWriterDevice;

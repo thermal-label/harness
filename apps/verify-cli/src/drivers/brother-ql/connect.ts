@@ -171,7 +171,7 @@ function attachStatusToIdentity(
     ...(identity.extra ?? {}),
     ready: status.ready,
     mediaLoaded: status.mediaLoaded,
-    twoColorRoll: status.twoColorRoll ?? false,
+    twoColorRoll: detected?.palette !== undefined,
     ...(detected
       ? {
           detectedMedia: {

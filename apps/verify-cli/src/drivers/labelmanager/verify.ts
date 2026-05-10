@@ -47,7 +47,7 @@ import {
   type PromptContext,
 } from '../../prompts.js';
 import { connectLabelmanager, writeDiagnosticPrint } from './connect.js';
-import { buildDiagnosticBitmap, encodeBitmap } from '@thermal-label/harness-core/labelmanager';
+import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp } from '../../bitmap-png.js';

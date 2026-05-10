@@ -16,7 +16,6 @@
  * the shell now.
  */
 import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
-import type { PrinterAdapter } from '@thermal-label/contracts';
 import type {
   HardwareReport,
   IdentitySnapshot,
@@ -29,7 +28,7 @@ import {
   type LabelManagerMedia,
   type TapeWidth,
 } from '@thermal-label/labelmanager-core';
-import { WebDymoPrinter, requestPrinter } from '@thermal-label/labelmanager-web';
+import { WebDymoPrinter, requestPrinters } from '@thermal-label/labelmanager-web';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 import { MockTransport, type MockTarget } from './transport/mock';
 import { findDeviceByVidPid } from './transport/webusb-filters';
@@ -130,23 +129,24 @@ function swatch(m: LabelManagerMedia): MediaSwatch | null {
   return out;
 }
 
-// ─── Connect helpers ─────────────────────────────────────────────
+// ─── Mock connect helper ─────────────────────────────────────────
 
 /**
- * Wrap a single-engine driver instance in the per-engine `printers`
- * record the shell expects post-refactor. Single-engine devices key
- * the map by the engine's own role (e.g. `'primary'`). Shared with
- * brother-ql (single-engine too); LM-specific copy stays here.
+ * Build the per-engine printer map for a mock connect. LM is always
+ * single-engine, so this returns a 1-key record keyed by the device's
+ * `engines[0].role` (typically `'primary'`). Real connects go through
+ * `requestPrinters()` from labelmanager-web — same shape, different
+ * source.
  */
-function buildSingleEnginePrinterMap(
+function buildMockPrinterMap(
   device: LabelManagerDevice,
-  printer: PrinterAdapter,
-): Record<string, PrinterAdapter> {
-  const role = device.engines[0]?.role;
-  if (!role) {
+  transport: ReturnType<typeof MockTransport.open>,
+): Record<string, WebDymoPrinter> {
+  const engine = device.engines[0];
+  if (!engine) {
     throw new Error(`LabelManager device ${device.key} has no engines — registry is malformed.`);
   }
-  return { [role]: printer };
+  return { [engine.role]: new WebDymoPrinter(device, transport) };
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────
@@ -176,13 +176,22 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
         throw new Error(`Mock target ${target} has no matching DEVICES entry — fix mock.ts`);
       }
       const transport = MockTransport.open(target);
-      const printer = new WebDymoPrinter(device, transport);
-      return { printers: buildSingleEnginePrinterMap(device, printer), device, mocked: true };
+      return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
     }
-    const printer = await requestPrinter();
+
+    // Real connect: `requestPrinters()` pops the WebUSB picker, opens
+    // the LM's IF 0 transport, and returns a 1-key adapter map keyed
+    // by the picked device's `engines[0].role`.
+    const printers = await requestPrinters();
+    const first = Object.values(printers)[0];
+    if (!first) {
+      throw new Error(
+        'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
+      );
+    }
     return {
-      printers: buildSingleEnginePrinterMap(printer.device, printer),
-      device: printer.device,
+      printers,
+      device: first.device,
       mocked: false,
     };
   },

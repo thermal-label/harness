@@ -194,7 +194,8 @@ function activate(role: string): void {
     <template v-else-if="!session.submitState.submitted">
       <p>
         We'll open a prefilled GitHub issue in a new tab — you can review and edit it before
-        clicking Submit there. The maintainer reads every report.
+        clicking Submit there. The maintainer reads every report; these populate the
+        supported-hardware matrix on thermal-label.github.io.
       </p>
 
       <div v-if="isMultiEngine" class="coverage">

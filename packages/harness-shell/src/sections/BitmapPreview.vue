@@ -114,7 +114,10 @@ function draw(): void {
 }
 
 onMounted(draw);
-watch(() => props.preview, draw, { deep: true });
+// `flush: 'post'` so draw runs AFTER the DOM update — the canvas only
+// mounts once `v-if="preview"` becomes truthy. Default 'pre' flushed
+// the watcher before the canvas existed, leaving the figure blank.
+watch(() => props.preview, draw, { deep: true, flush: 'post' });
 </script>
 
 <template>

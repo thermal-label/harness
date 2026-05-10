@@ -32,3 +32,6 @@ export {
 
 export type { TransportInstruction } from './transport-instructions.js';
 export { transportInstructions } from './transport-instructions.js';
+
+export type { DiagnosticImageSpec } from './diagnostic-image.js';
+export { buildDiagnosticImage } from './diagnostic-image.js';

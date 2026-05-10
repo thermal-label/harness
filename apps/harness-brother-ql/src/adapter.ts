@@ -23,7 +23,7 @@
  * callback needed.
  */
 import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
-import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
+import type { PrintEngine } from '@thermal-label/contracts';
 import type {
   HardwareReport,
   IdentitySnapshot,
@@ -35,7 +35,7 @@ import {
   type BrotherQLDevice,
   type BrotherQLMedia,
 } from '@thermal-label/brother-ql-core';
-import { WebBrotherQLPrinter, requestPrinter } from '@thermal-label/brother-ql-web';
+import { WebBrotherQLPrinter, requestPrinters } from '@thermal-label/brother-ql-web';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 import { MockTransport, type MockTarget } from './transport/mock';
 import { findDeviceByVidPid } from './transport/webusb-filters';
@@ -144,21 +144,24 @@ function swatch(m: BrotherQLMedia): MediaSwatch | null {
   return { fg: 'red', bg: 'white' };
 }
 
-// ─── Connect helpers ─────────────────────────────────────────────
+// ─── Mock connect helper ─────────────────────────────────────────
 
 /**
- * Wrap a single-engine driver instance in the per-engine `printers`
- * record the shell expects post-refactor.
+ * Build the per-engine printer map for a mock connect. brother-ql is
+ * always single-engine, so this returns a 1-key record keyed by the
+ * device's `engines[0].role` (typically `'primary'`). Real connects go
+ * through `requestPrinters()` from brother-ql-web — same shape,
+ * different source.
  */
-function buildSingleEnginePrinterMap(
+function buildMockPrinterMap(
   device: BrotherQLDevice,
-  printer: PrinterAdapter,
-): Record<string, PrinterAdapter> {
-  const role = device.engines[0]?.role;
-  if (!role) {
+  transport: ReturnType<typeof MockTransport.open>,
+): Record<string, WebBrotherQLPrinter> {
+  const engine = device.engines[0];
+  if (!engine) {
     throw new Error(`Brother-QL device ${device.key} has no engines — registry is malformed.`);
   }
-  return { [role]: printer };
+  return { [engine.role]: new WebBrotherQLPrinter(device, transport) };
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────
@@ -187,13 +190,22 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
         throw new Error(`Mock target ${target} has no matching DEVICES entry — fix mock.ts`);
       }
       const transport = MockTransport.open(target);
-      const printer = new WebBrotherQLPrinter(device, transport);
-      return { printers: buildSingleEnginePrinterMap(device, printer), device, mocked: true };
+      return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
     }
-    const printer = await requestPrinter();
+
+    // Real connect: `requestPrinters()` pops the WebUSB picker, opens
+    // IF 0 on the picked device, and returns a 1-key adapter map keyed
+    // by the device's `engines[0].role`.
+    const printers = await requestPrinters();
+    const first = Object.values(printers)[0];
+    if (!first) {
+      throw new Error(
+        'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
+      );
+    }
     return {
-      printers: buildSingleEnginePrinterMap(printer.device, printer),
-      device: printer.device,
+      printers,
+      device: first.device,
       mocked: false,
     };
   },
