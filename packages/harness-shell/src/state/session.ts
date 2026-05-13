@@ -29,7 +29,7 @@ import {
 import type { PrintEngine, PrinterAdapter, PrinterStatus } from '@thermal-label/contracts';
 import type { IdentitySnapshot, ProposedRung } from '@thermal-label/harness-core/shared';
 import { useAdapter } from './adapterContext';
-import type { EngineSession } from '../types';
+import type { BrowserTransport, EngineSession } from '../types';
 
 export interface ConnectionState {
   /**
@@ -48,6 +48,14 @@ export interface ConnectionState {
   printers: Record<string, PrinterAdapter> | null;
   /** Identity probe results captured at connect time. */
   identity: IdentitySnapshot | null;
+  /**
+   * Transport the operator picked in §1. Drives the identity-panel
+   * rendering branch in ConnectSection (USB → vid/pid, Serial/SPP →
+   * port/baud, GATT → service UUID). `null` before connect.
+   *
+   * Plan 11 addition.
+   */
+  transport: BrowserTransport | null;
   /** Whether the connection is mocked (drives UI labelling). */
   mocked: boolean;
   /** Last connection error message, if any. */
@@ -140,6 +148,7 @@ function createSession<TDevice, TMedia>(opts: {
   const connection = reactive({
     printers: null,
     identity: null,
+    transport: null,
     mocked: false,
     error: null,
   }) as ConnectionState;
@@ -193,6 +202,7 @@ function createSession<TDevice, TMedia>(opts: {
   function resetForNewRun(): void {
     connection.printers = null;
     connection.identity = null;
+    connection.transport = null;
     connection.error = null;
     // `connection.mocked` keeps its value — mock mode is URL-driven.
     for (const s of Object.values(engineSessions)) {

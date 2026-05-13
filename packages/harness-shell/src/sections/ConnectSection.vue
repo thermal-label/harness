@@ -2,18 +2,21 @@
 /**
  * Connect & confirm section. Generic over the adapter's device type.
  *
- * Reads `adapter.connect`, `adapter.devices`, and `adapter.mockTargets`
- * (for the mock-mode banner). Emits `update:device` mutations into
- * the shared session store.
- *
- * Post-harness-v2: the adapter's `connect()` returns a `PrinterAdapter`
- * directly. The shell stores the per-engine map on `connection.printers` and the
- * status pill is derived from the polled `PrinterStatus`. Manual
- * VID/PID + "wrong guess?" overrides are gone — the driver's
- * registry resolves the picked device.
+ * Plan 11 reshape:
+ *  - One button per browser-reachable transport the driver's
+ *    registry declares (filter `tcp`). Operators pick the transport
+ *    explicitly; the adapter's `connect()` receives
+ *    `opts.transport` and dispatches.
+ *  - `DeviceIdentificationRequiredError` from the driver-web factory
+ *    is caught generically — the shell shows `<DeviceDropdown>`
+ *    populated from `err.candidates`, then resumes via
+ *    `err.continueWith(deviceKey)`. No second picker open.
+ *  - Identity panel branches on `connection.transport`: USB shows
+ *    vid/pid, Serial/SPP shows port/baud, GATT shows service UUID +
+ *    advertised name.
  */
 import { computed, markRaw, nextTick, onUnmounted, ref } from 'vue';
-import { transportInstructions } from '@thermal-label/harness-core/shared';
+import { DeviceIdentificationRequiredError } from '@thermal-label/contracts';
 import StatusPill from '@thermal-label/harness-components/status-pill';
 import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
@@ -21,33 +24,20 @@ import { useMockMode } from '../composables/useMockMode';
 import { startStatusPolling, type PollHandle } from '../state/createStatusPolling';
 import { engineNoun, statusToPrinterPill } from '../state/statusPills';
 import SectionCard from './SectionCard.vue';
+import TransportButtons from './TransportButtons.vue';
+import DeviceDropdown from './DeviceDropdown.vue';
+import type { BrowserTransport } from '../types';
 
 const adapter = useAdapter();
 const session = useSession();
 const mockMode = useMockMode();
 
-/**
- * One poll handle per engine role — every entry in
- * `connection.printers` gets its own loop, and each loop writes to
- * `session.printerStatus[role]` (its own slot, never the shared ref).
- *
- * Pre-refactor a single `pollHandle` was rebound on tab flip; that
- * meant only the active engine ever polled, and a single hung
- * `getStatus()` (Bug B in plans/16) silently blocked every subsequent
- * tick across both engines. The map subsumes that — engines poll
- * independently on their own 4 s schedule.
- */
 const pollHandles = new Map<string, PollHandle>();
 
 const sectionState = computed<'pending' | 'active' | 'done'>(() =>
   session.isConnected.value ? 'done' : 'active',
 );
 
-/**
- * Printer pill — derived from the polled `PrinterStatus`. Adapter no
- * longer customises rendering; the engine-noun (paper / tape) is
- * picked from `engine.protocol === 'd1-tape'` directly.
- */
 const printerDot = computed<{ state: 'unknown' | 'good' | 'warn' | 'bad'; label: string } | null>(
   () => {
     if (!session.isConnected.value) return null;
@@ -67,88 +57,176 @@ const rawStatusBytes = computed(() => {
   return '(no status response captured)';
 });
 
+// ─── Available transports (union across the registry) ────────────
+
+/**
+ * Browser-reachable transports declared by ANY device in the
+ * driver's registry. Plan 11 §Connect-section UI: iterate
+ * `Object.keys(device.transports)`, filter `tcp`. Pre-connect there
+ * is no single device, so the shell takes the union across the
+ * adapter's whole registry. Single-transport drivers (LM, LW) end
+ * up with one button; multi-transport drivers (brother-ql USB+SPP)
+ * get one button per transport.
+ */
+const availableTransports = computed<readonly BrowserTransport[]>(() => {
+  const seen = new Set<BrowserTransport>();
+  for (const device of adapter.devices) {
+    const transports = (device as { transports?: Record<string, unknown> }).transports;
+    if (!transports) continue;
+    for (const key of Object.keys(transports)) {
+      if (key === 'tcp') continue;
+      // Narrow against the BrowserTransport union; ignore any unexpected key.
+      if (
+        key === 'usb' ||
+        key === 'serial' ||
+        key === 'bluetooth-spp' ||
+        key === 'bluetooth-gatt'
+      ) {
+        seen.add(key);
+      }
+    }
+  }
+  return Array.from(seen);
+});
+
 // ─── Connect / disconnect ────────────────────────────────────────
 
 const connecting = ref(false);
 
-async function connect(): Promise<void> {
+interface PendingDeviceChoice {
+  err: DeviceIdentificationRequiredError;
+  transport: BrowserTransport;
+}
+const pendingChoice = ref<PendingDeviceChoice | null>(null);
+
+async function connect(transport: BrowserTransport): Promise<void> {
   session.connection.error = null;
+  pendingChoice.value = null;
   connecting.value = true;
   try {
     const result = await adapter.connect({
       mock: mockMode.isMock,
+      transport,
       ...(mockMode.target ? { mockTarget: mockMode.target } : {}),
     });
-    // `markRaw` each printer so Vue's deep `reactive()` on `connection`
-    // doesn't try to recursively proxy the class instances. Their
-    // internal Sets / Maps / pending I/O state aren't intended to be
-    // tracked as reactive deps; Vue just treats them as opaque values.
-    const rawPrinters: Record<string, (typeof result.printers)[string]> = {};
-    for (const [role, printer] of Object.entries(result.printers)) {
-      rawPrinters[role] = markRaw(printer);
+    await bindResult(result, transport);
+  } catch (err) {
+    if (err instanceof DeviceIdentificationRequiredError) {
+      // Driver-web couldn't auto-identify; hand the candidate list
+      // to the operator. The already-opened port/device is held
+      // inside `err.continueWith`'s closure — no second picker open.
+      pendingChoice.value = { err, transport };
+    } else {
+      session.connection.error = err instanceof Error ? err.message : String(err);
     }
-    session.connection.printers = rawPrinters;
-    session.connection.mocked = result.mocked;
-    session.device.value = result.device;
-    session.syncEngineSessions(result.device);
+  } finally {
+    connecting.value = false;
+  }
+}
 
-    // Pick the primary printer for identity + first poll. Adapters
-    // return a record keyed by engine role; we pull the entry matching
-    // `selectedRole` (set by `syncEngineSessions` to the device's
-    // first engine) or fall back to the first available adapter.
-    const initialRole = session.selectedRole.value;
-    const initialPrinter =
-      (initialRole && result.printers[initialRole]) ||
-      result.printers[Object.keys(result.printers)[0] ?? ''] ||
-      null;
-
-    // Identity snapshot for the report. The PrinterAdapter exposes
-    // `device` (driver-core registry entry); we mirror its key/name
-    // into `IdentitySnapshot` so the submit flow has something
-    // structured to render.
-    const dev = result.device as { key?: string; name?: string };
-    session.connection.identity = {
-      advertisedName: dev.name ?? '',
-      ...(initialPrinter?.device?.transports?.usb
-        ? {
-            vid: parseInt(initialPrinter.device.transports.usb.vid, 16),
-            pid: parseInt(initialPrinter.device.transports.usb.pid, 16),
-          }
-        : {}),
-      ...(result.mocked ? { extra: { mocked: true } } : {}),
-    };
-
-    // Status polling — one loop per engine role. Each loop writes to
-    // its own slot in `session.printerStatus`, so the Duo's tape and
-    // label engines never clobber each other. Tab flips are pure
-    // display routing through `session.activeStatus`; no poll teardown
-    // or rebind happens on selection change.
-    //
-    // Deferred via `nextTick` so the first `getStatus()` runs after
-    // Vue's render flush rather than on the same microtask checkpoint.
-    // Defensive ordering only — bench measurement showed the bigger
-    // post-`claimInterface` UI gap (~1 s on macOS / Windows on freshly-
-    // claimed composite devices) lives inside Chrome's WebUSB stack
-    // holding the microtask queue, not in our scheduling. We accept
-    // that wait; this nextTick keeps our own work tidy regardless.
-    void nextTick(() => {
-      for (const [role, printer] of Object.entries(result.printers)) {
-        const handle = startStatusPolling({
-          printer,
-          sink: status => {
-            // Reactive write — `printerStatus` is a `reactive({})`, so
-            // assigning a new key triggers downstream computeds.
-            session.printerStatus[role] = status;
-          },
-        });
-        pollHandles.set(role, handle);
-      }
-    });
+async function pickFromDropdown(deviceKey: string): Promise<void> {
+  const pending = pendingChoice.value;
+  if (!pending) return;
+  session.connection.error = null;
+  connecting.value = true;
+  try {
+    const printerMap = await pending.err.continueWith(deviceKey);
+    // continueWith returns just the PrinterAdapterMap; the
+    // harness ConnectResult shape also wants `device` + `mocked`.
+    // The first printer's `.device` is the registry entry.
+    const first = Object.values(printerMap)[0];
+    if (!first || !first.device) {
+      throw new Error('continueWith returned no engines.');
+    }
+    await bindResult(
+      {
+        printers: printerMap as Record<string, NonNullable<typeof first>>,
+        device: first.device as Parameters<typeof bindResult>[0]['device'],
+        mocked: false,
+      },
+      pending.transport,
+    );
+    pendingChoice.value = null;
   } catch (err) {
     session.connection.error = err instanceof Error ? err.message : String(err);
   } finally {
     connecting.value = false;
   }
+}
+
+function cancelDropdown(): void {
+  pendingChoice.value = null;
+}
+
+/**
+ * Wire a successful connect-result into the session state — same
+ * code path for the initial connect and for the `continueWith`
+ * resume after a dropdown pick.
+ */
+async function bindResult(
+  result: Awaited<ReturnType<typeof adapter.connect>>,
+  transport: BrowserTransport,
+): Promise<void> {
+  const rawPrinters: Record<string, (typeof result.printers)[string]> = {};
+  for (const [role, printer] of Object.entries(result.printers)) {
+    rawPrinters[role] = markRaw(printer);
+  }
+  session.connection.printers = rawPrinters;
+  session.connection.mocked = result.mocked;
+  session.connection.transport = transport;
+  session.device.value = result.device;
+  session.syncEngineSessions(result.device);
+
+  const initialRole = session.selectedRole.value;
+  const initialPrinter =
+    (initialRole && result.printers[initialRole]) ||
+    result.printers[Object.keys(result.printers)[0] ?? ''] ||
+    null;
+
+  // Identity snapshot — branches on transport per plan 11.
+  const dev = result.device as {
+    key?: string;
+    name?: string;
+    transports?: Record<string, unknown>;
+  };
+  const transports = dev.transports ?? {};
+  const identity: Record<string, unknown> = {
+    advertisedName: dev.name ?? '',
+  };
+  if (transport === 'usb') {
+    const usb = (transports.usb as { vid?: string; pid?: string } | undefined) ?? undefined;
+    const printerUsb =
+      (initialPrinter?.device?.transports?.usb as
+        | { vid?: string; pid?: string }
+        | undefined) ?? undefined;
+    const source = printerUsb ?? usb;
+    if (source?.vid !== undefined && source.pid !== undefined) {
+      identity.vid = parseInt(source.vid, 16);
+      identity.pid = parseInt(source.pid, 16);
+    }
+  } else if (transport === 'bluetooth-gatt') {
+    const gatt = transports['bluetooth-gatt'] as
+      | { serviceUuid?: string }
+      | undefined;
+    if (gatt?.serviceUuid) identity.serviceUuid = gatt.serviceUuid;
+  } else if (transport === 'serial' || transport === 'bluetooth-spp') {
+    const serial = transports.serial as { defaultBaud?: number } | undefined;
+    if (serial?.defaultBaud !== undefined) identity.serialBaud = serial.defaultBaud;
+  }
+  if (result.mocked) identity.extra = { mocked: true };
+  session.connection.identity = identity as typeof session.connection.identity;
+
+  void nextTick(() => {
+    for (const [role, printer] of Object.entries(result.printers)) {
+      const handle = startStatusPolling({
+        printer,
+        sink: status => {
+          session.printerStatus[role] = status;
+        },
+      });
+      pollHandles.set(role, handle);
+    }
+  });
 }
 
 function stopAllPolls(): void {
@@ -166,38 +244,65 @@ async function disconnect(): Promise<void> {
   stopAllPolls();
   const printers = session.connection.printers;
   if (printers) {
-    // Close every per-engine adapter. On composite USB devices (Duo)
-    // multiple adapters share one underlying USBDevice; closing one
-    // releases the device handle for all of them, so per-adapter
-    // close failures after the first are expected — swallow them.
     for (const printer of Object.values(printers)) {
       try {
         await printer.close();
       } catch {
-        // Best-effort cleanup; the next connect re-issues the picker.
+        // Best-effort cleanup.
       }
     }
   }
   session.connection.printers = null;
   session.connection.identity = null;
+  session.connection.transport = null;
   for (const role of Object.keys(session.printerStatus)) {
     delete session.printerStatus[role];
   }
   session.device.value = null;
   session.syncEngineSessions(null);
   session.connection.error = null;
+  pendingChoice.value = null;
 }
 
 onUnmounted(() => {
   stopAllPolls();
 });
 
-const usbInstruction = transportInstructions.usb;
-
 const mockTargetLabel = computed(() => {
   if (!mockMode.spec) return mockMode.target ?? 'mock';
   return mockMode.spec.displayName;
 });
+
+// Identity panel — drives the muted line below the connect summary.
+const identityLine = computed<string | null>(() => {
+  const identity = session.connection.identity;
+  const transport = session.connection.transport;
+  if (!identity || !transport) return null;
+  if (transport === 'usb') {
+    if (identity.vid === undefined || identity.pid === undefined) return null;
+    return `vid = 0x${identity.vid.toString(16).padStart(4, '0')}, pid = 0x${identity.pid.toString(16).padStart(4, '0')}`;
+  }
+  if (transport === 'bluetooth-gatt') {
+    if (!identity.serviceUuid) return null;
+    return `service = ${identity.serviceUuid}${identity.advertisedName ? `, advertised name = "${identity.advertisedName}"` : ''}`;
+  }
+  if (transport === 'serial' || transport === 'bluetooth-spp') {
+    const parts: string[] = [];
+    if (identity.serialPath) parts.push(`port = ${identity.serialPath}`);
+    if (identity.serialBaud !== undefined) parts.push(`baud = ${String(identity.serialBaud)}`);
+    if (identity.advertisedName) parts.push(`name = "${identity.advertisedName}"`);
+    return parts.length > 0 ? parts.join(', ') : null;
+  }
+  return null;
+});
+
+// Cast the err.candidates shape for the dropdown; contracts ships
+// `DeviceEntry`, the dropdown's local type is structurally
+// compatible (key, name, transports).
+type DropdownCandidates = NonNullable<typeof pendingChoice.value>['err']['candidates'];
+function asCandidates(candidates: DropdownCandidates): DropdownCandidates {
+  return candidates;
+}
 </script>
 
 <template>
@@ -206,22 +311,28 @@ const mockTargetLabel = computed(() => {
       <StatusPill :state="printerDot.state" :label="printerDot.label" />
     </template>
 
-    <p>{{ usbInstruction.inline }}</p>
-
     <p v-if="mockMode.isMock" class="mock-banner">
       Running in <strong>mock mode</strong> — the connect button pretends to be a
       <code>{{ mockTargetLabel }}</code> printer. Drop the <code>?mock=…</code> query to talk to
       real hardware.
     </p>
 
-    <div v-if="!session.isConnected.value" class="connect-actions">
-      <button class="primary" :disabled="connecting" @click="connect">
-        {{ connecting ? 'Connecting…' : 'Connect' }}
-      </button>
-      <a class="more-help" :href="usbInstruction.docsLink" target="_blank" rel="noopener">
-        More help →
-      </a>
-    </div>
+    <template v-if="!session.isConnected.value">
+      <TransportButtons
+        v-if="!pendingChoice"
+        :transports="availableTransports"
+        :busy="connecting"
+        :driver-key="adapter.driverKey"
+        @connect="connect"
+      />
+      <DeviceDropdown
+        v-if="pendingChoice"
+        :candidates="asCandidates(pendingChoice.err.candidates)"
+        :transport="pendingChoice.transport"
+        @pick="pickFromDropdown"
+        @cancel="cancelDropdown"
+      />
+    </template>
 
     <div v-else class="connected-summary">
       <p>
@@ -237,13 +348,8 @@ const mockTargetLabel = computed(() => {
       <button class="ghost" type="button" @click="disconnect">Disconnect</button>
     </div>
 
-    <p
-      v-if="session.isConnected.value && session.connection.identity?.vid !== undefined"
-      class="muted small"
-    >
-      vid = 0x{{ session.connection.identity.vid.toString(16).padStart(4, '0') }}, pid = 0x{{
-        session.connection.identity.pid?.toString(16).padStart(4, '0')
-      }}
+    <p v-if="identityLine" class="muted small">
+      {{ identityLine }}
     </p>
 
     <p v-if="session.connection.error" class="error">
@@ -263,13 +369,6 @@ const mockTargetLabel = computed(() => {
 </template>
 
 <style scoped>
-.connect-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
-}
-
 .connected-summary {
   display: flex;
   align-items: center;
@@ -297,20 +396,6 @@ pre {
   word-break: break-all;
 }
 
-.primary {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-5);
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
 .ghost {
   background: var(--bg);
   color: var(--fg);
@@ -323,11 +408,6 @@ pre {
 .ghost:hover {
   background: var(--bg-hover);
   border-color: var(--border-strong);
-}
-
-.more-help {
-  font-size: 0.9rem;
-  color: var(--fg-muted);
 }
 
 .error {
