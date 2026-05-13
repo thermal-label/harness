@@ -51,6 +51,25 @@ export interface IdentitySnapshot {
   pid?: number;
   /** GATT services (UUID strings) discovered during BLE connect. */
   gattServices?: readonly string[];
+  /**
+   * Single observed GATT service UUID — populated on `bluetooth-gatt`
+   * connects so the harness identity panel renders a stable one-line
+   * identifier without joining the `gattServices` array. Plan 11
+   * addition (per `IdentitySnapshot` rendering section).
+   */
+  serviceUuid?: string;
+  /**
+   * Serial port path / display name when the transport is `serial`
+   * or OS-paired `bluetooth-spp`. Web Serial does not surface a
+   * machine-readable port name; this is best-effort copy for the
+   * triage reviewer. Plan 11 addition.
+   */
+  serialPath?: string;
+  /**
+   * Serial baud rate as opened. Useful for triage when an SPP /
+   * USB-serial bridge default is wrong. Plan 11 addition.
+   */
+  serialBaud?: number;
   /** Firmware version, if the driver's identity probe extracts one. */
   fwVersion?: string;
   /** Negotiated MTU, when relevant (BLE GATT). */

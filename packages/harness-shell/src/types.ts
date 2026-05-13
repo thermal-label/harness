@@ -53,6 +53,7 @@ import type {
   PrintEngine,
   PrinterAdapter,
   RawImageData,
+  TransportType,
 } from '@thermal-label/contracts';
 import type {
   HardwareReport,
@@ -62,6 +63,16 @@ import type {
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 
 // ─── Connect ─────────────────────────────────────────────────────
+
+/**
+ * Browser-reachable subset of `TransportType` — what
+ * `ConnectSection.vue` renders connect buttons for. `tcp` is
+ * intentionally omitted because browsers cannot open raw sockets;
+ * the shell filters that key out before rendering.
+ *
+ * Per plan 11 §Connect-section UI.
+ */
+export type BrowserTransport = Exclude<TransportType, 'tcp'>;
 
 export interface ConnectOptions {
   /**
@@ -77,6 +88,20 @@ export interface ConnectOptions {
    * matching mock-backed `PrinterAdapter`.
    */
   mockTarget?: string;
+  /**
+   * Transport the operator picked in §1 of the harness. The adapter
+   * dispatches its real-connect path on this value. Drivers whose
+   * registry only declares one transport will see the same key every
+   * time; multi-transport drivers (brother-ql USB+SPP, labelife
+   * USB+Serial+BLE) dispatch on the discriminator.
+   *
+   * Mock connects ignore this — the `MockSpec`'s own `transport`
+   * tag carries the shape information.
+   *
+   * Added in plan 11; pre-plan-11 adapters that ignore this field
+   * keep working as long as they declare only one transport.
+   */
+  transport?: BrowserTransport;
 }
 
 /**
@@ -107,22 +132,41 @@ export interface ConnectResult<TDevice> {
 // ─── Mock targets ────────────────────────────────────────────────
 
 /**
+ * Shape-tagged filter union for `MockSpec`. The `transport` tag tells
+ * the shell which `IdentitySnapshot` fields to populate on mock
+ * connect, and the `filter` block carries the would-have-been picker
+ * constraints so the harness can render a matching "mock target:
+ * vid=0x… pid=0x…" or "mock target: service=…" banner.
+ *
+ * Per plan 11 §`MockSpec<TDevice>` shape.
+ */
+export type MockTransportFilter =
+  | { transport: 'usb'; filter: { vid: number; pid: number } }
+  | { transport: 'serial'; filter: { path?: string; baud?: number } }
+  | { transport: 'bluetooth-spp'; filter: { name?: string; baud?: number } }
+  | { transport: 'bluetooth-gatt'; filter: { serviceUuid: string; namePrefix?: string } };
+
+/**
  * One mock target — keyed off `?mock=<key>`. The adapter resolves
  * the key to a synthesised device entry. `aliases` lets one entry
  * accept multiple URL spellings (`?mock=lm280` and `?mock=lm_280` for
  * the same target).
+ *
+ * Plan 11 reshape: `MockSpec` is now a transport-tagged discriminated
+ * union. Pre-plan-11 USB-only adapters move from
+ * `{ vid, pid, ... }` to `{ transport: 'usb', filter: { vid, pid }, ... }`.
+ * BLE / Serial drivers populate their own shape variant. The shell
+ * uses `transport` to decide which `IdentitySnapshot` fields to
+ * render on the mock-mode banner.
  */
-export interface MockSpec<TDevice> {
+export type MockSpec<TDevice> = {
   /** Display name shown in the mock-mode banner. */
   displayName: string;
   /** Synthesised device for this mock. */
   device: TDevice;
-  /** Identity values that match what the adapter would build for the real device. */
-  vid: number;
-  pid: number;
   /** Extra `?mock=` aliases that resolve to this target (case-insensitive). */
   aliases?: readonly string[];
-}
+} & MockTransportFilter;
 
 // ─── Media picker ────────────────────────────────────────────────
 

@@ -11,9 +11,11 @@
 
 export type {
   DriverAdapter,
+  BrowserTransport,
   ConnectOptions,
   ConnectResult,
   MockSpec,
+  MockTransportFilter,
   MediaPickerConfig,
   EngineSession,
   BuildDiagnosticImageInput,
