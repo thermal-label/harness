@@ -78,11 +78,13 @@ function buildMockTargets(): Record<string, MockSpec<LabelWriterDevice>> {
     if (!device) {
       throw new Error(`Mock target ${key} has no matching DEVICES entry — fix mock.ts`);
     }
+    // Plan 11 MockSpec discriminated-union shape — LabelWriter is
+    // USB-only.
     out[key] = {
       displayName: meta.name,
       device,
-      vid: meta.vid,
-      pid: meta.pid,
+      transport: 'usb',
+      filter: { vid: meta.vid, pid: meta.pid },
       aliases: meta.aliases,
     };
   }
@@ -206,15 +208,16 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
       return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
     }
 
-    // Real connect: `requestPrinters()` pops the WebUSB picker, opens
-    // one transport per engine on multi-interface composites (Duo —
-    // `label` on IF 0, `tape` on IF 1), and returns a per-engine
-    // adapter map. Single-interface devices (3xx/4xx/5xx + Twin
-    // Turbo) come back with one entry per engine sharing a single
-    // transport — same record shape, fewer USB claims.
-    const printers = await requestPrinters();
+    // Real connect: `requestPrinters({ transport: 'usb' })` pops the
+    // WebUSB picker, opens one transport per engine on multi-interface
+    // composites (Duo — `label` on IF 0, `tape` on IF 1), and returns
+    // a per-engine adapter map. Single-interface devices (3xx/4xx/5xx
+    // + Twin Turbo) come back with one entry per engine sharing a
+    // single transport — same record shape, fewer USB claims.
+    // LabelWriter is USB-only, so `opts.transport` is always `'usb'`.
+    const printers = await requestPrinters({ transport: 'usb' });
     const first = Object.values(printers)[0];
-    if (!first) {
+    if (!first || !first.device) {
       throw new Error(
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );

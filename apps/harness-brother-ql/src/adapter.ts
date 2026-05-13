@@ -75,11 +75,15 @@ function buildMockTargets(): Record<string, MockSpec<BrotherQLDevice>> {
     if (!device) {
       throw new Error(`Mock target ${key} has no matching DEVICES entry — fix mock.ts`);
     }
+    // Plan 11 MockSpec discriminated-union shape — these mocks
+    // model the USB path. The brother-ql registry also declares
+    // `bluetooth-spp` for QL_820NWBc / PT_P910BT; a future SPP mock
+    // target would use `transport: 'bluetooth-spp'` instead.
     out[key] = {
       displayName: meta.name,
       device,
-      vid: meta.vid,
-      pid: meta.pid,
+      transport: 'usb',
+      filter: { vid: meta.vid, pid: meta.pid },
       aliases: meta.aliases,
     };
   }
@@ -193,19 +197,25 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
       return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
     }
 
-    // Real connect: `requestPrinters()` pops the WebUSB picker, opens
-    // IF 0 on the picked device, and returns a 1-key adapter map keyed
-    // by the device's `engines[0].role`.
-    const printers = await requestPrinters();
+    // Real connect: `requestPrinters({ transport: 'usb' })` pops the
+    // WebUSB picker, opens IF 0 on the picked device, and returns a
+    // 1-key adapter map keyed by the device's `engines[0].role`. The
+    // brother-ql registry also declares `bluetooth-spp` for
+    // QL_820NWBc / PT_P910BT — the harness shell's transport buttons
+    // (plan 11 step 2) will let the operator pick SPP and dispatch
+    // that here; until then, USB is the only browser-reachable path
+    // exposed in this app.
+    const transport = opts.transport ?? 'usb';
+    const printers = await requestPrinters({ transport });
     const first = Object.values(printers)[0];
-    if (!first) {
+    if (!first || !first.device) {
       throw new Error(
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
     }
     return {
       printers,
-      device: first.device,
+      device: first.device as BrotherQLDevice,
       mocked: false,
     };
   },

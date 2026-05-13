@@ -91,11 +91,13 @@ function buildMockTargets(): Record<string, MockSpec<LabelManagerDevice>> {
     if (!device) {
       throw new Error(`Mock target ${key} has no matching DEVICES entry — fix mock.ts`);
     }
+    // Plan 11 MockSpec discriminated-union shape: USB targets carry
+    // `transport: 'usb'` + a `filter: { vid, pid }` block.
     out[key] = {
       displayName: meta.name,
       device,
-      vid: meta.vid,
-      pid: meta.pid,
+      transport: 'usb',
+      filter: { vid: meta.vid, pid: meta.pid },
       aliases: meta.aliases,
     };
   }
@@ -179,19 +181,24 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
       return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
     }
 
-    // Real connect: `requestPrinters()` pops the WebUSB picker, opens
-    // the LM's IF 0 transport, and returns a 1-key adapter map keyed
-    // by the picked device's `engines[0].role`.
-    const printers = await requestPrinters();
+    // Real connect: `requestPrinters({ transport: 'usb' })` pops the
+    // WebUSB picker, opens the LM's IF 0 transport, and returns a
+    // 1-key adapter map keyed by the picked device's `engines[0].role`.
+    // LM is USB-only, so the transport tag is always `'usb'` — the
+    // adapter ignores any other value from `opts.transport`.
+    const printers = await requestPrinters({ transport: 'usb' });
     const first = Object.values(printers)[0];
-    if (!first) {
+    if (!first || !first.device) {
       throw new Error(
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
     }
+    // labelmanager-web always populates `printer.device` with a
+    // LabelManagerDevice from its own registry — the contracts-typed
+    // `DeviceEntry | undefined` narrows here at the driver boundary.
     return {
       printers,
-      device: first.device,
+      device: first.device as LabelManagerDevice,
       mocked: false,
     };
   },

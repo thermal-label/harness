@@ -326,12 +326,6 @@ importers:
       '@thermal-label/contracts':
         specifier: link:../../../contracts
         version: link:../../../contracts
-      '@thermal-label/labelmanager-core':
-        specifier: link:../../../labelmanager/packages/core
-        version: link:../../../labelmanager/packages/core
-      '@thermal-label/labelwriter-core':
-        specifier: link:../../../labelwriter/packages/core
-        version: link:../../../labelwriter/packages/core
     devDependencies:
       '@mbtech-nl/tsconfig':
         specifier: ^1.1.0
