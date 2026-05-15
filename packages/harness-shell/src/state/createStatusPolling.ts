@@ -47,7 +47,11 @@ export function startStatusPolling(opts: {
         '[status] printer does not implement onStatus — plan 11 requires every driver-web printer to subscribe. Status pill will stay at "checking…".',
       );
     }
-    return { stop: () => undefined };
+    return {
+      stop: () => {
+        // Adapter never subscribed; nothing to tear down.
+      },
+    };
   }
 
   let unsubscribe: (() => void) | null = null;

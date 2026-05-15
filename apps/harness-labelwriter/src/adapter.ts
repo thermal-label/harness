@@ -217,14 +217,14 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
     // LabelWriter is USB-only, so `opts.transport` is always `'usb'`.
     const printers = await requestPrinters({ transport: 'usb' });
     const first = Object.values(printers)[0];
-    if (!first || !first.device) {
+    if (!first?.device) {
       throw new Error(
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
     }
     return {
       printers,
-      device: first.device as LabelWriterDevice,
+      device: first.device,
       mocked: false,
     };
   },

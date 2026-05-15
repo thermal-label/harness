@@ -26,6 +26,8 @@
       "@thermal-label/labelmanager-web": "link:../labelmanager/packages/web",
       "@thermal-label/labelwriter-core": "link:../labelwriter/packages/core",
       "@thermal-label/labelwriter-web": "link:../labelwriter/packages/web",
+      "@thermal-label/letratag-core": "link:../letratag/packages/core",
+      "@thermal-label/letratag-web": "link:../letratag/packages/web",
       "@thermal-label/transport": "link:../transport"
     }
   },

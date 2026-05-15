@@ -188,7 +188,7 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
     // adapter ignores any other value from `opts.transport`.
     const printers = await requestPrinters({ transport: 'usb' });
     const first = Object.values(printers)[0];
-    if (!first || !first.device) {
+    if (!first?.device) {
       throw new Error(
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
