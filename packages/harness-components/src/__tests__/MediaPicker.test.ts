@@ -140,7 +140,7 @@ describe('MediaPicker', () => {
     expect(details.attributes('open')).toBeDefined();
   });
 
-  it('disables the catalogue when detectionCapability is auto-locked', () => {
+  it('collapses to a read-only summary when detectionCapability is auto-locked', () => {
     const wrapper = mount(MediaPicker<FakeMedia>, {
       props: {
         modelValue: STANDARD_12,
@@ -151,12 +151,17 @@ describe('MediaPicker', () => {
         detected: STANDARD_12,
       },
     });
-    const buttons = wrapper.findAll('button.entry');
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const btn of buttons) {
-      expect((btn.element as HTMLButtonElement).disabled).toBe(true);
-    }
-    // Banner copy mentions the locked detection.
+    // Locked mode collapses to the compact summary, same as the
+    // pickable modes — but read-only.
+    const summary = wrapper.find('button.selected-summary');
+    expect(summary.exists()).toBe(true);
+    expect(summary.text()).toContain('12mm Standard');
+    // No "Change" affordance and the summary itself is not clickable.
+    expect(summary.text()).not.toContain('Change');
+    expect((summary.element as HTMLButtonElement).disabled).toBe(true);
+    // The full catalogue stays hidden (v-show collapses it).
+    expect((wrapper.find('.groups').element as HTMLElement).style.display).toBe('none');
+    // Banner copy still names the locked detection.
     expect(wrapper.text()).toMatch(/Locked to detected media/i);
   });
 

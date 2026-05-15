@@ -218,19 +218,19 @@ function pick(m: T): void {
 /**
  * The catalogue starts collapsed when there's already a selection
  * (the default-on-mount path always lands here). The summary shows
- * the swatch + name + "Change" affordance; clicking expands the full
- * catalogue. After the user picks, we auto-collapse back to the
- * summary so the rest of the page is a short scroll.
+ * the swatch + name; in the pickable modes a "Change" affordance
+ * expands the full catalogue, and after the user picks we auto-collapse
+ * back so the rest of the page is a short scroll.
  *
- * `auto-locked` mode skips this entirely — the catalogue is part of
- * the read-only display, no need to hide it.
+ * `auto-locked` mode collapses too — the operator can't change the
+ * pick, so the summary renders read-only (no "Change" affordance, not
+ * clickable) and the catalogue stays hidden.
  */
 const catalogueExpanded = ref<boolean>(false);
 
-const showCollapsedSummary = computed<boolean>(() => {
-  if (detectionMode.value === 'auto-locked') return false;
-  return props.modelValue !== null && !catalogueExpanded.value;
-});
+const showCollapsedSummary = computed<boolean>(
+  () => props.modelValue !== null && !catalogueExpanded.value,
+);
 
 function expandCatalogue(): void {
   catalogueExpanded.value = true;
@@ -296,7 +296,7 @@ function swatchTitle(m: T): string {
       class="detection-banner detection-locked"
     >
       Locked to detected media: <strong>{{ describeMedia(detected) }}</strong
-      >. The printer refuses to print on anything else; the catalogue below is read-only.
+      >. The printer refuses to print on anything else.
     </p>
     <p v-else-if="detectionMode !== 'none' && !detected" class="detection-banner detection-pending">
       No media detected — pick manually below.
@@ -310,6 +310,7 @@ function swatchTitle(m: T): string {
       v-if="showCollapsedSummary && modelValue"
       type="button"
       class="selected-summary"
+      :disabled="catalogueDisabled"
       @click="expandCatalogue"
     >
       <span
@@ -326,7 +327,7 @@ function swatchTitle(m: T): string {
       >
       <span class="summary-name">{{ describeMedia(modelValue) }}</span>
       <code class="summary-id">{{ modelValue.id }}</code>
-      <span class="summary-change">Change ▾</span>
+      <span v-if="!catalogueDisabled" class="summary-change">Change ▾</span>
     </button>
 
     <div v-show="!showCollapsedSummary" class="groups">
@@ -472,9 +473,13 @@ function swatchTitle(m: T): string {
     background-color 100ms;
 }
 
-.selected-summary:hover {
+.selected-summary:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--bg-hover);
+}
+
+.selected-summary:disabled {
+  cursor: default;
 }
 
 .summary-name {
