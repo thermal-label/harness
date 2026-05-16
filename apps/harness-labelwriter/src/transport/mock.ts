@@ -9,12 +9,17 @@
  *  - Connect: returns a synthesised identity (LW 330 Turbo by default
  *    — the maintainer's bench printer; override via `MockTransport.target`).
  *  - Status probe (`buildStatusRequest` → `parseStatus`): returns a
- *    plausible 1-byte `lw-450` status with `ready=true`,
- *    `mediaLoaded=true`, no errors.
+ *    plausible status sized to the target's protocol — a 1-byte
+ *    `lw-450` status (`0x03`) for 3xx/4xx targets, a 32-byte `ESC A`
+ *    frame for `lw5-raster` targets (550 / 5XL). Both decode to
+ *    `ready=true`, `mediaLoaded=true`, no errors.
  *  - SKU probe (`build550GetSku` = `ESC U`): returns "no media-detection
  *    on this model" for non-5xx targets (a 63-byte zero buffer — the
  *    `getMedia()` parse fails gracefully and the operator picks
- *    manually). The `lw550unknown` target is the exception — see below.
+ *    manually). 5xx targets get a well-formed 63-byte SKU dump.
+ *  - Version probe (`build550GetVersion` = `ESC V`): 5xx targets get a
+ *    plausible 34-byte HW/FW/PID block; other targets stall (real
+ *    3xx/4xx firmware has no `ESC V`).
  *  - Print writes: silently accepted (counted, not stored).
  *
  * `lw_550_unknown_media` (`?mock=lw_550_unknown_media`, alias
@@ -58,7 +63,15 @@ const TARGET_VID_PID: Record<MockTarget, { vid: number; pid: number; key: string
 interface MockResponse {
   /** A 1-byte lw-450 status: `ready=1, mediaLoaded=1, errors=0`. */
   status: Uint8Array;
-  /** A 63-byte `parseSkuInfo` response carrying SKU 30334 (ADDRESS_LARGE). */
+  /**
+   * A 32-byte `parseStatus550` (`ESC A`) frame — print status idle,
+   * job ID `0`, bay status 8 (media OK), head OK, voltage OK, density
+   * 100, label index 0, 220 labels remaining, external power present.
+   * Decodes to `ready=true`, `mediaLoaded=true`, no errors, and a full
+   * `details[]` row set so the diagnostics panel is exercised.
+   */
+  status550: Uint8Array;
+  /** A 63-byte `parseSkuInfo` response carrying SKU 30252 (catalogued). */
   sku550: Uint8Array;
   /**
    * A 63-byte `parseSkuInfo` response carrying an uncatalogued SKU —
@@ -66,6 +79,11 @@ interface MockResponse {
    * target to drive the `detected-unrecognized` panel.
    */
   sku550Unknown: Uint8Array;
+  /**
+   * A 34-byte `parseEngineVersion` (`ESC V`) block — HW `1.0`, firmware
+   * application kind, version `0102.0003`, release `0521`, PID 0x0028.
+   */
+  version550: Uint8Array;
 }
 
 /**
@@ -73,14 +91,20 @@ interface MockResponse {
  *
  * Field offsets per `labelwriter-core` `parseSkuInfo` (the 550
  * Technical Reference NFC table): magic u16 LE at 0-1, SKU ASCII at
- * 8-19, label-type index at byte 23 (0 = continuous, 1 = die), label
- * length u16 LE at 40-41, label width u16 LE at 42-43.
+ * 8-19, brand at 20, material index at 22, label-type index at 23
+ * (0 = continuous, 1 = die), label length u16 LE at 40-41, label
+ * width u16 LE at 42-43, total-label-count u16 LE at 50-51, counter
+ * strategy at 56, production date ASCII at 60-61.
  */
 function buildSkuDump(opts: {
   sku: string;
   widthMm: number;
   lengthMm: number;
   dieCut: boolean;
+  material?: number;
+  totalLabelCount?: number;
+  counterStrategy?: number;
+  productionDate?: string;
 }): Uint8Array {
   const buf = new Uint8Array(63);
   // magic 0xCAB6, little-endian.
@@ -94,11 +118,67 @@ function buildSkuDump(opts: {
   }
   buf[20] = 0x00; // brand = dymo
   buf[21] = 0xff; // region = global
+  buf[22] = opts.material ?? 0x03; // material (3 = paper)
   buf[23] = opts.dieCut ? 1 : 0; // label type
   buf[40] = opts.lengthMm & 0xff;
   buf[41] = (opts.lengthMm >> 8) & 0xff;
   buf[42] = opts.widthMm & 0xff;
   buf[43] = (opts.widthMm >> 8) & 0xff;
+  const total = opts.totalLabelCount ?? 0;
+  buf[50] = total & 0xff;
+  buf[51] = (total >> 8) & 0xff;
+  buf[56] = opts.counterStrategy ?? 0; // 0 = count-up
+  const prod = opts.productionDate ?? '';
+  for (let i = 0; i < prod.length && i < 2; i++) {
+    buf[60 + i] = prod.charCodeAt(i);
+  }
+  return buf;
+}
+
+/**
+ * Build a well-formed 32-byte `ESC A` status frame for an `lw5-raster`
+ * target. Layout per `labelwriter-core` `parseStatus550`: byte 0 print
+ * status, bytes 1-4 job ID, bytes 5-6 label index, byte 8 head status,
+ * byte 9 density, byte 10 bay status, bytes 23-26 error ID, bytes 27-28
+ * labels remaining, byte 29 EPS, byte 30 head voltage.
+ *
+ * Defaults to a healthy idle 550: idle, bay OK, head OK, voltage OK,
+ * density 100, 220 labels remaining, external power present.
+ */
+function build550StatusFrame(): Uint8Array {
+  const buf = new Uint8Array(32);
+  buf[0] = 0; // print status: idle
+  // job ID 0 (bytes 1-4 already zero); label index 0 (bytes 5-6 zero)
+  buf[8] = 0; // head status: OK
+  buf[9] = 100; // print density 100%
+  buf[10] = 8; // bay status: media present, OK
+  // error ID 0 (bytes 23-26 already zero)
+  buf[27] = 220 & 0xff; // labels remaining = 220
+  buf[28] = (220 >> 8) & 0xff;
+  buf[29] = 0x01; // EPS bit 0: external power present
+  buf[30] = 1; // head voltage: OK
+  buf[31] = 0xff; // reserved
+  return buf;
+}
+
+/**
+ * Build a well-formed 34-byte `ESC V` engine-version block. Layout per
+ * `labelwriter-core` `parseEngineVersion`: hw version ASCII 0-15, fw
+ * kind ASCII 16-19, fw major 20-23, fw minor 24-27, release date
+ * 28-31, PID u16 LE 32-33.
+ */
+function build550VersionBlock(): Uint8Array {
+  const buf = new Uint8Array(34);
+  const write = (text: string, at: number, max: number): void => {
+    for (let i = 0; i < text.length && i < max; i++) buf[at + i] = text.charCodeAt(i);
+  };
+  write('1.0', 0, 16); // hw version
+  write('FWAP', 16, 4); // fw kind: application
+  write('0102', 20, 4); // fw major
+  write('0003', 24, 4); // fw minor
+  write('0521', 28, 4); // release date MMYY
+  buf[32] = 0x28; // PID 0x0028 LE
+  buf[33] = 0x00;
   return buf;
 }
 
@@ -106,14 +186,23 @@ function buildMockResponses(): MockResponse {
   // lw-450 single-byte status: bit0=ready, bit1=mediaLoaded.
   const status = new Uint8Array([0x03]);
 
-  // SKU response is firmware-specific binary; mocking the layout
-  // exactly would couple this file to `parseSkuInfo` internals. We
-  // keep it as a 63-byte zero buffer — the harness's SKU-prefill
-  // branch tries the parse, falls back gracefully on malformed data,
-  // and proceeds via the manual media picker. That's the same
-  // behaviour as a real LW 3xx/4xx connect, which is what the
-  // default mock target simulates.
-  const sku550 = new Uint8Array(63);
+  // 32-byte lw5-raster `ESC A` frame — healthy idle 550.
+  const status550 = build550StatusFrame();
+
+  // Catalogued SKU dump — SKU 30252 (a 28×89 mm die-cut address
+  // label, present in the labelwriter media registry). Carries
+  // material / total-count / production-date so `skuInfoDetails`
+  // produces a full roll-instance detail set.
+  const sku550 = buildSkuDump({
+    sku: '30252',
+    widthMm: 28,
+    lengthMm: 89,
+    dieCut: true,
+    material: 0x03, // paper
+    totalLabelCount: 260,
+    counterStrategy: 0, // count-up
+    productionDate: '21',
+  });
 
   // Uncatalogued SKU — 41 mm continuous. SKU `99999` is deliberately
   // absent from the labelwriter media registry, so `skuInfoToMedia`
@@ -124,12 +213,25 @@ function buildMockResponses(): MockResponse {
     widthMm: 41,
     lengthMm: 0,
     dieCut: false,
+    material: 0x03,
+    totalLabelCount: 0,
   });
 
-  return { status, sku550, sku550Unknown };
+  // 34-byte lw5-raster `ESC V` engine-version block.
+  const version550 = build550VersionBlock();
+
+  return { status, status550, sku550, sku550Unknown, version550 };
 }
 
 const RESPONSES = buildMockResponses();
+
+/**
+ * Targets whose primary engine speaks `lw5-raster` — these answer
+ * `ESC A` with the 32-byte frame and `ESC V` with the version block.
+ * The Duo's label engine is classic `lw-raster`, so it stays on the
+ * 1-byte status form.
+ */
+const LW5_TARGETS = new Set<MockTarget>(['lw550', 'lw5xl', 'lw_550_unknown_media']);
 
 export class MockTransport implements Transport {
   static currentTarget: MockTarget = 'lw330turbo';
@@ -171,17 +273,24 @@ export class MockTransport implements Transport {
     this.writes += data.byteLength;
 
     // The harness writes `buildStatusRequest` first; queue a status
-    // response so the next `read` resolves with plausible bytes. The
-    // SKU-probe path is gated behind a different write pattern
-    // (`build550GetSku` = ESC U); we detect that prefix and queue
-    // the SKU buffer instead. The `lw_550_unknown_media` target
-    // answers ESC U with an uncatalogued SKU so the connect lands in
-    // the `detected-unrecognized` panel.
+    // response so the next `read` resolves with plausible bytes. Three
+    // 550-family query commands are dispatched by their `ESC` prefix:
+    //   ESC U (0x1b 0x55) — Get SKU Information → 63-byte dump
+    //   ESC V (0x1b 0x56) — Get Engine Version → 34-byte block
+    //   ESC A (0x1b 0x41) — Request Print Engine Status → 32-byte
+    //                       frame on lw5-raster, 1-byte on lw-450
+    // The `lw_550_unknown_media` target answers ESC U with an
+    // uncatalogued SKU so the connect lands in the
+    // `detected-unrecognized` panel.
+    const isLw5 = LW5_TARGETS.has(this.target);
     if (this.matchesPrefix(data, [0x1b, 0x55])) {
       this.readQueue =
         this.target === 'lw_550_unknown_media' ? RESPONSES.sku550Unknown : RESPONSES.sku550;
+    } else if (this.matchesPrefix(data, [0x1b, 0x56])) {
+      // ESC V — only lw5-raster firmware answers; others stall.
+      this.readQueue = isLw5 ? RESPONSES.version550 : null;
     } else if (this.matchesPrefix(data, [0x1b, 0x41])) {
-      this.readQueue = RESPONSES.status;
+      this.readQueue = isLw5 ? RESPONSES.status550 : RESPONSES.status;
     }
     // Other writes (the actual print payload) are silently consumed.
   }
