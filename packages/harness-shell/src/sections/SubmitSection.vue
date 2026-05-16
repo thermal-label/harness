@@ -18,6 +18,11 @@
  */
 import { computed, ref } from 'vue';
 import type { PrintEngine } from '@thermal-label/contracts';
+import {
+  buildDiagnosticsSnapshot,
+  renderDiagnosticsBlock,
+  type DiagnosticsSnapshot,
+} from '@thermal-label/harness-core/shared';
 import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
 import {
@@ -51,6 +56,51 @@ const reporterHandle = ref('');
 const errorMessage = ref<string | null>(null);
 const fallbackBody = ref<string | null>(null);
 const copyState = ref<'idle' | 'copied'>('idle');
+
+// ─── Diagnostics snapshot (ungated — available from connect) ──────
+//
+// A copy-only triage artifact, separate from the verdict-gated
+// HardwareReport. Available the moment a device is connected so a
+// reporter can paste a structured snapshot into an *existing* GitHub
+// ticket — no print, no new issue. Recomputed live so a Copy reflects
+// the latest polled status.
+
+const diagnosticsSnapshot = computed<DiagnosticsSnapshot | null>(() => {
+  const identity = session.connection.identity;
+  if (!session.isConnected.value || !identity) return null;
+  const engines = Object.entries(session.engineSessions).map(([role]) => ({
+    role,
+    status: session.printerStatus[role] ?? null,
+  }));
+  return buildDiagnosticsSnapshot({
+    driverKey: adapter.driverKey,
+    harnessVersion: adapter.harnessVersion,
+    driverVersion: adapter.driverVersion,
+    mocked: session.connection.mocked,
+    device: identity,
+    engines,
+  });
+});
+
+const diagnosticsJson = computed(() =>
+  diagnosticsSnapshot.value ? JSON.stringify(diagnosticsSnapshot.value, null, 2) : '',
+);
+
+const diagnosticsCopyState = ref<'idle' | 'copied'>('idle');
+
+async function copyDiagnostics(): Promise<void> {
+  const snapshot = diagnosticsSnapshot.value;
+  if (!snapshot) return;
+  try {
+    await copyToClipboard(renderDiagnosticsBlock(snapshot));
+    diagnosticsCopyState.value = 'copied';
+    setTimeout(() => {
+      diagnosticsCopyState.value = 'idle';
+    }, 2000);
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  }
+}
 
 // ─── Multi-engine "test the other engine" CTA ────────────────────
 
@@ -187,6 +237,25 @@ function activate(role: string): void {
 
 <template>
   <SectionCard :step="5" title="Submit the report" :state="sectionState">
+    <!-- Diagnostics — copy-only, ungated by the verdict. Visible from
+         connect onward (pending state included) so a reporter can
+         paste a snapshot into an existing ticket without printing. -->
+    <div v-if="diagnosticsSnapshot" class="diagnostics">
+      <p class="muted small">
+        Triaging an existing issue? Copy this and paste it into the ticket — no need to submit a
+        new report.
+      </p>
+      <details class="diagnostics-preview">
+        <summary>Preview diagnostics JSON</summary>
+        <textarea readonly rows="12" :value="diagnosticsJson" />
+      </details>
+      <div class="diagnostics-actions">
+        <button class="primary" type="button" @click="copyDiagnostics">
+          {{ diagnosticsCopyState === 'copied' ? 'Copied ✓' : 'Copy diagnostics (JSON)' }}
+        </button>
+      </div>
+    </div>
+
     <template v-if="!session.canSubmit.value">
       <p class="muted">Pick a verdict in the section above first.</p>
     </template>
@@ -383,6 +452,35 @@ function activate(role: string): void {
   font-size: 0.78rem;
   resize: vertical;
   margin-top: var(--space-2);
+}
+
+.diagnostics {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.diagnostics-preview {
+  margin-top: var(--space-2);
+}
+
+.diagnostics-preview summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.diagnostics-preview textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  resize: vertical;
+  margin-top: var(--space-2);
+}
+
+.diagnostics-actions {
+  margin-top: var(--space-3);
 }
 
 .fallback-actions {
