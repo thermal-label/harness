@@ -16,7 +16,7 @@
  * harness shell flips the active printer when the operator changes
  * engine tabs; no facade or duck-typed `setActiveEngine` involved.
  */
-import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
+import type { DriverAdapter, MockSpec, CustomMediaInput } from '@thermal-label/harness-shell';
 import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
 import type {
   HardwareReport,
@@ -68,6 +68,15 @@ const MOCK_TARGETS: Record<MockTarget, MockMeta> = {
     key: 'LW_450_DUO',
     name: 'LabelWriter 450 Duo',
     aliases: ['duo', 'LW_450_DUO'],
+  },
+  // LW 550 reporting an NFC SKU absent from the media registry — the
+  // `detected-unrecognized` walk-through URL for the 550 retester.
+  lw_550_unknown_media: {
+    vid: 0x0922,
+    pid: 0x0028,
+    key: 'LW_550',
+    name: 'LabelWriter 550 (unknown media)',
+    aliases: ['550-unknown'],
   },
 };
 
@@ -160,6 +169,40 @@ function swatch(m: LabelWriterAnyMedia): MediaSwatch | null {
   return out;
 }
 
+/** Sentinel `id` marking a media synthesised by the custom-media flow. */
+const CUSTOM_MEDIA_ID = 'custom';
+
+/**
+ * Build a printable `LabelWriterMedia` from operator-confirmed
+ * dimensions, for the `detected-unrecognized` flow (an NFC SKU not in
+ * the catalogue — exactly what walls the LW 550 retester).
+ *
+ * The 550 encoder (`encode550Label`) derives all geometry from the
+ * engine's `headDots` and the bitmap; the media only feeds
+ * `getPrintableArea` and the diagnostic-image sizing. So a synthetic
+ * `LabelWriterMedia` needs no driver-private fields beyond the base
+ * `MediaDescriptor` shape — `widthMm` / `heightMm` / `type` plus a
+ * derived `name`, the sentinel `id`, and `skus: [identifier]` when the
+ * operator named the roll (so the identifier rides into the report via
+ * the media object).
+ */
+function buildCustomLabelMedia(input: CustomMediaInput): LabelWriterMedia {
+  const { widthMm, heightMm, type, identifier } = input;
+  const derivedName =
+    identifier.trim() ||
+    (type === 'die-cut' && heightMm !== undefined
+      ? `Custom ${String(widthMm)} × ${String(heightMm)} mm die-cut`
+      : `Custom ${String(widthMm)} mm continuous`);
+  return {
+    id: CUSTOM_MEDIA_ID,
+    name: derivedName,
+    widthMm,
+    type,
+    ...(type === 'die-cut' && heightMm !== undefined ? { heightMm } : {}),
+    ...(identifier.trim() ? { skus: [identifier.trim()] } : {}),
+  };
+}
+
 // ─── Mock connect helper ─────────────────────────────────────────
 
 /**
@@ -180,6 +223,39 @@ function buildMockPrinterMap(
     out[engine.role] = new WebLabelWriterPrinter(device, transport, { engine });
   }
   return out;
+}
+
+/**
+ * Prime media detection on LW 5xx engines.
+ *
+ * The 550-family polled status frame (`parseStatus550`) never carries
+ * `detectedMedia` — only `getMedia()` (the `ESC U` NFC SKU dump) does.
+ * `getMedia()` caches the result into the printer's `lastStatus`, and
+ * subsequent `getStatus()` calls (which the harness shell polls via
+ * `onStatus`) preserve it. So a one-shot `getMedia()` here is what
+ * surfaces the loaded SKU to the harness — including an uncatalogued
+ * SKU, which is what drives the `detected-unrecognized` panel.
+ *
+ * `getMedia()` is a LabelWriter-web-specific method (not part of the
+ * cross-driver `PrinterAdapter` contract), so this driver-specific
+ * adapter is the right place to call it. Best-effort: a printer with
+ * no NFC tag, or a malformed dump, just leaves detection empty and the
+ * operator picks manually.
+ */
+async function primeMediaDetection(printers: Record<string, PrinterAdapter>): Promise<void> {
+  await Promise.all(
+    Object.values(printers).map(async printer => {
+      const engine = (printer as { engine?: PrintEngine }).engine;
+      if (engine?.protocol !== 'lw5-raster') return;
+      const getMedia = (printer as { getMedia?: () => Promise<unknown> }).getMedia;
+      if (typeof getMedia !== 'function') return;
+      try {
+        await getMedia.call(printer);
+      } catch {
+        // Best-effort — no NFC tag / malformed dump → manual picker.
+      }
+    }),
+  );
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────
@@ -205,7 +281,9 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
         throw new Error(`Mock target ${target} has no matching DEVICES entry — fix mock.ts`);
       }
       const transport = MockTransport.open(target);
-      return { printers: buildMockPrinterMap(device, transport), device, mocked: true };
+      const printers = buildMockPrinterMap(device, transport);
+      await primeMediaDetection(printers);
+      return { printers, device, mocked: true };
     }
 
     // Real connect: `requestPrinters({ transport: 'usb' })` pops the
@@ -222,6 +300,7 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
     }
+    await primeMediaDetection(printers);
     return {
       printers,
       device: first.device,
@@ -237,6 +316,12 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
     groupBy,
     swatch,
     describe: m => m.name,
+    // LW 5xx detects media from an NFC SKU tag; a SKU not yet in the
+    // registry would otherwise wall the operator on the media step.
+    // The build hook synthesises a printable media from the
+    // operator-confirmed dimensions so an unknown roll is a registry
+    // contribution, not a stuck screen.
+    customMedia: { build: buildCustomLabelMedia },
   },
 
   buildDiagnosticImage: ({ device, engine, media, harnessVersion, driverVersion }) =>
@@ -265,6 +350,20 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
       ...identity,
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
+    // detected-unrecognized flow: when the chosen media is a synthetic
+    // custom one (sentinel id), record the operator-confirmed geometry
+    // + identifier explicitly so the report is a registry contribution.
+    const media = primarySession.media;
+    const customMedia =
+      media.id === CUSTOM_MEDIA_ID
+        ? {
+            ...(media.skus?.[0] ? { identifier: media.skus[0] } : {}),
+            widthMm: media.widthMm,
+            ...(media.heightMm !== undefined ? { heightMm: media.heightMm } : {}),
+            type: media.type === 'die-cut' ? ('die-cut' as const) : ('continuous' as const),
+          }
+        : null;
+
     const engineReports: EngineReport[] = allSessions.flatMap<EngineReport>(s => {
       if (s.rung === null || s.media === null) return [];
       return [
@@ -287,6 +386,7 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
           model: device.name,
           ...(usb ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) } : {}),
           overrides: { label: String(primarySession.media.id) },
+          ...(customMedia ? { customMedia } : {}),
         },
       },
       transports: [transportReport],

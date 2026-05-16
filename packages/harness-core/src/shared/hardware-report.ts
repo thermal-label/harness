@@ -153,6 +153,29 @@ export interface DeviceIdentity {
     pid?: number;
     /** Any other field the operator overrode in the review/override panel. */
     overrides?: Readonly<Record<string, unknown>>;
+    /**
+     * Set when the operator ran a print on media the driver detected
+     * but the harness catalogue couldn't name — the
+     * `detected-unrecognized` flow. Carries the operator-confirmed
+     * geometry and (when supplied) their free-text identifier. This is
+     * the registry-contribution payload: an unknown roll reported once
+     * becomes a catalogue candidate.
+     *
+     * Optional + additive — single-catalogue-media reports omit it,
+     * and existing parsers are unaffected, so `schemaVersion` stays
+     * `1` (no external schema consumers yet; maintainer-ruled while
+     * the harness is pre-release).
+     */
+    customMedia?: {
+      /** Operator free-text media id (DK-code / Dymo SKU / description). */
+      identifier?: string;
+      /** Operator-confirmed media width in mm. */
+      widthMm: number;
+      /** Operator-confirmed label length in mm; absent ⇒ continuous. */
+      heightMm?: number;
+      /** Operator-confirmed media type. */
+      type: 'continuous' | 'die-cut';
+    };
   };
 }
 
