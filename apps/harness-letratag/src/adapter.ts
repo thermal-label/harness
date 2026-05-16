@@ -25,6 +25,7 @@
  * `diagnostic-print.ts` rather than sharing one across runtimes.
  */
 import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
+import { buildReportDiagnostics } from '@thermal-label/harness-shell';
 import type {
   HardwareReport,
   IdentitySnapshot,
@@ -109,9 +110,12 @@ function swatch(m: LetraTagMedia): MediaSwatch | null {
  * own role (`primary`).
  *
  * Seeds a plausible idle-with-cassette `AdvertisingStatus` so the
- * §1 status pill reads "12 mm cassette · battery full" the moment
- * the operator clicks Connect — matches what a real LT-200B
- * advertising at the same moment would surface.
+ * §1 status pill reads "12 mm cassette · battery 67% · charging" the
+ * moment the operator clicks Connect — matches what a real LT-200B
+ * advertising at the same moment would surface. The seed is a
+ * mid-charge, charging battery (level 2, charging) so the mock walk
+ * visibly exercises the Phase-2 battery glyph + the cassette /
+ * revision detail rows — not just a trivial full-battery default.
  */
 function buildMockPrinterMap(
   device: LetraTagDevice,
@@ -122,19 +126,20 @@ function buildMockPrinterMap(
     throw new Error(`LetraTag device ${device.key} has no engines — registry is malformed.`);
   }
   const printer = new LetraTagPrinter(device, transport);
-  // 12mm cassette (id 3), battery level 3 (full), no errors, idle.
-  // Matches the existing letratag-web test fixture
-  // (`printer.test.ts:106` in the letratag repo).
+  // 12mm cassette (id 3), battery level 2 (≈67%), charging, no
+  // errors, idle. byte 2 = 0x60: batteryLevel 2 (bits 4-5 = 10),
+  // charging bit 6 set. Exercises the battery glyph + `details[]`
+  // rows the Phase-2 work added (plan 13 §F).
   printer.setAdvertisingStatus({
     revision: 1,
     cassetteId: 3,
     cassetteWidthMm: 12,
     carbonType: false,
     busyLocked: false,
-    batteryLevel: 3,
-    charging: false,
+    batteryLevel: 2,
+    charging: true,
     errors: [],
-    rawBytes: new Uint8Array([0x10, 0x03, 0x30]),
+    rawBytes: new Uint8Array([0x10, 0x03, 0x60]),
   });
   return { [engine.role]: printer };
 }
@@ -225,7 +230,7 @@ export const adapter: DriverAdapter<LetraTagDevice, LetraTagMedia> = {
   buildDiagnosticImage: ({ device, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
+  buildReport: ({ device, identity, primarySession, mocked, reporter, finalStatus }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -252,6 +257,18 @@ export const adapter: DriverAdapter<LetraTagDevice, LetraTagMedia> = {
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
     const media = primarySession.media;
+    // Fold the shell-captured live device-state (connect / pre-print /
+    // post-print / final status) into the report diagnostics block
+    // (plan 13 §E.4). LetraTag has no `ESC V` engine version and no
+    // `ESC U` SKU dump, so `engineVersion` / `skuInfo` stay unset — the
+    // session never populates them and `buildReportDiagnostics` simply
+    // omits them. The captured `PrinterStatus` carries the LetraTag
+    // `battery` + `details[]` rewritten in letratag-core commit
+    // 1090c9d, so the diagnostics block surfaces battery state too.
+    const diagnostics = buildReportDiagnostics({
+      session: primarySession,
+      finalStatus,
+    });
     const report: HardwareReport = {
       schemaVersion: 1,
       driver: DRIVER_KEY,
@@ -268,6 +285,7 @@ export const adapter: DriverAdapter<LetraTagDevice, LetraTagMedia> = {
         },
       },
       transports: [transportReport],
+      ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
       ...(reporter ? { reporter: { handle: reporter } } : {}),
     };

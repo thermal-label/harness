@@ -22,7 +22,7 @@ import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
 import { useMockMode } from '../composables/useMockMode';
 import { startStatusPolling, type PollHandle } from '../state/createStatusPolling';
-import { engineNoun, statusToPrinterPill } from '../state/statusPills';
+import { engineNoun, statusToBatteryPill, statusToPrinterPill } from '../state/statusPills';
 import SectionCard from './SectionCard.vue';
 import TransportButtons from './TransportButtons.vue';
 import DeviceDropdown from './DeviceDropdown.vue';
@@ -45,6 +45,14 @@ const printerDot = computed<{ state: 'unknown' | 'good' | 'warn' | 'bad'; label:
     return statusToPrinterPill(session.activeStatus.value, noun);
   },
 );
+
+/**
+ * Battery glyph pill for the active engine's status (plan 13 §E.5 /
+ * §F). `null` for AC/USB-powered devices that report no battery — the
+ * pill simply isn't rendered. Battery-bearing drivers (LetraTag)
+ * populate `status.battery` and the glyph shows.
+ */
+const batteryDot = computed(() => statusToBatteryPill(session.activeStatus.value));
 
 const rawStatusBytes = computed(() => {
   const raw = session.activeStatus.value?.rawBytes;
@@ -352,6 +360,13 @@ function asCandidates(candidates: DropdownCandidates): DropdownCandidates {
   <SectionCard :step="1" title="Connect & confirm" :state="sectionState">
     <template v-if="session.isConnected.value && printerDot" #header-aside>
       <StatusPill :state="printerDot.state" :label="printerDot.label" />
+      <!-- Battery glyph (plan 13 §F) — renders only when the driver
+           reports `status.battery`; AC/USB devices show nothing. -->
+      <StatusPill
+        v-if="batteryDot"
+        :state="batteryDot.state"
+        :label="batteryDot.label"
+      />
     </template>
 
     <p v-if="mockMode.isMock" class="mock-banner">

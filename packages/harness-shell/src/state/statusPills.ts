@@ -58,6 +58,41 @@ export function statusToPrinterPill(status: PrinterStatus | null, noun: string):
 }
 
 /**
+ * Map a `PrinterStatus.battery` to a battery glyph pill, or `null`
+ * when the device reports no battery (deferred from plan 13 Phase 1;
+ * lands with `status.battery` in Phase 2).
+ *
+ * AC/USB-powered drivers (LabelWriter, brother-ql, LabelManager)
+ * leave `battery` undefined → this returns `null` and the caller
+ * renders nothing. Battery-bearing drivers (LetraTag) populate it.
+ *
+ * The pill label is a charge percentage from the normalised
+ * `fraction` (0..1), prefixed `Charging — ` while the cable is in.
+ * Traffic-light state: `bad` ≤ 15%, `warn` ≤ 35%, else `good`;
+ * `unknown` when `fraction` is absent. A device that reports only a
+ * charging flag still gets a pill ("Charging" / "On battery").
+ */
+export function statusToBatteryPill(status: PrinterStatus | null): Pill | null {
+  const battery = status?.battery;
+  if (!battery) return null;
+
+  const { fraction, charging } = battery;
+  if (fraction === undefined) {
+    return {
+      state: 'unknown',
+      label: charging ? 'Charging' : 'On battery',
+    };
+  }
+
+  const pct = Math.round(fraction * 100);
+  const state: PillState = fraction <= 0.15 ? 'bad' : fraction <= 0.35 ? 'warn' : 'good';
+  return {
+    state: charging ? 'good' : state,
+    label: charging ? `Charging — ${String(pct)}%` : `Battery ${String(pct)}%`,
+  };
+}
+
+/**
  * Map a `PrinterStatus` to the §3 "media loaded" pill.
  */
 export function statusToMediaPill(status: PrinterStatus | null, noun: string): Pill {
