@@ -185,6 +185,9 @@ function createSession<TDevice, TMedia>(opts: {
           printed: false,
           rung: null,
           notes: '',
+          connectStatus: null,
+          prePrintStatus: null,
+          postPrintStatus: null,
         };
         engineSessions[eng.role] = slot;
       } else {
@@ -210,6 +213,11 @@ function createSession<TDevice, TMedia>(opts: {
       s.printed = false;
       s.rung = null;
       s.notes = '';
+      s.connectStatus = null;
+      s.prePrintStatus = null;
+      s.postPrintStatus = null;
+      delete s.engineVersion;
+      delete s.skuInfo;
     }
     submitState.submitted = false;
     submitState.issueUrl = null;

@@ -24,3 +24,6 @@ export type {
 } from './types';
 
 export { createHarness } from './createHarness';
+
+export type { ReportDiagnosticsInput } from './submit/diagnostics';
+export { buildReportDiagnostics } from './submit/diagnostics';

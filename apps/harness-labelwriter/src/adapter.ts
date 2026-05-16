@@ -16,21 +16,31 @@
  * harness shell flips the active printer when the operator changes
  * engine tabs; no facade or duck-typed `setActiveEngine` involved.
  */
-import type { DriverAdapter, MockSpec, CustomMediaInput } from '@thermal-label/harness-shell';
+import type {
+  ConnectResult,
+  DriverAdapter,
+  MockSpec,
+  CustomMediaInput,
+} from '@thermal-label/harness-shell';
+import { buildReportDiagnostics } from '@thermal-label/harness-shell';
 import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
 import type {
+  EngineVersionSnapshot,
   HardwareReport,
   IdentitySnapshot,
   EngineReport,
+  SkuInfoSnapshot,
   TransportReport,
 } from '@thermal-label/harness-core/shared';
 import {
   DEVICES,
   MEDIA,
+  type EngineVersion,
   type LabelWriterAnyMedia,
   type LabelWriterDevice,
   type LabelWriterMedia,
   type LabelWriterTapeMedia,
+  type SkuInfo,
 } from '@thermal-label/labelwriter-core';
 import { WebLabelWriterPrinter, requestPrinters } from '@thermal-label/labelwriter-web';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
@@ -225,8 +235,49 @@ function buildMockPrinterMap(
   return out;
 }
 
+/** Per-engine connect diagnostics surfaced to the harness shell. */
+type EngineDiagnostics = NonNullable<
+  ConnectResult<LabelWriterDevice>['engineDiagnostics']
+>;
+
+/** Project a driver `EngineVersion` into the JSON-safe report snapshot. */
+function toEngineVersionSnapshot(v: EngineVersion): EngineVersionSnapshot {
+  return {
+    hwVersion: v.hwVersion,
+    fwKind: v.fwKind,
+    // Join the 4-char major/minor into one human-formatted string —
+    // the driver owns the format, the report carries it verbatim.
+    fwVersion: `${v.fwMajor}.${v.fwMinor}`.trim(),
+    fwReleaseDate: v.fwReleaseDate,
+    pid: v.pid,
+  };
+}
+
 /**
- * Prime media detection on LW 5xx engines.
+ * Project a driver `SkuInfo` into the JSON-safe report snapshot. The
+ * full structure has ~30 fields; the snapshot carries the
+ * roll-instance forensics a triage reader needs, all primitives.
+ */
+function toSkuInfoSnapshot(sku: SkuInfo): SkuInfoSnapshot {
+  return {
+    sku: sku.sku.trim(),
+    brand: sku.brand,
+    material: sku.material,
+    labelType: sku.labelType,
+    labelColor: sku.labelColor,
+    contentColor: sku.contentColor,
+    labelWidthMm: sku.labelWidthMm,
+    labelLengthMm: sku.labelLengthMm,
+    totalLabelCount: sku.totalLabelCount,
+    counterStrategy: sku.counterStrategy,
+    productionDate: sku.productionDate.trim(),
+    productionTime: sku.productionTime.trim(),
+  };
+}
+
+/**
+ * Eagerly capture LW 5xx connect diagnostics — prime media detection
+ * (`ESC U`) and read the engine version (`ESC V`).
  *
  * The 550-family polled status frame (`parseStatus550`) never carries
  * `detectedMedia` — only `getMedia()` (the `ESC U` NFC SKU dump) does.
@@ -236,26 +287,54 @@ function buildMockPrinterMap(
  * surfaces the loaded SKU to the harness — including an uncatalogued
  * SKU, which is what drives the `detected-unrecognized` panel.
  *
- * `getMedia()` is a LabelWriter-web-specific method (not part of the
- * cross-driver `PrinterAdapter` contract), so this driver-specific
- * adapter is the right place to call it. Best-effort: a printer with
- * no NFC tag, or a malformed dump, just leaves detection empty and the
- * operator picks manually.
+ * Both `getMedia()` and `getEngineVersion()` are LabelWriter-web
+ * specific methods (not part of the cross-driver `PrinterAdapter`
+ * contract), so this driver-specific adapter is the right place to
+ * call them. Capturing them eagerly here (plan 13 §E.1) guarantees
+ * roll + firmware data reaches the report even if the tester never
+ * reaches MediaSection or the print fails.
+ *
+ * Best-effort throughout ("rails not walls"): a printer with no NFC
+ * tag, a malformed dump, or a failed version read just leaves that
+ * field empty — the operator still picks media manually and the
+ * connect summary still appears.
  */
-async function primeMediaDetection(printers: Record<string, PrinterAdapter>): Promise<void> {
+async function captureConnectDiagnostics(
+  printers: Record<string, PrinterAdapter>,
+): Promise<EngineDiagnostics> {
+  const out: EngineDiagnostics = {};
   await Promise.all(
-    Object.values(printers).map(async printer => {
+    Object.entries(printers).map(async ([role, printer]) => {
       const engine = (printer as { engine?: PrintEngine }).engine;
       if (engine?.protocol !== 'lw5-raster') return;
-      const getMedia = (printer as { getMedia?: () => Promise<unknown> }).getMedia;
-      if (typeof getMedia !== 'function') return;
-      try {
-        await getMedia.call(printer);
-      } catch {
-        // Best-effort — no NFC tag / malformed dump → manual picker.
+      const entry: EngineDiagnostics[string] = {};
+
+      const getMedia = (printer as { getMedia?: () => Promise<SkuInfo | undefined> }).getMedia;
+      if (typeof getMedia === 'function') {
+        try {
+          const sku = await getMedia.call(printer);
+          if (sku) entry.skuInfo = toSkuInfoSnapshot(sku);
+        } catch {
+          // Best-effort — no NFC tag / malformed dump → manual picker.
+        }
       }
+
+      const getEngineVersion = (
+        printer as { getEngineVersion?: () => Promise<EngineVersion | undefined> }
+      ).getEngineVersion;
+      if (typeof getEngineVersion === 'function') {
+        try {
+          const version = await getEngineVersion.call(printer);
+          if (version) entry.engineVersion = toEngineVersionSnapshot(version);
+        } catch {
+          // Best-effort — ESC V unsupported / no reply.
+        }
+      }
+
+      if (Object.keys(entry).length > 0) out[role] = entry;
     }),
   );
+  return out;
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────
@@ -282,8 +361,8 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
       }
       const transport = MockTransport.open(target);
       const printers = buildMockPrinterMap(device, transport);
-      await primeMediaDetection(printers);
-      return { printers, device, mocked: true };
+      const engineDiagnostics = await captureConnectDiagnostics(printers);
+      return { printers, device, mocked: true, engineDiagnostics };
     }
 
     // Real connect: `requestPrinters({ transport: 'usb' })` pops the
@@ -300,11 +379,12 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
         'requestPrinters() returned no engines — driver-web reports the picked device has no drivable engines.',
       );
     }
-    await primeMediaDetection(printers);
+    const engineDiagnostics = await captureConnectDiagnostics(printers);
     return {
       printers,
       device: first.device,
       mocked: false,
+      engineDiagnostics,
     };
   },
 
@@ -335,6 +415,7 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
     multiEngine,
     mocked,
     reporter,
+    finalStatus,
   }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
@@ -375,6 +456,14 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
         },
       ];
     });
+    // Fold the captured live device-state (connect / pre-print /
+    // post-print / final status, plus ESC V / ESC U) into the report
+    // diagnostics block (plan 13 §E.4).
+    const diagnostics = buildReportDiagnostics({
+      session: primarySession,
+      finalStatus,
+    });
+
     return {
       schemaVersion: 1,
       driver: DRIVER_KEY,
@@ -391,6 +480,7 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
       },
       transports: [transportReport],
       ...(multiEngine && engineReports.length > 0 ? { engines: engineReports } : {}),
+      ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
       ...(reporter ? { reporter: { handle: reporter } } : {}),
     } satisfies HardwareReport;

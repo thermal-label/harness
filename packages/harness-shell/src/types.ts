@@ -52,13 +52,16 @@ import type {
   MediaDescriptor,
   PrintEngine,
   PrinterAdapter,
+  PrinterStatus,
   RawImageData,
   TransportType,
 } from '@thermal-label/contracts';
 import type {
+  EngineVersionSnapshot,
   HardwareReport,
   IdentitySnapshot,
   ProposedRung,
+  SkuInfoSnapshot,
 } from '@thermal-label/harness-core/shared';
 import type { MediaGroupKey, MediaSwatch } from '@thermal-label/harness-components/types';
 
@@ -127,6 +130,21 @@ export interface ConnectResult<TDevice> {
   device: TDevice;
   /** True when this is a mock-backed PrinterAdapter. */
   mocked: boolean;
+  /**
+   * Connect-time diagnostics the adapter captured eagerly, keyed by
+   * engine role (plan 13 §E.1). LW 5xx fills `engineVersion` (`ESC V`)
+   * and `skuInfo` (`ESC U`) here so roll + firmware data reaches the
+   * report even if the operator never runs MediaSection or the print
+   * fails. Other drivers omit it. The shell folds each entry into the
+   * matching `EngineSession`.
+   */
+  engineDiagnostics?: Record<
+    string,
+    {
+      engineVersion?: EngineVersionSnapshot;
+      skuInfo?: SkuInfoSnapshot;
+    }
+  >;
 }
 
 // ─── Mock targets ────────────────────────────────────────────────
@@ -252,6 +270,24 @@ export interface EngineSession<TMedia> {
   rung: ProposedRung | null;
   /** Free-form notes scoped to this engine's print. */
   notes: string;
+  /**
+   * Live device-state captured across the print flow for this engine
+   * (plan 13 §E). All optional — populated as the flow reaches each
+   * point; a report folds whatever was captured into
+   * `HardwareReport.diagnostics`.
+   *
+   * `connectStatus` — first polled status after connect.
+   * `prePrintStatus` / `postPrintStatus` — status read immediately
+   *   before and after `printer.print()` resolved (the load-bearing
+   *   "nothing happens" diagnostic).
+   * `engineVersion` / `skuInfo` — `ESC V` / `ESC U` blocks fetched
+   *   eagerly by the adapter on connect (LW 5xx).
+   */
+  connectStatus?: PrinterStatus | null;
+  prePrintStatus?: PrinterStatus | null;
+  postPrintStatus?: PrinterStatus | null;
+  engineVersion?: EngineVersionSnapshot;
+  skuInfo?: SkuInfoSnapshot;
 }
 
 export interface BuildReportInput<TDevice, TMedia> {
@@ -274,6 +310,13 @@ export interface BuildReportInput<TDevice, TMedia> {
   mocked: boolean;
   /** Optional reporter handle from the submit form. */
   reporter?: string;
+  /**
+   * Latest polled status for the primary engine, captured at submit
+   * time (the periodic poll keeps it fresh). Folded into
+   * `HardwareReport.diagnostics.finalStatus` by `buildReportDiagnostics`.
+   * `null` when the engine was never polled. Plan 13 §E.4.
+   */
+  finalStatus?: PrinterStatus | null;
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────

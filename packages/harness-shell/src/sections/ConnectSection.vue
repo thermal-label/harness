@@ -57,6 +57,15 @@ const rawStatusBytes = computed(() => {
   return '(no status response captured)';
 });
 
+/**
+ * Driver-decoded `details[]` rows for the active engine's status —
+ * the diagnostics panel (plan 13 §E.5). The driver owns every label /
+ * value / severity; the shell renders the list blindly, so a new
+ * device model needs zero shell change. Empty for drivers that decode
+ * no details (the panel hides).
+ */
+const statusDetails = computed(() => session.activeStatus.value?.details ?? []);
+
 // ─── Available transports (union across the registry) ────────────
 
 /**
@@ -214,6 +223,32 @@ async function bindResult(
     if (serial?.defaultBaud !== undefined) identity.serialBaud = serial.defaultBaud;
   }
   if (result.mocked) identity.extra = { mocked: true };
+
+  // Fold any adapter-captured connect diagnostics (ESC V / ESC U for
+  // LW 5xx — plan 13 §E.1) into the per-engine sessions and the
+  // identity snapshot. Firmware is connect-time identity, not live
+  // status, so the engine version's fw/pid/hw ride on `identity`.
+  const engineDiagnostics = result.engineDiagnostics ?? {};
+  for (const [role, diag] of Object.entries(engineDiagnostics)) {
+    const slot = session.engineSessions[role];
+    if (!slot) continue;
+    if (diag.engineVersion) slot.engineVersion = diag.engineVersion;
+    if (diag.skuInfo) slot.skuInfo = diag.skuInfo;
+  }
+  // Surface the first engine's firmware on the identity panel.
+  const firstVersion = Object.values(engineDiagnostics).find(d => d.engineVersion)?.engineVersion;
+  if (firstVersion) {
+    if (firstVersion.fwVersion !== undefined) identity.fwVersion = firstVersion.fwVersion;
+    if (firstVersion.pid !== undefined && identity.pid === undefined) {
+      identity.pid = firstVersion.pid;
+    }
+    const extraBits: Record<string, unknown> = {
+      ...((identity.extra as Record<string, unknown> | undefined) ?? {}),
+    };
+    if (firstVersion.hwVersion !== undefined) extraBits.hwVersion = firstVersion.hwVersion;
+    if (firstVersion.fwKind !== undefined) extraBits.fwKind = firstVersion.fwKind;
+    if (Object.keys(extraBits).length > 0) identity.extra = extraBits;
+  }
   session.connection.identity = identity as typeof session.connection.identity;
 
   void nextTick(() => {
@@ -222,6 +257,14 @@ async function bindResult(
         printer,
         sink: status => {
           session.printerStatus[role] = status;
+          // Capture the first polled status as the connect-time
+          // baseline (plan 13 §C `connectStatus`). Later polls keep
+          // `printerStatus[role]` fresh — that feeds `finalStatus` at
+          // report time — but `connectStatus` is pinned to the first.
+          const slot = session.engineSessions[role];
+          if (slot && (slot.connectStatus === null || slot.connectStatus === undefined)) {
+            slot.connectStatus = status;
+          }
         },
       });
       pollHandles.set(role, handle);
@@ -358,6 +401,24 @@ function asCandidates(candidates: DropdownCandidates): DropdownCandidates {
 
     <template #advanced>
       <template v-if="session.isConnected.value">
+        <!-- Diagnostics panel — driver-decoded status detail rows
+             (plan 13 §E.5). The driver owns label/value/severity; the
+             shell renders verbatim. Hidden when the driver decodes
+             nothing (LM-style presence-only devices). -->
+        <template v-if="statusDetails.length > 0">
+          <p class="muted small">Device diagnostics:</p>
+          <dl class="status-details">
+            <div
+              v-for="(row, i) in statusDetails"
+              :key="i"
+              class="status-detail-row"
+              :data-severity="row.severity ?? 'info'"
+            >
+              <dt>{{ row.label }}</dt>
+              <dd>{{ row.value }}</dd>
+            </div>
+          </dl>
+        </template>
         <p class="muted small">Raw status response (first bytes, hex):</p>
         <pre>{{ rawStatusBytes }}</pre>
       </template>
@@ -428,5 +489,54 @@ pre {
   padding: var(--space-3);
   font-size: 0.92rem;
   margin: var(--space-3) 0;
+}
+
+/* Diagnostics panel — driver-decoded status detail rows. */
+.status-details {
+  margin: 0 0 var(--space-3);
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.status-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg);
+  font-size: 0.82rem;
+}
+
+.status-detail-row dt {
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+.status-detail-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.status-detail-row[data-severity='warn'] {
+  background: var(--warn-bg);
+}
+
+.status-detail-row[data-severity='warn'] dd {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.status-detail-row[data-severity='error'] {
+  background: var(--error-bg);
+}
+
+.status-detail-row[data-severity='error'] dd {
+  color: var(--error);
+  font-weight: 600;
 }
 </style>

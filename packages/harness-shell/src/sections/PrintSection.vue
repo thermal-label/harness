@@ -93,6 +93,16 @@ async function doPrint(): Promise<void> {
   if (!slot || !slot.media || !dev || !printer || !image) return;
   lastError.value = null;
   printing.value = true;
+
+  // Pre-print status capture (plan 13 §E.2) — the load-bearing
+  // "nothing happens" diagnostic. Best-effort: a status read that
+  // throws must not block the print.
+  try {
+    slot.prePrintStatus = await printer.getStatus();
+  } catch {
+    slot.prePrintStatus = null;
+  }
+
   try {
     // The active printer is per-engine; passing `engine: role` is
     // redundant for adapters that default to their own engine, but
@@ -105,6 +115,16 @@ async function doPrint(): Promise<void> {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
     printing.value = false;
+  }
+
+  // Post-print status capture — runs whether the print resolved or
+  // threw. Byte-0 sub-state + job-ID echo reveal whether the job was
+  // accepted or silently dropped. A 550 may still report `printing`
+  // here; that is itself diagnostic (the job WAS accepted).
+  try {
+    slot.postPrintStatus = await printer.getStatus();
+  } catch {
+    slot.postPrintStatus = null;
   }
 }
 
