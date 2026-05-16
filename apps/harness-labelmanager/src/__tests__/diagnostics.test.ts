@@ -9,14 +9,12 @@
  *
  * D1 tape status is presence-only (project_d1_presence_only_detection)
  * — no `ESC V` engine version, no `ESC U` SKU dump, no battery. The
- * diagnostics block therefore carries only `connectStatus` /
- * `prePrintStatus` / `postPrintStatus` / `finalStatus`, and the
- * decoded status carries no `details[]` / `battery` (graceful
- * degradation — the shell renders no diagnostics panel and no battery
- * glyph for it).
+ * diagnostics block therefore carries only `prePrintStatus` /
+ * `postPrintStatus`, and the decoded status carries no `details[]` /
+ * `battery` (graceful degradation — the shell renders no diagnostics
+ * panel and no battery glyph for it).
  */
 import { describe, expect, it } from 'vitest';
-import type { PrinterStatus } from '@thermal-label/contracts';
 import type { EngineSession } from '@thermal-label/harness-shell';
 import type { HardwareReport, IdentitySnapshot } from '@thermal-label/harness-core/shared';
 import type { LabelManagerMedia } from '@thermal-label/labelmanager-core';
@@ -51,7 +49,6 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
     const printer = result.printers[role]!;
     const engine = result.device.engines[0]!;
 
-    const connectStatus = await printer.getStatus();
     const prePrintStatus = await printer.getStatus();
     const postPrintStatus = await printer.getStatus();
 
@@ -61,7 +58,6 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus,
       prePrintStatus,
       postPrintStatus,
     };
@@ -71,7 +67,6 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
       vid: 0x0922,
       pid: 0x1002,
     };
-    const finalStatus: PrinterStatus = await printer.getStatus();
 
     const report: HardwareReport = adapter.buildReport({
       device: result.device,
@@ -80,23 +75,20 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
       allSessions: [session],
       multiEngine: false,
       mocked: true,
-      finalStatus,
     });
 
     expect(report.diagnostics).toBeDefined();
     const d = report.diagnostics!;
     // rawBytes hex-encoded — survives JSON.stringify.
-    expect(typeof d.connectStatus?.rawBytes).toBe('string');
-    expect(d.prePrintStatus).toBeDefined();
+    expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
     expect(d.postPrintStatus).toBeDefined();
-    expect(d.finalStatus).toBeDefined();
     // D1 has no ESC V / ESC U — these stay unset.
     expect(d.engineVersion).toBeUndefined();
     expect(d.skuInfo).toBeUndefined();
 
     // The whole report survives a JSON round-trip (no Uint8Array leaks).
     const round = JSON.parse(JSON.stringify(report)) as HardwareReport; // eslint-disable-line unicorn/prefer-structured-clone -- exercising the JSON.stringify path the report renderer uses
-    expect(round.diagnostics?.connectStatus?.rawBytes).toBe(d.connectStatus?.rawBytes);
+    expect(round.diagnostics?.prePrintStatus?.rawBytes).toBe(d.prePrintStatus?.rawBytes);
   });
 
   it('produces no diagnostics block when nothing was captured', async () => {
@@ -108,7 +100,6 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus: null,
       prePrintStatus: null,
       postPrintStatus: null,
     };

@@ -223,7 +223,7 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
   buildDiagnosticImage: ({ device, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter, finalStatus }) => {
+  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -238,17 +238,16 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
       ...identity,
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
-    // Fold the shell-captured live device-state (connect / pre-print /
-    // post-print / final status) into the report diagnostics block
-    // (plan 13 §E.4 / §F), identical to `harness-brother-ql` (f62de68).
-    // D1 tape status is presence-only — no `ESC V` engine version, no
-    // `ESC U` SKU dump, no battery — so `engineVersion` / `skuInfo`
-    // stay unset and the captured `PrinterStatus` carries only the
-    // base fields. When the operator never reaches a status poll the
-    // helper returns `undefined` and the block is simply omitted.
+    // Fold the shell-captured live device-state (the pre/post-print
+    // `ESC A` pair) into the report diagnostics block (plan 13 §E / §F),
+    // identical to `harness-brother-ql`. D1 tape status is presence-
+    // only — no `ESC V` engine version, no `ESC U` SKU dump, no
+    // battery — so `engineVersion` / `skuInfo` stay unset and the
+    // captured `PrinterStatus` carries only the base fields. When the
+    // operator never reaches a status poll the helper returns
+    // `undefined` and the block is simply omitted.
     const diagnostics = buildReportDiagnostics({
       session: primarySession,
-      finalStatus,
     });
     const report: HardwareReport = {
       schemaVersion: 1,

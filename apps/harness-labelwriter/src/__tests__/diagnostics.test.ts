@@ -10,7 +10,7 @@
  * report debuggable.
  */
 import { describe, expect, it } from 'vitest';
-import type { PrintEngine, PrinterAdapter, PrinterStatus } from '@thermal-label/contracts';
+import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
 import type { EngineSession } from '@thermal-label/harness-shell';
 import type { HardwareReport, IdentitySnapshot } from '@thermal-label/harness-core/shared';
 import type { LabelWriterAnyMedia } from '@thermal-label/labelwriter-core';
@@ -91,9 +91,8 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     const printer = result.printers[role]!;
     const engine = engineOf(printer);
 
-    // Simulate the shell flow: a connect-time poll, a pre/post-print
-    // status pair, plus the adapter-captured ESC V / ESC U.
-    const connectStatus = await printer.getStatus();
+    // Simulate the shell flow: a pre/post-print status pair, plus the
+    // adapter-captured ESC V / ESC U.
     const prePrintStatus = await printer.getStatus();
     const postPrintStatus = await printer.getStatus();
     const diag = result.engineDiagnostics![role]!;
@@ -104,7 +103,6 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus,
       prePrintStatus,
       postPrintStatus,
       ...(diag.engineVersion ? { engineVersion: diag.engineVersion } : {}),
@@ -112,7 +110,6 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     };
 
     const identity: IdentitySnapshot = { advertisedName: 'LabelWriter 550', vid: 0x0922, pid: 0x0028 };
-    const finalStatus: PrinterStatus = await printer.getStatus();
 
     const report: HardwareReport = adapter.buildReport({
       device: result.device,
@@ -121,23 +118,20 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
       allSessions: [session],
       multiEngine: false,
       mocked: true,
-      finalStatus,
     });
 
     expect(report.diagnostics).toBeDefined();
     const d = report.diagnostics!;
     // rawBytes hex-encoded — survives JSON.stringify.
-    expect(typeof d.connectStatus?.rawBytes).toBe('string');
-    expect(d.connectStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
-    expect(d.prePrintStatus).toBeDefined();
+    expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
+    expect(d.prePrintStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
     expect(d.postPrintStatus).toBeDefined();
-    expect(d.finalStatus).toBeDefined();
     expect(d.engineVersion?.fwVersion).toBe('0102.0003');
     expect(d.skuInfo?.sku).toBe('30252');
 
     // The whole report survives a JSON round-trip (no Uint8Array leaks).
     const round = JSON.parse(JSON.stringify(report)) as HardwareReport; // eslint-disable-line unicorn/prefer-structured-clone -- exercising the JSON.stringify path the report renderer uses
-    expect(round.diagnostics?.connectStatus?.rawBytes).toBe(d.connectStatus?.rawBytes);
+    expect(round.diagnostics?.prePrintStatus?.rawBytes).toBe(d.prePrintStatus?.rawBytes);
   });
 
   it('produces no diagnostics block when nothing was captured', async () => {
@@ -152,7 +146,6 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus: null,
       prePrintStatus: null,
       postPrintStatus: null,
     };

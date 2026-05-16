@@ -230,7 +230,7 @@ export const adapter: DriverAdapter<LetraTagDevice, LetraTagMedia> = {
   buildDiagnosticImage: ({ device, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter, finalStatus }) => {
+  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -257,17 +257,16 @@ export const adapter: DriverAdapter<LetraTagDevice, LetraTagMedia> = {
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
     const media = primarySession.media;
-    // Fold the shell-captured live device-state (connect / pre-print /
-    // post-print / final status) into the report diagnostics block
-    // (plan 13 §E.4). LetraTag has no `ESC V` engine version and no
-    // `ESC U` SKU dump, so `engineVersion` / `skuInfo` stay unset — the
-    // session never populates them and `buildReportDiagnostics` simply
-    // omits them. The captured `PrinterStatus` carries the LetraTag
-    // `battery` + `details[]` rewritten in letratag-core commit
-    // 1090c9d, so the diagnostics block surfaces battery state too.
+    // Fold the shell-captured live device-state (the pre/post-print
+    // `ESC A` pair) into the report diagnostics block (plan 13 §E).
+    // LetraTag has no `ESC V` engine version and no `ESC U` SKU dump,
+    // so `engineVersion` / `skuInfo` stay unset — the session never
+    // populates them and `buildReportDiagnostics` simply omits them.
+    // The captured `PrinterStatus` carries the LetraTag `battery` +
+    // `details[]` rewritten in letratag-core commit 1090c9d, so the
+    // diagnostics block surfaces battery state too.
     const diagnostics = buildReportDiagnostics({
       session: primarySession,
-      finalStatus,
     });
     const report: HardwareReport = {
       schemaVersion: 1,

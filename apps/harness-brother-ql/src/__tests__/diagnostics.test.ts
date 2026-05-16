@@ -9,11 +9,9 @@
  *
  * brother-ql has no `ESC V` engine version and no `ESC U` SKU dump,
  * so `engineVersion` / `skuInfo` are never populated — the diagnostics
- * block carries only `connectStatus` / `prePrintStatus` /
- * `postPrintStatus` / `finalStatus`.
+ * block carries only `prePrintStatus` / `postPrintStatus`.
  */
 import { describe, expect, it } from 'vitest';
-import type { PrinterStatus } from '@thermal-label/contracts';
 import type { EngineSession } from '@thermal-label/harness-shell';
 import type { HardwareReport, IdentitySnapshot } from '@thermal-label/harness-core/shared';
 import type { BrotherQLMedia } from '@thermal-label/brother-ql-core';
@@ -48,10 +46,9 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
     const printer = result.printers[role]!;
     const engine = result.device.engines[0]!;
 
-    // Simulate the shell flow: a connect-time poll, a pre/post-print
-    // status pair. brother-ql captures no ESC V / ESC U — the session
-    // leaves `engineVersion` / `skuInfo` unset.
-    const connectStatus = await printer.getStatus();
+    // Simulate the shell flow: a pre/post-print status pair. brother-ql
+    // captures no ESC V / ESC U — the session leaves `engineVersion` /
+    // `skuInfo` unset.
     const prePrintStatus = await printer.getStatus();
     const postPrintStatus = await printer.getStatus();
 
@@ -61,7 +58,6 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus,
       prePrintStatus,
       postPrintStatus,
     };
@@ -71,7 +67,6 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
       vid: 0x04f9,
       pid: 0x209d,
     };
-    const finalStatus: PrinterStatus = await printer.getStatus();
 
     const report: HardwareReport = adapter.buildReport({
       device: result.device,
@@ -80,24 +75,21 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
       allSessions: [session],
       multiEngine: false,
       mocked: true,
-      finalStatus,
     });
 
     expect(report.diagnostics).toBeDefined();
     const d = report.diagnostics!;
     // rawBytes hex-encoded — survives JSON.stringify.
-    expect(typeof d.connectStatus?.rawBytes).toBe('string');
-    expect(d.connectStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
-    expect(d.prePrintStatus).toBeDefined();
+    expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
+    expect(d.prePrintStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
     expect(d.postPrintStatus).toBeDefined();
-    expect(d.finalStatus).toBeDefined();
     // No ESC V / ESC U on brother-ql — these stay unset.
     expect(d.engineVersion).toBeUndefined();
     expect(d.skuInfo).toBeUndefined();
 
     // The whole report survives a JSON round-trip (no Uint8Array leaks).
     const round = JSON.parse(JSON.stringify(report)) as HardwareReport; // eslint-disable-line unicorn/prefer-structured-clone -- exercising the JSON.stringify path the report renderer uses
-    expect(round.diagnostics?.connectStatus?.rawBytes).toBe(d.connectStatus?.rawBytes);
+    expect(round.diagnostics?.prePrintStatus?.rawBytes).toBe(d.prePrintStatus?.rawBytes);
   });
 
   it('produces no diagnostics block when nothing was captured', async () => {
@@ -109,7 +101,6 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
       printed: true,
       rung: 'verified',
       notes: '',
-      connectStatus: null,
       prePrintStatus: null,
       postPrintStatus: null,
     };

@@ -233,14 +233,10 @@ export type SkuInfoSnapshot = Readonly<Record<string, string | number | boolean>
  * dropped. Plan 13 §C.
  */
 export interface ReportDiagnostics {
-  /** `ESC A` status captured at connect, before any print. */
-  connectStatus?: SerializedStatus;
   /** `ESC A` status captured immediately before `printer.print()`. */
   prePrintStatus?: SerializedStatus;
   /** `ESC A` status captured immediately after `printer.print()` resolved. */
   postPrintStatus?: SerializedStatus;
-  /** Last status seen at submit time (the periodic poll keeps this fresh). */
-  finalStatus?: SerializedStatus;
   /** `ESC V` engine version block (LW 5xx). */
   engineVersion?: EngineVersionSnapshot;
   /** `ESC U` SKU dump (LW 5xx), beyond what `detectedMedia` carries. */
@@ -282,12 +278,11 @@ export interface HardwareReport {
    */
   engines?: readonly EngineReport[];
   /**
-   * Live device-state captured across the print flow — connect-time
-   * status, the pre/post-print `ESC A` pair, the final polled status,
-   * and (LW 5xx) the `ESC V` / `ESC U` blocks. Optional and additive:
-   * a report without it is unchanged for old parsers, so
-   * `schemaVersion` stays `1`. Plan 13 §C — makes a failed report
-   * debuggable instead of a bare verdict.
+   * Live device-state captured across the print flow — the pre/post-
+   * print `ESC A` pair and (LW 5xx) the `ESC V` / `ESC U` blocks.
+   * Optional and additive: a report without it is unchanged for old
+   * parsers, so `schemaVersion` stays `1`. Plan 13 §C — makes a failed
+   * report debuggable instead of a bare verdict.
    */
   diagnostics?: ReportDiagnostics;
   /** ISO-8601 timestamp at submit time. */

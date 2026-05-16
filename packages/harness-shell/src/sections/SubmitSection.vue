@@ -145,11 +145,6 @@ function buildReport() {
       : assessedSessions[0];
   if (!primary || primary.rung === null || !primary.media) return null;
 
-  // Latest polled status for the primary engine — folded into
-  // `diagnostics.finalStatus` (plan 13 §E.4).
-  const primaryRole = primary.engine.role;
-  const finalStatus = session.printerStatus[primaryRole] ?? null;
-
   return adapter.buildReport({
     device: session.device.value,
     identity: session.connection.identity,
@@ -157,7 +152,6 @@ function buildReport() {
     allSessions: assessedSessions,
     multiEngine: isMultiEngine.value,
     mocked: session.connection.mocked,
-    finalStatus,
     ...(reporterHandle.value.trim() ? { reporter: reporterHandle.value.trim() } : {}),
   });
 }

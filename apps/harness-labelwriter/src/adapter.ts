@@ -415,7 +415,6 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
     multiEngine,
     mocked,
     reporter,
-    finalStatus,
   }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
@@ -456,12 +455,11 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
         },
       ];
     });
-    // Fold the captured live device-state (connect / pre-print /
-    // post-print / final status, plus ESC V / ESC U) into the report
-    // diagnostics block (plan 13 §E.4).
+    // Fold the captured live device-state (the pre/post-print `ESC A`
+    // pair, plus ESC V / ESC U) into the report diagnostics block
+    // (plan 13 §E).
     const diagnostics = buildReportDiagnostics({
       session: primarySession,
-      finalStatus,
     });
 
     return {

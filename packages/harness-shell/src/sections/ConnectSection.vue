@@ -265,14 +265,6 @@ async function bindResult(
         printer,
         sink: status => {
           session.printerStatus[role] = status;
-          // Capture the first polled status as the connect-time
-          // baseline (plan 13 §C `connectStatus`). Later polls keep
-          // `printerStatus[role]` fresh — that feeds `finalStatus` at
-          // report time — but `connectStatus` is pinned to the first.
-          const slot = session.engineSessions[role];
-          if (slot && (slot.connectStatus === null || slot.connectStatus === undefined)) {
-            slot.connectStatus = status;
-          }
         },
       });
       pollHandles.set(role, handle);

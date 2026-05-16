@@ -234,7 +234,7 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
   buildDiagnosticImage: ({ device, engine, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, engine, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter, finalStatus }) => {
+  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -250,16 +250,15 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
     const media = primarySession.media;
-    // Fold the shell-captured live device-state (connect / pre-print /
-    // post-print / final status) into the report diagnostics block
-    // (plan 13 §E.4). brother-ql has no `ESC V` engine version and no
-    // `ESC U` SKU dump, so `engineVersion` / `skuInfo` stay unset — the
-    // session never populates them and `buildReportDiagnostics` simply
-    // omits them. The pre/post-print capture is shared shell code in
-    // `PrintSection.vue`; `connectStatus` is the first polled status.
+    // Fold the shell-captured live device-state (the pre/post-print
+    // `ESC A` pair) into the report diagnostics block (plan 13 §E).
+    // brother-ql has no `ESC V` engine version and no `ESC U` SKU dump,
+    // so `engineVersion` / `skuInfo` stay unset — the session never
+    // populates them and `buildReportDiagnostics` simply omits them.
+    // The pre/post-print capture is shared shell code in
+    // `PrintSection.vue`.
     const diagnostics = buildReportDiagnostics({
       session: primarySession,
-      finalStatus,
     });
     const report: HardwareReport = {
       schemaVersion: 1,

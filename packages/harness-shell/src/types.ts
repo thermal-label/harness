@@ -276,14 +276,12 @@ export interface EngineSession<TMedia> {
    * point; a report folds whatever was captured into
    * `HardwareReport.diagnostics`.
    *
-   * `connectStatus` — first polled status after connect.
    * `prePrintStatus` / `postPrintStatus` — status read immediately
    *   before and after `printer.print()` resolved (the load-bearing
    *   "nothing happens" diagnostic).
    * `engineVersion` / `skuInfo` — `ESC V` / `ESC U` blocks fetched
    *   eagerly by the adapter on connect (LW 5xx).
    */
-  connectStatus?: PrinterStatus | null;
   prePrintStatus?: PrinterStatus | null;
   postPrintStatus?: PrinterStatus | null;
   engineVersion?: EngineVersionSnapshot;
@@ -310,13 +308,6 @@ export interface BuildReportInput<TDevice, TMedia> {
   mocked: boolean;
   /** Optional reporter handle from the submit form. */
   reporter?: string;
-  /**
-   * Latest polled status for the primary engine, captured at submit
-   * time (the periodic poll keeps it fresh). Folded into
-   * `HardwareReport.diagnostics.finalStatus` by `buildReportDiagnostics`.
-   * `null` when the engine was never polled. Plan 13 §E.4.
-   */
-  finalStatus?: PrinterStatus | null;
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────
