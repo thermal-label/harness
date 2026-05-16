@@ -47,7 +47,7 @@ defineProps<{
     </div>
     <div v-if="$slots.advanced" class="card-advanced">
       <details>
-        <summary>▸ Advanced</summary>
+        <summary>Advanced</summary>
         <div class="advanced-body">
           <slot name="advanced" />
         </div>
@@ -142,6 +142,25 @@ defineProps<{
   cursor: pointer;
   color: var(--fg-muted);
   user-select: none;
+  /* Suppress the native disclosure triangle; we draw our own via
+     ::before so it can rotate on open. Leaving the native marker in
+     produces a second, non-rotating arrow. */
+  list-style: none;
+}
+
+.card-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-advanced summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.4em;
+  transition: transform 120ms ease;
+}
+
+.card-advanced details[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .card-advanced summary:hover {
