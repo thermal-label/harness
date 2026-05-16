@@ -6,10 +6,9 @@ import { fileURLToPath } from 'node:url';
 // resolves `@thermal-label/contracts` / `@thermal-label/letratag-core`
 // / `@thermal-label/letratag-web` to the canonical sibling-checkout
 // `dist/` rather than a transitive copy nested under a linked
-// package's pnpm store. Without this a freshly-added export (e.g.
-// `BatteryStatus`, the `battery` / `details[]` rewrite of
-// `advertisingToPrinterStatus`) shows up as missing at module-load
-// time. Same trick the brother-ql harness app uses.
+// package's pnpm store. Without this a freshly-added or freshly-removed
+// export shows up as mismatched at module-load time. Same trick the
+// brother-ql harness app uses.
 const contractsDist = fileURLToPath(new URL('../../../contracts/dist/index.js', import.meta.url));
 const letratagCoreDist = fileURLToPath(
   new URL('../../../letratag/packages/core/dist/index.js', import.meta.url),
