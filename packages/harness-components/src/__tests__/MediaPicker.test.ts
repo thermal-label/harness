@@ -184,6 +184,106 @@ describe('MediaPicker', () => {
     expect(enabled).toBe(true);
   });
 
+  describe('detected-unrecognized', () => {
+    // Geometry the driver detected for a roll that maps to no
+    // catalogue entry — 41 mm continuous.
+    const UNKNOWN_GEOMETRY: FakeMedia = {
+      id: 'sku-99999',
+      name: 'Unknown SKU',
+      widthMm: 41,
+      type: 'continuous',
+      group: 'standard',
+      width: 41,
+    };
+
+    function buildCustomMedia(input: {
+      widthMm: number;
+      heightMm?: number;
+      type: 'continuous' | 'die-cut';
+      identifier: string;
+    }): FakeMedia {
+      return {
+        id: 'custom',
+        name: input.identifier || `Custom ${String(input.widthMm)} mm`,
+        widthMm: input.widthMm,
+        type: input.type === 'die-cut' ? 'tape' : 'tape',
+        group: 'standard',
+        width: input.widthMm,
+        ...(input.heightMm !== undefined ? { heightMm: input.heightMm } : {}),
+        ...(input.identifier ? { skus: [input.identifier] } : {}),
+      };
+    }
+
+    // Props for a picker driven into the unrecognized state. Inlined
+    // into `mount(...)` per test so the wrapper keeps its concrete
+    // generic type (a shared helper would widen it).
+    const unrecognizedProps = {
+      modelValue: null,
+      available: [STANDARD_9, STANDARD_12],
+      defaultMediaId: 'std-12',
+      groupBy,
+      detectionCapability: 'detected-unrecognized' as const,
+      detected: UNKNOWN_GEOMETRY,
+      buildCustomMedia,
+    };
+
+    it('renders its own panel — neither the collapsed summary nor the catalogue', () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      expect(wrapper.find('.unrecognized-panel').exists()).toBe(true);
+      // No collapsed single-line summary.
+      expect(wrapper.find('button.selected-summary').exists()).toBe(false);
+      // The catalogue groups are hidden (v-show collapses them).
+      expect((wrapper.find('.groups').element as HTMLElement).style.display).toBe('none');
+      // Banner names the detected geometry.
+      expect(wrapper.text()).toMatch(/not in the harness catalogue/i);
+      expect(wrapper.text()).toContain('41 mm');
+    });
+
+    it('prefills the dimension fields from the detected geometry', () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      const width = wrapper.find('input[type="number"]').element as HTMLInputElement;
+      expect(width.value).toBe('41');
+      const type = wrapper.find('select').element as HTMLSelectElement;
+      expect(type.value).toBe('continuous');
+    });
+
+    it('has a free-text media identifier field', () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      const identifier = wrapper.find('input[type="text"]');
+      expect(identifier.exists()).toBe(true);
+    });
+
+    it('emits a built media on mount so a printable modelValue exists immediately', () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      const events = wrapper.emitted('update:modelValue');
+      expect(events).toBeDefined();
+      const emitted = events?.[events.length - 1]?.[0] as FakeMedia | null;
+      expect(emitted).not.toBeNull();
+      expect(emitted?.id).toBe('custom');
+      expect(emitted?.widthMm).toBe(41);
+    });
+
+    it('re-emits update:modelValue when a dimension field is edited', async () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      const before = wrapper.emitted('update:modelValue')?.length ?? 0;
+      const width = wrapper.find('input[type="number"]');
+      await width.setValue('57');
+      const events = wrapper.emitted('update:modelValue');
+      expect(events?.length ?? 0).toBeGreaterThan(before);
+      const latest = events?.[events.length - 1]?.[0] as FakeMedia | null;
+      expect(latest?.widthMm).toBe(57);
+    });
+
+    it('carries the identifier into the built media skus when named', async () => {
+      const wrapper = mount(MediaPicker<FakeMedia>, { props: unrecognizedProps });
+      const identifier = wrapper.find('input[type="text"]');
+      await identifier.setValue('30999');
+      const events = wrapper.emitted('update:modelValue');
+      const latest = events?.[events.length - 1]?.[0] as FakeMedia | null;
+      expect(latest?.skus).toEqual(['30999']);
+    });
+  });
+
   it('emits the picked entry on click in primary groups', async () => {
     const wrapper = mount(MediaPicker<FakeMedia>, {
       props: {
