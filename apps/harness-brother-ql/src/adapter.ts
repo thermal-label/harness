@@ -23,6 +23,7 @@
  * callback needed.
  */
 import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
+import { buildReportDiagnostics } from '@thermal-label/harness-shell';
 import type { PrintEngine } from '@thermal-label/contracts';
 import type {
   HardwareReport,
@@ -233,7 +234,7 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
   buildDiagnosticImage: ({ device, engine, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, engine, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
+  buildReport: ({ device, identity, primarySession, mocked, reporter, finalStatus }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -249,6 +250,17 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
       extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
     };
     const media = primarySession.media;
+    // Fold the shell-captured live device-state (connect / pre-print /
+    // post-print / final status) into the report diagnostics block
+    // (plan 13 §E.4). brother-ql has no `ESC V` engine version and no
+    // `ESC U` SKU dump, so `engineVersion` / `skuInfo` stay unset — the
+    // session never populates them and `buildReportDiagnostics` simply
+    // omits them. The pre/post-print capture is shared shell code in
+    // `PrintSection.vue`; `connectStatus` is the first polled status.
+    const diagnostics = buildReportDiagnostics({
+      session: primarySession,
+      finalStatus,
+    });
     const report: HardwareReport = {
       schemaVersion: 1,
       driver: DRIVER_KEY,
@@ -266,6 +278,7 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
         },
       },
       transports: [transportReport],
+      ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
       ...(reporter ? { reporter: { handle: reporter } } : {}),
     };
