@@ -118,6 +118,30 @@ function seedCustomFields(): void {
 }
 
 /**
+ * The printer's reported geometry, read straight from `detected` —
+ * what the banner shows. Kept distinct from the editable
+ * `customWidthMm` / `customType` field state so editing a field never
+ * rewrites the "Printer reports …" line.
+ */
+const detectedSummary = computed<{
+  width: number | null;
+  type: 'continuous' | 'die-cut';
+} | null>(() => {
+  const d = props.detected;
+  if (!d) return null;
+  const width = typeof d.widthMm === 'number' ? d.widthMm : null;
+  const h = d.heightMm;
+  const t = (d as { type?: unknown }).type;
+  const type =
+    t === 'die-cut' || t === 'continuous'
+      ? t
+      : typeof h === 'number' && h > 0
+        ? 'die-cut'
+        : 'continuous';
+  return { width, type };
+});
+
+/**
  * Build the synthetic media from the current field state and emit it
  * as `modelValue`. A blank / non-positive width is the only case that
  * cannot produce a printable media — there we emit `null` (rails not
@@ -426,8 +450,8 @@ function swatchTitle(m: T): string {
       <p class="detection-banner detection-unrecognized">
         Printer reports
         <strong
-          >{{ customWidthMm ?? '?' }} mm
-          {{ customType === 'die-cut' ? 'die-cut' : 'continuous' }}</strong
+          >{{ detectedSummary?.width ?? '?' }} mm
+          {{ detectedSummary?.type ?? 'continuous' }}</strong
         >
         — not in the harness catalogue. Confirm the dimensions and, if you can, name the media.
       </p>
