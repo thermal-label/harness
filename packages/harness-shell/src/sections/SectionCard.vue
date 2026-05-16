@@ -22,37 +22,44 @@ defineProps<{
 
 <template>
   <section class="card" :data-state="state">
-    <header class="card-header">
-      <span class="step" aria-hidden="true">{{ step }}</span>
-      <h2 class="card-title">{{ title }}</h2>
-      <span v-if="$slots['header-aside']" class="header-aside">
-        <slot name="header-aside" />
-      </span>
-      <!-- Suppress the "done" badge when the section already shows a
-           live status pill — the pill carries the "we're good"
-           signal more meaningfully. "Waiting" still shows for
-           pending sections (pill isn't rendered yet then). -->
-      <span
-        v-if="state === 'done' && !$slots['header-aside']"
-        class="badge done"
-        aria-label="completed"
-        >done</span
-      >
-      <span v-else-if="state === 'pending'" class="badge pending" aria-label="not yet active"
-        >waiting</span
-      >
-    </header>
-    <div class="card-body">
-      <slot />
+    <div class="card-gated">
+      <header class="card-header">
+        <span class="step" aria-hidden="true">{{ step }}</span>
+        <h2 class="card-title">{{ title }}</h2>
+        <span v-if="$slots['header-aside']" class="header-aside">
+          <slot name="header-aside" />
+        </span>
+        <!-- Suppress the "done" badge when the section already shows a
+             live status pill — the pill carries the "we're good"
+             signal more meaningfully. "Waiting" still shows for
+             pending sections (pill isn't rendered yet then). -->
+        <span
+          v-if="state === 'done' && !$slots['header-aside']"
+          class="badge done"
+          aria-label="completed"
+          >done</span
+        >
+        <span v-else-if="state === 'pending'" class="badge pending" aria-label="not yet active"
+          >waiting</span
+        >
+      </header>
+      <div class="card-body">
+        <slot />
+      </div>
+      <div v-if="$slots.advanced" class="card-advanced">
+        <details>
+          <summary>Advanced</summary>
+          <div class="advanced-body">
+            <slot name="advanced" />
+          </div>
+        </details>
+      </div>
     </div>
-    <div v-if="$slots.advanced" class="card-advanced">
-      <details>
-        <summary>Advanced</summary>
-        <div class="advanced-body">
-          <slot name="advanced" />
-        </div>
-      </details>
-    </div>
+    <!-- Ungated content: rendered inside the card frame but *outside*
+         the opacity-dimmed `.card-gated` wrapper, so it stays fully
+         interactive (and full-opacity) even when the section is
+         `pending`. SubmitSection uses it for the diagnostics block. -->
+    <slot name="ungated" />
   </section>
 </template>
 
@@ -64,12 +71,17 @@ defineProps<{
   margin: var(--space-4) 0;
   padding: var(--space-5);
   box-shadow: var(--shadow-sm);
-  transition:
-    border-color 150ms,
-    opacity 150ms;
+  transition: border-color 150ms;
 }
 
-.card[data-state='pending'] {
+/* The pending dim lives on `.card-gated`, not `.card`, so the
+   `#ungated` slot can escape it: `opacity` on an ancestor caps every
+   descendant, and a child cannot opt back to full opacity. */
+.card-gated {
+  transition: opacity 150ms;
+}
+
+.card[data-state='pending'] .card-gated {
   opacity: 0.55;
 }
 

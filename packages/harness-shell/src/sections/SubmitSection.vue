@@ -237,25 +237,6 @@ function activate(role: string): void {
 
 <template>
   <SectionCard :step="5" title="Submit the report" :state="sectionState">
-    <!-- Diagnostics — copy-only, ungated by the verdict. Visible from
-         connect onward (pending state included) so a reporter can
-         paste a snapshot into an existing ticket without printing. -->
-    <div v-if="diagnosticsSnapshot" class="diagnostics">
-      <p class="muted small">
-        Triaging an existing issue? Copy this and paste it into the ticket — no need to submit a
-        new report.
-      </p>
-      <details class="diagnostics-preview">
-        <summary>Preview diagnostics JSON</summary>
-        <textarea readonly rows="12" :value="diagnosticsJson" />
-      </details>
-      <div class="diagnostics-actions">
-        <button class="primary" type="button" @click="copyDiagnostics">
-          {{ diagnosticsCopyState === 'copied' ? 'Copied ✓' : 'Copy diagnostics (JSON)' }}
-        </button>
-      </div>
-    </div>
-
     <template v-if="!session.canSubmit.value">
       <p class="muted">Pick a verdict in the section above first.</p>
     </template>
@@ -376,6 +357,28 @@ function activate(role: string): void {
         </button>
       </div>
     </div>
+    <!-- Diagnostics — copy-only, ungated by the verdict. Rendered in
+         SectionCard's `#ungated` slot so it stays full-opacity and
+         interactive even while the Submit step is `pending`; visible
+         from connect onward so a reporter can paste a snapshot into an
+         existing ticket without printing. -->
+    <template #ungated>
+      <div v-if="diagnosticsSnapshot" class="diagnostics">
+        <p class="muted small">
+          Triaging an existing issue? Copy this and paste it into the ticket — no need to submit a
+          new report.
+        </p>
+        <details class="diagnostics-preview">
+          <summary>Preview diagnostics JSON</summary>
+          <textarea readonly rows="12" :value="diagnosticsJson" />
+        </details>
+        <div class="diagnostics-actions">
+          <button class="primary" type="button" @click="copyDiagnostics">
+            {{ diagnosticsCopyState === 'copied' ? 'Copied ✓' : 'Copy diagnostics (JSON)' }}
+          </button>
+        </div>
+      </div>
+    </template>
   </SectionCard>
 </template>
 
@@ -455,7 +458,7 @@ function activate(role: string): void {
 }
 
 .diagnostics {
-  margin-bottom: var(--space-4);
+  margin-top: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
