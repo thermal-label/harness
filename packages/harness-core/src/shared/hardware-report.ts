@@ -9,6 +9,7 @@
  */
 
 import type { TransportType } from '@thermal-label/contracts';
+import type { SerializedStatus } from './serialize-status.js';
 
 /**
  * Per-pattern result reported by the harness.
@@ -189,6 +190,64 @@ export interface ReporterInfo {
 }
 
 /**
+ * JSON-safe snapshot of an `ESC V`-style print-engine version block.
+ *
+ * Driver-agnostic identity fields a triage reader needs to confirm
+ * which firmware is running. Populated by the LW 5xx adapter from the
+ * driver's `EngineVersion`; other drivers leave it absent. Every field
+ * is optional — a driver fills what its protocol exposes.
+ */
+export interface EngineVersionSnapshot {
+  /** Hardware version string. */
+  hwVersion?: string;
+  /** Firmware kind, e.g. `'application'` / `'bootloader'`. */
+  fwKind?: string;
+  /** Firmware version (driver-formatted — major/minor joined). */
+  fwVersion?: string;
+  /** Firmware release date, driver-formatted. */
+  fwReleaseDate?: string;
+  /** USB product id reported by the engine. */
+  pid?: number;
+}
+
+/**
+ * JSON-safe snapshot of an `ESC U`-style SKU / consumable dump.
+ *
+ * Carries the roll-instance forensics beyond what `detectedMedia`
+ * holds (material, counter strategy, production date, total label
+ * count, ...). Populated by the LW 5xx adapter from the driver's
+ * `SkuInfo`; the shape is intentionally a loose record — the triage
+ * reviewer eyeballs it, the parser does not branch on it.
+ */
+export type SkuInfoSnapshot = Readonly<Record<string, string | number | boolean>>;
+
+/**
+ * Live device-state captured across the print flow, embedded in a
+ * `HardwareReport`.
+ *
+ * Each `*Status` is a {@link SerializedStatus} (rawBytes hex-encoded
+ * so the block survives `JSON.stringify`). Every field is optional —
+ * the harness fills whatever the flow reached. For a "nothing happens"
+ * report, `prePrintStatus` vs `postPrintStatus` (byte-0 sub-state +
+ * job-ID echo) reveal whether the job was accepted or silently
+ * dropped. Plan 13 §C.
+ */
+export interface ReportDiagnostics {
+  /** `ESC A` status captured at connect, before any print. */
+  connectStatus?: SerializedStatus;
+  /** `ESC A` status captured immediately before `printer.print()`. */
+  prePrintStatus?: SerializedStatus;
+  /** `ESC A` status captured immediately after `printer.print()` resolved. */
+  postPrintStatus?: SerializedStatus;
+  /** Last status seen at submit time (the periodic poll keeps this fresh). */
+  finalStatus?: SerializedStatus;
+  /** `ESC V` engine version block (LW 5xx). */
+  engineVersion?: EngineVersionSnapshot;
+  /** `ESC U` SKU dump (LW 5xx), beyond what `detectedMedia` carries. */
+  skuInfo?: SkuInfoSnapshot;
+}
+
+/**
  * Top-level wire format for a hardware report.
  *
  * Embedded in a fenced ` ```json ` block inside a GitHub issue body. Plan
@@ -222,6 +281,15 @@ export interface HardwareReport {
    * engines the operator actually assessed.
    */
   engines?: readonly EngineReport[];
+  /**
+   * Live device-state captured across the print flow — connect-time
+   * status, the pre/post-print `ESC A` pair, the final polled status,
+   * and (LW 5xx) the `ESC V` / `ESC U` blocks. Optional and additive:
+   * a report without it is unchanged for old parsers, so
+   * `schemaVersion` stays `1`. Plan 13 §C — makes a failed report
+   * debuggable instead of a bare verdict.
+   */
+  diagnostics?: ReportDiagnostics;
   /** ISO-8601 timestamp at submit time. */
   submittedAt: string;
   reporter?: ReporterInfo;

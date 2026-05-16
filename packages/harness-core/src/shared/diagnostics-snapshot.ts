@@ -19,6 +19,7 @@
 
 import type { PrinterStatus } from '@thermal-label/contracts';
 import type { IdentitySnapshot } from './hardware-report.js';
+import { serializeStatus, type SerializedStatus } from './serialize-status.js';
 
 /**
  * JSON-safe projection of one engine's detected media — a subset of
@@ -37,16 +38,16 @@ export interface DiagnosticsMedia {
 /**
  * Per-engine slice of the snapshot.
  *
- * `status` is a JSON-safe projection of `PrinterStatus` — `rawBytes` is
- * rendered as a hex string (a `Uint8Array` stringifies to an unreadable
- * keyed object), the rest of the fields pass through as-is. `null` when
- * the engine has not been polled yet.
+ * `status` is a {@link SerializedStatus} — the shared JSON-safe
+ * projection of `PrinterStatus` (`rawBytes` as a hex string, every
+ * other field verbatim). `null` when the engine has not been polled
+ * yet.
  */
 export interface DiagnosticsEngine {
   /** Engine role — matches `PrintEngine.role` (`'label'`, `'tape'`, ...). */
   role: string;
-  /** JSON-safe projection of `PrinterStatus` — `rawBytes` as a hex string. */
-  status: Record<string, unknown> | null;
+  /** Shared JSON-safe `PrinterStatus` projection — see {@link SerializedStatus}. */
+  status: SerializedStatus | null;
   /** JSON-safe projection of the detected media, if the printer reports any. */
   detectedMedia: DiagnosticsMedia | null;
 }
@@ -94,24 +95,6 @@ export interface BuildDiagnosticsSnapshotInput {
   capturedAt?: Date;
 }
 
-/** Lower-case hex string of a byte buffer, e.g. `Uint8Array [0x0f, 0xa0]` → `"0fa0"`. */
-function toHex(bytes: Uint8Array): string {
-  let out = '';
-  for (const byte of bytes) {
-    out += byte.toString(16).padStart(2, '0');
-  }
-  return out;
-}
-
-/**
- * Project a `PrinterStatus` into a JSON-safe record. `rawBytes` becomes
- * a hex string; every other field passes through unchanged.
- */
-function projectStatus(status: PrinterStatus): Record<string, unknown> {
-  const { rawBytes, ...rest } = status;
-  return { ...rest, rawBytes: toHex(rawBytes) };
-}
-
 /**
  * Project a printer-reported `MediaDescriptor` into the snapshot's
  * narrow {@link DiagnosticsMedia} shape — drops driver-specific
@@ -148,7 +131,7 @@ export function buildDiagnosticsSnapshot(
     device: input.device,
     engines: input.engines.map(engine => ({
       role: engine.role,
-      status: engine.status ? projectStatus(engine.status) : null,
+      status: engine.status ? serializeStatus(engine.status) : null,
       detectedMedia: engine.status ? projectMedia(engine.status.detectedMedia) : null,
     })),
   };

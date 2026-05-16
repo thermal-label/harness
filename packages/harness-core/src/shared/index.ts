@@ -6,13 +6,19 @@
 export type {
   DeviceIdentity,
   EngineReport,
+  EngineVersionSnapshot,
   HardwareReport,
   IdentitySnapshot,
   PatternResult,
   ProposedRung,
+  ReportDiagnostics,
   ReporterInfo,
+  SkuInfoSnapshot,
   TransportReport,
 } from './hardware-report.js';
+
+export type { SerializedStatus } from './serialize-status.js';
+export { serializeStatus, toHex } from './serialize-status.js';
 
 export type { TestPattern } from './test-pattern.js';
 
