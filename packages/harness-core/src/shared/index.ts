@@ -18,6 +18,15 @@ export type { TestPattern } from './test-pattern.js';
 
 export { renderIssueBody } from './issue-body.js';
 
+export type {
+  BuildDiagnosticsSnapshotInput,
+  DiagnosticsEngine,
+  DiagnosticsEngineInput,
+  DiagnosticsMedia,
+  DiagnosticsSnapshot,
+} from './diagnostics-snapshot.js';
+export { buildDiagnosticsSnapshot, renderDiagnosticsBlock } from './diagnostics-snapshot.js';
+
 export type { EdgeProbeOptions } from './diagnostic-bitmap.js';
 export {
   bitmapToRgba,
