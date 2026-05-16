@@ -23,9 +23,11 @@ import { computed } from 'vue';
 import type { MediaDescriptor, PrintEngine } from '@thermal-label/contracts';
 import MediaPicker from '@thermal-label/harness-components/media-picker';
 import StatusPill from '@thermal-label/harness-components/status-pill';
+import type { DetectionCapability } from '@thermal-label/harness-components/types';
 import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
 import { engineNoun, statusToMediaPill } from '../state/statusPills';
+import type { CustomMediaInput } from '../types';
 import SectionCard from './SectionCard.vue';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,36 +57,74 @@ const compatibleMedia = computed<readonly MediaDescriptor[]>(() => {
 });
 
 /**
- * Detected media — pulled directly from the polled `PrinterStatus`.
- * The driver tags `detectedMedia` per the standard `PrinterStatus`
- * shape; we resolve it back to a catalogue entry by id so the picker
- * pre-selects the canonical object (not a detached one). Drivers
- * that can't detect (LM, LW 450) leave `detectedMedia` undefined and
- * the picker stays in manual mode.
+ * The raw `detectedMedia` off the polled `PrinterStatus`, or `null`
+ * when the driver reports nothing. Drivers that can't detect (LM,
+ * LW 450) leave `detectedMedia` undefined.
  */
-const detected = computed<MediaDescriptor | null>(() => {
-  const fromStatus = session.activeStatus.value?.detectedMedia;
-  if (!fromStatus) return null;
-  // Try by id first (numeric or string), else fall back to identity equality.
-  const id = (fromStatus as { id?: unknown }).id;
-  if (id !== undefined) {
-    const match = compatibleMedia.value.find(
-      m => (m as { id?: unknown }).id === id,
-    );
-    if (match) return match;
-  }
-  return fromStatus;
+const rawDetectedMedia = computed<MediaDescriptor | null>(() => {
+  return (session.activeStatus.value?.detectedMedia as MediaDescriptor | undefined) ?? null;
 });
 
-const detectionCapability = computed<'none' | 'auto-suggest' | 'auto-locked'>(() => {
+/**
+ * Detected media resolved back to a *catalogue* entry by id — the
+ * canonical object the picker pre-selects in `auto-locked` mode.
+ * `null` when nothing is detected OR when the detected media maps to
+ * no catalogue entry (an unknown roll / unlisted SKU).
+ */
+const matchedMedia = computed<MediaDescriptor | null>(() => {
+  const fromStatus = rawDetectedMedia.value;
+  if (!fromStatus) return null;
+  const id = (fromStatus as { id?: unknown }).id;
+  if (id !== undefined) {
+    const match = compatibleMedia.value.find(m => (m as { id?: unknown }).id === id);
+    if (match) return match;
+  }
+  return null;
+});
+
+/**
+ * The detected media when it maps to NO catalogue entry — geometry
+ * known, name unknown. Drives the `detected-unrecognized` panel.
+ * `null` whenever the detection is absent or matched the catalogue.
+ */
+const rawDetected = computed<MediaDescriptor | null>(() => {
+  if (!rawDetectedMedia.value) return null;
+  return matchedMedia.value ? null : rawDetectedMedia.value;
+});
+
+/** The driver's optional custom-media builder, if it supplies one. */
+const buildCustomMedia = computed<((input: CustomMediaInput) => MediaDescriptor) | null>(() => {
+  return adapter.mediaPicker.customMedia?.build ?? null;
+});
+
+const detectionCapability = computed<DetectionCapability>(() => {
   // Drivers expose detection capability per engine via
-  // `engine.capabilities.mediaDetection`. When true AND the status
-  // payload carries detectedMedia, we lock (brother-ql; LW 5xx).
-  // When true but no detected media is reported yet, we suggest the
-  // detected slot will fill in. Otherwise no detection.
+  // `engine.capabilities.mediaDetection`.
+  //   - no capability                       → 'none'
+  //   - capability, no detectedMedia        → 'auto-suggest'
+  //   - capability, detected matches catalogue → 'auto-locked'
+  //   - capability, detected present, no match,
+  //     adapter supplies customMedia.build  → 'detected-unrecognized'
+  //   - capability, no match, no customMedia hook → 'auto-suggest'
+  //     (graceful degrade — never hard-lock to a non-catalogue object)
   const engine = activeEngine.value as { capabilities?: { mediaDetection?: boolean } } | null;
   if (!engine?.capabilities?.mediaDetection) return 'none';
-  return detected.value ? 'auto-locked' : 'auto-suggest';
+  if (matchedMedia.value) return 'auto-locked';
+  if (rawDetected.value) {
+    return buildCustomMedia.value ? 'detected-unrecognized' : 'auto-suggest';
+  }
+  return 'auto-suggest';
+});
+
+/**
+ * The `detected` prop handed to `<MediaPicker>`. For `auto-locked`
+ * it is the resolved catalogue entry; for `detected-unrecognized` it
+ * is the raw geometry-bearing object the panel prefills from.
+ */
+const detectedForPicker = computed<MediaDescriptor | null>(() => {
+  return detectionCapability.value === 'detected-unrecognized'
+    ? rawDetected.value
+    : matchedMedia.value;
 });
 
 const defaultMediaId = computed<string | number>(() => {
@@ -170,7 +210,8 @@ const issueUrl = computed(() => {
         :swatch="swatchFn"
         :describe="describeFn"
         :detection-capability="detectionCapability"
-        :detected="detected"
+        :detected="detectedForPicker"
+        :build-custom-media="buildCustomMedia"
         @update:model-value="onUpdate"
       />
 

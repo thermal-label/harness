@@ -17,6 +17,7 @@ export type {
   MockSpec,
   MockTransportFilter,
   MediaPickerConfig,
+  CustomMediaInput,
   EngineSession,
   BuildDiagnosticImageInput,
   BuildReportInput,

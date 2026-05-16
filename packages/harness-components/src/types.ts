@@ -47,9 +47,7 @@ export interface MediaSwatch {
 }
 
 /**
- * Detection-capability mode supplied by the driver. Today only
- * `'none'` is wired through to a real driver (LM); the other two
- * modes are scaffolding for future LW / brother-ql consumers.
+ * Detection-capability mode supplied by the driver.
  *
  * - `'none'` (LM, brother-ql QL_700): manual picker, full catalogue,
  *   no auto-selection beyond `defaultMediaId`.
@@ -61,8 +59,22 @@ export interface MediaSwatch {
  *   shows "detected: X" as a fixed pill; full catalogue is
  *   *visually disabled* but still rendered (operator can read what
  *   *would* be available if hardware swapped).
+ * - `'detected-unrecognized'` (LW 5xx NFC SKU not in the catalogue,
+ *   or a brother-ql roll the registry can't name): detection yields
+ *   *geometry* but no catalogue *name*. The picker renders its own
+ *   panel — editable dimension fields prefilled from the detected
+ *   geometry plus a free-text media identifier — instead of the
+ *   collapsed summary or the catalogue list. The confirmed
+ *   dimensions become a printable media via the driver's
+ *   `customMedia.build` hook. This state is only entered when the
+ *   adapter supplies that hook; without it the shell degrades to
+ *   `'auto-suggest'` (never a hard lock to a non-catalogue object).
  */
-export type DetectionCapability = 'none' | 'auto-suggest' | 'auto-locked';
+export type DetectionCapability =
+  | 'none'
+  | 'auto-suggest'
+  | 'auto-locked'
+  | 'detected-unrecognized';
 
 /**
  * Re-export so consumers writing a `groupBy: (m: T) => MediaGroupKey`

@@ -26,6 +26,19 @@ import { computed, ref, watch } from 'vue';
 import type { MediaDescriptor } from '@thermal-label/contracts';
 import type { DetectionCapability, MediaGroupKey, MediaSwatch } from './types';
 
+/**
+ * Operator-confirmed dimensions handed to `buildCustomMedia` for the
+ * `detected-unrecognized` flow. Structurally identical to
+ * `CustomMediaInput` in `harness-shell` — duplicated here so
+ * `harness-components` carries no dependency on `harness-shell`.
+ */
+export interface CustomMediaInput {
+  widthMm: number;
+  heightMm?: number;
+  type: 'continuous' | 'die-cut';
+  identifier: string;
+}
+
 const props = defineProps<{
   /** v-model — currently selected media (or null when nothing picked). */
   modelValue: T | null;
@@ -48,6 +61,15 @@ const props = defineProps<{
   detected?: T | null;
   /** One-line label override; defaults to `m.name`. */
   describe?: (m: T) => string;
+  /**
+   * Builds a printable media from operator-confirmed dimensions, for
+   * the `detected-unrecognized` panel. Supplied by the driver when it
+   * can drive an uncatalogued media. When omitted the shell never
+   * routes the picker into `detected-unrecognized` mode (it degrades
+   * to `auto-suggest`), so this branch only renders when the prop is
+   * present.
+   */
+  buildCustomMedia?: ((input: CustomMediaInput) => T) | null;
 }>();
 
 const detectionMode = computed<DetectionCapability>(() => props.detectionCapability ?? 'none');
@@ -55,6 +77,84 @@ const detectionMode = computed<DetectionCapability>(() => props.detectionCapabil
 const emit = defineEmits<{
   'update:modelValue': [media: T | null];
 }>();
+
+// ─── detected-unrecognized panel ─────────────────────────────────
+
+/**
+ * `detected-unrecognized`: the driver detected media that maps to no
+ * catalogue entry — geometry known, name unknown. The picker renders
+ * its own panel (neither the collapsed summary nor the catalogue):
+ * editable dimension fields prefilled from the detected geometry plus
+ * a free-text identifier. The confirmed values flow through
+ * `buildCustomMedia` into `modelValue` so a printable media exists
+ * with zero operator action and tracks every edit.
+ */
+const isUnrecognized = computed<boolean>(
+  () => detectionMode.value === 'detected-unrecognized' && props.buildCustomMedia != null,
+);
+
+/** Editable field state for the unrecognized panel. */
+const customWidthMm = ref<number | null>(null);
+const customHeightMm = ref<number | null>(null);
+const customType = ref<'continuous' | 'die-cut'>('continuous');
+const customIdentifier = ref<string>('');
+
+/** Seed the panel fields from the detected geometry. */
+function seedCustomFields(): void {
+  const d = props.detected;
+  if (!d) return;
+  customWidthMm.value = typeof d.widthMm === 'number' ? d.widthMm : null;
+  const h = d.heightMm;
+  customHeightMm.value = typeof h === 'number' && h > 0 ? h : null;
+  // A height ⇒ die-cut; no height ⇒ continuous. Honour an explicit
+  // `type` on the detected object when present.
+  const t = (d as { type?: unknown }).type;
+  if (t === 'die-cut' || t === 'continuous') {
+    customType.value = t;
+  } else {
+    customType.value = customHeightMm.value != null ? 'die-cut' : 'continuous';
+  }
+  customIdentifier.value = '';
+}
+
+/**
+ * Build the synthetic media from the current field state and emit it
+ * as `modelValue`. A blank / non-positive width is the only case that
+ * cannot produce a printable media — there we emit `null` (rails not
+ * walls: the operator can still type a width to proceed).
+ */
+function emitCustomMedia(): void {
+  const build = props.buildCustomMedia;
+  if (!build) return;
+  const width = customWidthMm.value;
+  if (typeof width !== 'number' || !(width > 0)) {
+    emit('update:modelValue', null);
+    return;
+  }
+  const height = customHeightMm.value;
+  const input: CustomMediaInput = {
+    widthMm: width,
+    type: customType.value,
+    identifier: customIdentifier.value.trim(),
+    ...(customType.value === 'die-cut' && typeof height === 'number' && height > 0
+      ? { heightMm: height }
+      : {}),
+  };
+  emit('update:modelValue', build(input));
+}
+
+// Re-seed whenever the detected geometry changes (e.g. the operator
+// swaps the loaded roll), then emit so a valid modelValue exists
+// immediately — printable with zero operator action.
+watch(
+  () => [isUnrecognized.value, props.detected] as const,
+  () => {
+    if (!isUnrecognized.value) return;
+    seedCustomFields();
+    emitCustomMedia();
+  },
+  { immediate: true },
+);
 
 // ─── Group composition ───────────────────────────────────────────
 
@@ -113,6 +213,10 @@ const secondaryCount = computed(() =>
  *  - `detected` non-null: prefer it over `defaultMediaId`.
  */
 function pickInitial(): void {
+  // detected-unrecognized: the unrecognized panel owns `modelValue`
+  // (it emits the synthetic custom media). Never run the catalogue
+  // auto-select here — it would clobber the panel's media.
+  if (isUnrecognized.value) return;
   if (props.available.length === 0) return;
   // auto-locked: detected ALWAYS wins. Re-emit if detected differs
   // from the current modelValue.
@@ -229,7 +333,7 @@ function pick(m: T): void {
 const catalogueExpanded = ref<boolean>(false);
 
 const showCollapsedSummary = computed<boolean>(
-  () => props.modelValue !== null && !catalogueExpanded.value,
+  () => !isUnrecognized.value && props.modelValue !== null && !catalogueExpanded.value,
 );
 
 function expandCatalogue(): void {
@@ -298,9 +402,75 @@ function swatchTitle(m: T): string {
       Locked to detected media: <strong>{{ describeMedia(detected) }}</strong
       >. The printer refuses to print on anything else.
     </p>
-    <p v-else-if="detectionMode !== 'none' && !detected" class="detection-banner detection-pending">
+    <p
+      v-else-if="detectionMode !== 'none' && !detected && !isUnrecognized"
+      class="detection-banner detection-pending"
+    >
       No media detected — pick manually below.
     </p>
+
+    <!-- detected-unrecognized panel: the printer detected media that
+         maps to no catalogue entry. Geometry is known (prefilled,
+         editable); the name is not. Renders instead of the collapsed
+         summary AND the catalogue list. -->
+    <div v-if="isUnrecognized" class="unrecognized-panel">
+      <p class="detection-banner detection-unrecognized">
+        Printer reports
+        <strong
+          >{{ customWidthMm ?? '?' }} mm
+          {{ customType === 'die-cut' ? 'die-cut' : 'continuous' }}</strong
+        >
+        — not in the harness catalogue. Confirm the dimensions and, if you can, name the media.
+      </p>
+
+      <div class="unrecognized-fields">
+        <label class="field">
+          <span class="field-label">Width (mm)</span>
+          <input
+            v-model.number="customWidthMm"
+            type="number"
+            min="0"
+            step="0.1"
+            class="field-input"
+            @input="emitCustomMedia"
+          />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Media type</span>
+          <select v-model="customType" class="field-input" @change="emitCustomMedia">
+            <option value="continuous">Continuous</option>
+            <option value="die-cut">Die-cut</option>
+          </select>
+        </label>
+
+        <label class="field" :class="{ disabled: customType !== 'die-cut' }">
+          <span class="field-label">Length (mm)</span>
+          <input
+            v-model.number="customHeightMm"
+            type="number"
+            min="0"
+            step="0.1"
+            class="field-input"
+            :disabled="customType !== 'die-cut'"
+            placeholder="continuous"
+            @input="emitCustomMedia"
+          />
+        </label>
+      </div>
+
+      <label class="field field-identifier">
+        <span class="field-label">Media identifier (optional)</span>
+        <input
+          v-model="customIdentifier"
+          type="text"
+          class="field-input"
+          placeholder="e.g. DK-22205, 30252, or a short description"
+          @input="emitCustomMedia"
+        />
+        <span class="field-hint">a Brother DK-code, a Dymo SKU, or a short description</span>
+      </label>
+    </div>
 
     <!-- Collapsed summary: shown when something is selected and the
          catalogue isn't explicitly expanded. Single-row chip with
@@ -330,7 +500,7 @@ function swatchTitle(m: T): string {
       <span v-if="!catalogueDisabled" class="summary-change">Change ▾</span>
     </button>
 
-    <div v-show="!showCollapsedSummary" class="groups">
+    <div v-show="!showCollapsedSummary && !isUnrecognized" class="groups">
       <section
         v-for="g in primaryGroups"
         :key="g.key"
@@ -452,6 +622,63 @@ function swatchTitle(m: T): string {
 }
 
 .detection-pending {
+  color: var(--fg-muted, var(--muted));
+}
+
+.detection-unrecognized {
+  background: var(--bg);
+}
+
+.unrecognized-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.unrecognized-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 8rem;
+  min-width: 7rem;
+}
+
+.field.disabled {
+  opacity: 0.55;
+}
+
+.field-identifier {
+  flex: 1 1 100%;
+}
+
+.field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg-muted, var(--muted));
+}
+
+.field-input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+.field-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.field-hint {
+  font-size: 0.76rem;
   color: var(--fg-muted, var(--muted));
 }
 

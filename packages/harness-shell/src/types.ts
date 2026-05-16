@@ -171,11 +171,32 @@ export type MockSpec<TDevice> = {
 // ─── Media picker ────────────────────────────────────────────────
 
 /**
+ * Operator-confirmed dimensions for the `detected-unrecognized` flow.
+ *
+ * Built by `MediaPicker`'s unrecognized panel from the prefilled (and
+ * editable) dimension fields plus the free-text identifier, and handed
+ * to the driver's `customMedia.build` hook to synthesise a printable
+ * media. `identifier` is the operator's free-text media id (a Brother
+ * DK-code, a Dymo SKU, or a short description); `''` when blank.
+ */
+export interface CustomMediaInput {
+  /** Confirmed media width in mm. */
+  widthMm: number;
+  /** Confirmed label length in mm. `undefined` ⇒ continuous. */
+  heightMm?: number;
+  /** Confirmed media type. */
+  type: 'continuous' | 'die-cut';
+  /** Operator free-text identifier; `''` when blank. */
+  identifier: string;
+}
+
+/**
  * Media-picker bindings. Per-engine on multi-engine devices (the shell
  * calls each callback with the active engine). The shell derives
- * detection (auto-locked / auto-suggest / none) and the detected
- * entry from `printer.getStatus().detectedMedia` directly — adapters
- * supply only the catalogue filtering + visual presentation.
+ * detection (auto-locked / auto-suggest / detected-unrecognized /
+ * none) and the detected entry from `printer.getStatus().detectedMedia`
+ * directly — adapters supply only the catalogue filtering + visual
+ * presentation, plus the optional `customMedia` build hook.
  */
 export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
   filterByDeviceEngine: (
@@ -186,6 +207,21 @@ export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
   groupBy: (m: TMedia) => MediaGroupKey;
   swatch?: (m: TMedia) => MediaSwatch | null;
   describe?: (m: TMedia) => string;
+  /**
+   * Build a printable media from operator-confirmed dimensions, for
+   * the `detected-unrecognized` flow (a detection that maps to no
+   * catalogue entry). The harness cannot synthesise a *printable*
+   * driver media generically — brother-ql needs `printAreaDots` /
+   * margins, etc. — so the driver supplies this hook.
+   *
+   * Omit it if the driver cannot drive an uncatalogued media; the
+   * picker then degrades to `auto-suggest` rather than hard-locking
+   * the operator to a non-catalogue object.
+   */
+  customMedia?: {
+    /** Returns a full `TMedia` with real geometry + driver-specific fields. */
+    build: (input: CustomMediaInput) => TMedia;
+  };
 }
 
 // ─── Diagnostic image ────────────────────────────────────────────
