@@ -51,10 +51,8 @@ const lw550Status: PrinterStatus = {
 };
 
 const diagnostics: ReportDiagnostics = {
-  connectStatus: serializeStatus(lw550Status),
   prePrintStatus: serializeStatus(lw550Status),
   postPrintStatus: serializeStatus(lw550Status),
-  finalStatus: serializeStatus(lw550Status),
   engineVersion: { hwVersion: 'HW1.0', fwKind: 'application', fwVersion: '0102.0003', pid: 0x0028 },
   skuInfo: { sku: '30252', material: 'paper', totalLabelCount: 220 },
 };
@@ -74,7 +72,7 @@ describe('verify-cli — HardwareReport.diagnostics tolerance', () => {
     const parsed = extractJsonReport(body);
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.diagnostics).toBeDefined();
-    expect(parsed.diagnostics?.connectStatus?.rawBytes).toBe(
+    expect(parsed.diagnostics?.prePrintStatus?.rawBytes).toBe(
       '0000000000000000000000000000000000000000000000000000000000000000',
     );
     expect(parsed.diagnostics?.engineVersion?.fwVersion).toBe('0102.0003');
