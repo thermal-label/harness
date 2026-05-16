@@ -143,11 +143,20 @@ function emitCustomMedia(): void {
   emit('update:modelValue', build(input));
 }
 
-// Re-seed whenever the detected geometry changes (e.g. the operator
+// Re-seed whenever the detected *geometry* changes (e.g. the operator
 // swaps the loaded roll), then emit so a valid modelValue exists
-// immediately — printable with zero operator action.
+// immediately — printable with zero operator action. Keyed on the
+// geometry values, not the object reference, so a poll cycle that
+// re-delivers the same roll under a fresh object doesn't clobber the
+// operator's in-panel edits.
 watch(
-  () => [isUnrecognized.value, props.detected] as const,
+  () =>
+    [
+      isUnrecognized.value,
+      props.detected?.widthMm,
+      props.detected?.heightMm,
+      (props.detected as { type?: unknown } | null | undefined)?.type,
+    ] as const,
   () => {
     if (!isUnrecognized.value) return;
     seedCustomFields();
