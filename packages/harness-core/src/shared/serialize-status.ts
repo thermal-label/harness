@@ -29,8 +29,7 @@ import type { PrinterStatus } from '@thermal-label/contracts';
  * "spaced vs unspaced" question, resolved unspaced — one format across
  * both artifacts, no migration of the landed copy block).
  */
-export interface SerializedStatus
-  extends Omit<PrinterStatus, 'rawBytes'> {
+export interface SerializedStatus extends Omit<PrinterStatus, 'rawBytes'> {
   /** Lowercase, unspaced hex of the raw status bytes, e.g. `"0fa000ff"`. */
   rawBytes: string;
 }

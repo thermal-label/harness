@@ -70,11 +70,7 @@ export interface MediaSwatch {
  *   adapter supplies that hook; without it the shell degrades to
  *   `'auto-suggest'` (never a hard lock to a non-catalogue object).
  */
-export type DetectionCapability =
-  | 'none'
-  | 'auto-suggest'
-  | 'auto-locked'
-  | 'detected-unrecognized';
+export type DetectionCapability = 'none' | 'auto-suggest' | 'auto-locked' | 'detected-unrecognized';
 
 /**
  * Re-export so consumers writing a `groupBy: (m: T) => MediaGroupKey`

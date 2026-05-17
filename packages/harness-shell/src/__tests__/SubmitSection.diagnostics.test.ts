@@ -150,9 +150,7 @@ describe('SubmitSection diagnostics block', () => {
     session.printerStatus.primary = readyStatus(new Uint8Array([0x01]));
     await nextTick();
 
-    const copyButton = wrapper
-      .findAll('button')
-      .find(b => b.text().includes('Copy diagnostics'));
+    const copyButton = wrapper.findAll('button').find(b => b.text().includes('Copy diagnostics'));
     expect(copyButton).toBeTruthy();
     await copyButton!.trigger('click');
     await nextTick();

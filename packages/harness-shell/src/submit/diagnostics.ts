@@ -10,10 +10,7 @@
  * `undefined` when nothing was captured — keeps a clean report for
  * drivers / flows that produced no diagnostics.
  */
-import {
-  serializeStatus,
-  type ReportDiagnostics,
-} from '@thermal-label/harness-core/shared';
+import { serializeStatus, type ReportDiagnostics } from '@thermal-label/harness-core/shared';
 import type { EngineSession } from '../types';
 
 /** Input to {@link buildReportDiagnostics}. */

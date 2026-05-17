@@ -271,8 +271,7 @@ export function buildDiagnosticImage(spec: DiagnosticImageSpec): RawImageData {
   // ─── Tail candidate: cutter-offset ladder ─────────────────────────
   // `preferred` — the caller explicitly asked for it by passing
   // `cutterOffsetDots`. The `B` marker (added below) is `required`.
-  const hasCutterLadder =
-    typeof spec.cutterOffsetDots === 'number' && spec.cutterOffsetDots > 0;
+  const hasCutterLadder = typeof spec.cutterOffsetDots === 'number' && spec.cutterOffsetDots > 0;
   if (hasCutterLadder) {
     candidates.push({
       bitmap: cutterLadderSection(widthDots, heightDots),
@@ -306,19 +305,14 @@ export function buildDiagnosticImage(spec: DiagnosticImageSpec): RawImageData {
   // of leftover → no fill at all. Multi-ink fill splits into one band
   // per ink, so it can introduce more than one extra gap.
   const keptHeight = sumHeightsWithGaps(kept);
-  const fillHeight = computeFillHeight(
-    keptHeight,
-    kept.length,
-    fillBandCount,
-    heightDots,
-  );
+  const fillHeight = computeFillHeight(keptHeight, kept.length, fillBandCount, heightDots);
   const fillSections = buildFillBands(widthDots, fillHeight, palette);
 
   // ─── Compose ──────────────────────────────────────────────────────
   // Splice the fill sections in between the last head section (orders
   // 0–7) and the tail sections (orders 8–9), preserving stack order.
-  const headKept = kept.filter((s) => s.order < 8);
-  const tailKept = kept.filter((s) => s.order >= 8);
+  const headKept = kept.filter(s => s.order < 8);
+  const tailKept = kept.filter(s => s.order >= 8);
   const ordered: CandidateSection[] = [...headKept, ...fillSections, ...tailKept];
   return composeRgba(widthDots, ordered, primary);
 }
@@ -350,7 +344,7 @@ function dropUntilFits(
 
   for (const tier of dropOrder) {
     while (stackBudget(kept, fillTier, fillBandCount) > heightDots) {
-      const idx = kept.findIndex((s) => s.tier === tier);
+      const idx = kept.findIndex(s => s.tier === tier);
       if (idx === -1) break; // no more sections in this tier
       kept.splice(idx, 1);
     }
@@ -385,7 +379,7 @@ function stackBudget(
 }
 
 function entryHasRgb(entry: PaletteEntry): boolean {
-  return Array.isArray(entry.rgb) && entry.rgb.length === 3;
+  return Array.isArray(entry.rgb);
 }
 
 /**

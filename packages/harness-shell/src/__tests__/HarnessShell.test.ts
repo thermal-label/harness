@@ -88,9 +88,7 @@ const fakeAdapter: DriverAdapter<FakeDevice, FakeMedia> = {
   },
 };
 
-function mountShell(
-  adapter: DriverAdapter<FakeDevice, FakeMedia>,
-): ReturnType<typeof mount> {
+function mountShell(adapter: DriverAdapter<FakeDevice, FakeMedia>): ReturnType<typeof mount> {
   const Wrapper = defineComponent({
     name: 'TestWrapper',
     setup() {
