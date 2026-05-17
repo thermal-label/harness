@@ -1,6 +1,6 @@
 {
   "name": "@thermal-label/harness-labelmanager",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Browser-hosted labelmanager hardware-reporting harness (plan 06). Single-page guided UX, WebUSB connect, diagnostic-print, prefilled GitHub-issue submit. Workspace-internal — released only as zipped static-bundle GitHub Release artifacts.",
   "type": "module",
