@@ -1,13 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
-import { fileURLToPath } from 'node:url';
 
-// Mirror `vite.config.ts`'s sibling-checkout aliases so the test run
-// resolves `@thermal-label/contracts` / `@thermal-label/d1-core` to the
-// canonical sibling-checkout `dist/` rather than a transitive copy
-// nested under a linked package's pnpm store.
-const contractsDist = fileURLToPath(new URL('../../../contracts/dist/index.js', import.meta.url));
-const d1CoreDist = fileURLToPath(new URL('../../../d1-core/dist/index.js', import.meta.url));
+// No `@thermal-label/*` aliases — Waves 1-3 published every consumed
+// package to npm, so the harness root's pnpm override pins one registry
+// copy and the test run resolves it like any other dependency.
 
 export default defineConfig({
   // `@vitejs/plugin-vue` compiles the `.vue` files pulled in transitively
@@ -15,12 +11,6 @@ export default defineConfig({
   // itself never mounts a component, so the lighter `node` environment
   // is enough.
   plugins: [vue()],
-  resolve: {
-    alias: {
-      '@thermal-label/contracts': contractsDist,
-      '@thermal-label/d1-core': d1CoreDist,
-    },
-  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
