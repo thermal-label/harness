@@ -1,0 +1,62 @@
+name: Release harness-brother-ql
+
+# Builds the brother-ql harness app to a static bundle, zips dist/,
+# and attaches it as a Release artifact named
+# `harness-brother-ql-<tag>.zip`. The docs site CI's
+# `pull-harness-bundles` step pulls the `latest`-tagged artifact and
+# serves it under thermal-label.github.io/harness/brother-ql/.
+#
+# Triggered by tags matching `harness-brother-ql-v*`. Run locally
+# (no auto-tag in this repo) by:
+#   git tag harness-brother-ql-v0.1.0
+#   git push origin harness-brother-ql-v0.1.0
+#
+# This workflow does NOT trigger releases automatically — the
+# maintainer cuts tags by hand.
+
+on:
+  push:
+    tags:
+      - 'harness-brother-ql-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build harness-brother-ql
+        run: pnpm --filter @thermal-label/harness-brother-ql build
+
+      - name: Determine artifact name
+        id: artifact
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "name=harness-brother-ql-${TAG}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Zip dist/
+        working-directory: apps/harness-brother-ql/dist
+        run: zip -r "../../../${{ steps.artifact.outputs.name }}" .
+
+      - name: Upload as GitHub Release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.name }}
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
