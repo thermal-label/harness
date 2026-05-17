@@ -20,9 +20,9 @@
     "@thermal-label/harness-components": "workspace:*",
     "@thermal-label/harness-core": "workspace:*",
     "@thermal-label/harness-shell": "workspace:*",
-    "@thermal-label/letratag-core": "^0.0.0",
-    "@thermal-label/letratag-web": "^0.0.0",
-    "@thermal-label/transport": "^0.5.0",
+    "@thermal-label/letratag-core": "^0.6.0",
+    "@thermal-label/letratag-web": "^0.6.0",
+    "@thermal-label/transport": "^0.6.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {

@@ -5,17 +5,17 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@thermal-label/brother-ql-core': link:../brother-ql/packages/core
-  '@thermal-label/brother-ql-web': link:../brother-ql/packages/web
-  '@thermal-label/contracts': link:../contracts
-  '@thermal-label/d1-core': link:../d1-core
-  '@thermal-label/labelmanager-core': link:../labelmanager/packages/core
-  '@thermal-label/labelmanager-web': link:../labelmanager/packages/web
-  '@thermal-label/labelwriter-core': link:../labelwriter/packages/core
-  '@thermal-label/labelwriter-web': link:../labelwriter/packages/web
-  '@thermal-label/letratag-core': link:../letratag/packages/core
-  '@thermal-label/letratag-web': link:../letratag/packages/web
-  '@thermal-label/transport': link:../transport
+  '@thermal-label/brother-ql-core': ^0.6.0
+  '@thermal-label/brother-ql-web': ^0.6.0
+  '@thermal-label/contracts': ^0.6.0
+  '@thermal-label/d1-core': ^0.6.0
+  '@thermal-label/labelmanager-core': ^0.6.0
+  '@thermal-label/labelmanager-web': ^0.6.0
+  '@thermal-label/labelwriter-core': ^0.6.0
+  '@thermal-label/labelwriter-web': ^0.6.0
+  '@thermal-label/letratag-core': ^0.6.0
+  '@thermal-label/letratag-web': ^0.6.0
+  '@thermal-label/transport': ^0.6.0
 
 importers:
 
@@ -52,14 +52,14 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/brother-ql-core':
-        specifier: link:../../../brother-ql/packages/core
-        version: link:../../../brother-ql/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/brother-ql-web':
-        specifier: link:../../../brother-ql/packages/web
-        version: link:../../../brother-ql/packages/web
+        specifier: ^0.6.0
+        version: 0.6.0(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-components':
         specifier: workspace:*
         version: link:../../packages/harness-components
@@ -70,8 +70,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/harness-shell
       '@thermal-label/transport':
-        specifier: link:../../../transport
-        version: link:../../../transport
+        specifier: ^0.6.0
+        version: 0.6.0(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -116,8 +116,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-components':
         specifier: workspace:*
         version: link:../../packages/harness-components
@@ -128,14 +128,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/harness-shell
       '@thermal-label/labelmanager-core':
-        specifier: link:../../../labelmanager/packages/core
-        version: link:../../../labelmanager/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/labelmanager-web':
-        specifier: link:../../../labelmanager/packages/web
-        version: link:../../../labelmanager/packages/web
+        specifier: ^0.6.0
+        version: 0.6.0(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/transport':
-        specifier: link:../../../transport
-        version: link:../../../transport
+        specifier: ^0.6.0
+        version: 0.6.0(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -174,11 +174,11 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/d1-core':
-        specifier: link:../../../d1-core
-        version: link:../../../d1-core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-components':
         specifier: workspace:*
         version: link:../../packages/harness-components
@@ -189,17 +189,17 @@ importers:
         specifier: workspace:*
         version: link:../../packages/harness-shell
       '@thermal-label/labelmanager-core':
-        specifier: link:../../../labelmanager/packages/core
-        version: link:../../../labelmanager/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/labelwriter-core':
-        specifier: link:../../../labelwriter/packages/core
-        version: link:../../../labelwriter/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0(@thermal-label/d1-core@0.6.0)
       '@thermal-label/labelwriter-web':
-        specifier: link:../../../labelwriter/packages/web
-        version: link:../../../labelwriter/packages/web
+        specifier: ^0.6.0
+        version: 0.6.0(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/transport':
-        specifier: link:../../../transport
-        version: link:../../../transport
+        specifier: ^0.6.0
+        version: 0.6.0(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -238,8 +238,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-components':
         specifier: workspace:*
         version: link:../../packages/harness-components
@@ -250,14 +250,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/harness-shell
       '@thermal-label/letratag-core':
-        specifier: link:../../../letratag/packages/core
-        version: link:../../../letratag/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/letratag-web':
-        specifier: link:../../../letratag/packages/web
-        version: link:../../../letratag/packages/web
+        specifier: ^0.6.0
+        version: 0.6.0(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.0)(@thermal-label/transport@0.6.0(usb@2.17.0))
       '@thermal-label/transport':
-        specifier: link:../../../transport
-        version: link:../../../transport
+        specifier: ^0.6.0
+        version: 0.6.0(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -299,23 +299,23 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/brother-ql-core':
-        specifier: link:../../../brother-ql/packages/core
-        version: link:../../../brother-ql/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-core':
         specifier: workspace:*
         version: link:../../packages/harness-core
       '@thermal-label/labelmanager-core':
-        specifier: link:../../../labelmanager/packages/core
-        version: link:../../../labelmanager/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/labelwriter-core':
-        specifier: link:../../../labelwriter/packages/core
-        version: link:../../../labelwriter/packages/core
+        specifier: ^0.6.0
+        version: 0.6.0(@thermal-label/d1-core@0.6.0)
       '@thermal-label/transport':
-        specifier: link:../../../transport
-        version: link:../../../transport
+        specifier: ^0.6.0
+        version: 0.6.0(usb@2.17.0)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -354,8 +354,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@vitejs/plugin-vue':
         specifier: ^5.1.0
         version: 5.2.4(vite@5.4.21(@types/node@22.19.17))(vue@3.5.34(typescript@5.5.4))
@@ -384,8 +384,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
     devDependencies:
       '@mbtech-nl/tsconfig':
         specifier: ^1.1.0
@@ -415,8 +415,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@thermal-label/contracts':
-        specifier: link:../../../contracts
-        version: link:../../../contracts
+        specifier: ^0.6.0
+        version: 0.6.0
       '@thermal-label/harness-components':
         specifier: workspace:*
         version: link:../harness-components
@@ -1229,6 +1229,73 @@ packages:
     resolution: {integrity: sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA==}
     cpu: [x64]
     os: [win32]
+
+  '@thermal-label/brother-ql-core@0.6.0':
+    resolution: {integrity: sha512-/p6UhREujDqd7NSnxCpEz1QKO6JZ2kMNbTYmgm0PWervJN2p+u7I9tQyRvmTKTE1rH/NyrUpn4x1HuEP2C+AoA==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/brother-ql-web@0.6.0':
+    resolution: {integrity: sha512-bSWtFe1mAbIfHmZeRR65ftS3P/Mehw1EnD7DP9GsHotO5y4oNH9x1pSCMzEw7O6V5rILs8ijCKfPApE6+eP0jw==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      typescript: '>=5.0'
+
+  '@thermal-label/contracts@0.6.0':
+    resolution: {integrity: sha512-ci8GRSbTDw/f3xdR8/cRWmgn0Br4gwSHSEYHkNg3Q5Xr/LKKc7au7UIqZPClGPoSBDHf1mslPul+PeBzjfx0wA==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/d1-core@0.6.0':
+    resolution: {integrity: sha512-LwkjsK9cyp3BIGKTQRb0ItT1+NRM2aaBVQS6LEP4sqvqzZQBOc/LE1QoVU7+XoYmFjskmZzYWS76rD299GK9Qg==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/labelmanager-core@0.6.0':
+    resolution: {integrity: sha512-KyTQbPhqnFf3Mj8h+CIkUdiD/MzWHZGqDa7zm3hw4O3CtXL7mgat2dLtHX05dz4NxsnGYJNMN+b9PUJeKvc/wQ==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/labelmanager-web@0.6.0':
+    resolution: {integrity: sha512-JtVeJpQeJTwxFZzr0XfDab8YjQdjpXNUtb7Po0YVXUnqLUakMAfP7WB/yJcc05tBLhxwWVFPx07+nARfbMSzSA==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      typescript: '>=5.0'
+
+  '@thermal-label/labelwriter-core@0.6.0':
+    resolution: {integrity: sha512-2Twh+nHhl3pzCLwx1pGa76/5gDafohPrVWj2hEBmH4yIOnhuI/ubD1vBJZt1o1R5iEKsrCrcjN9PGZqQxLA8RA==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      '@thermal-label/d1-core': ^0.6.0
+    peerDependenciesMeta:
+      '@thermal-label/d1-core':
+        optional: true
+
+  '@thermal-label/labelwriter-web@0.6.0':
+    resolution: {integrity: sha512-MNEJsh99S9d1fkRuZsy9qPEtfZAq6dQo2612cKsaJzgfTMwkfIe+Klvl9uzGhjfN8T42dcRK/Pn9cuht+qtSEg==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      typescript: '>=5.0'
+
+  '@thermal-label/letratag-core@0.6.0':
+    resolution: {integrity: sha512-fJ2K+KP254/6BHPxazOBzsoovsI4CbWSX7mhW1tIpviIXdj/bB3s3LRKEr/sfNcXzBu6bvUEf6/DzxK9XIHlYw==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/letratag-web@0.6.0':
+    resolution: {integrity: sha512-NlNLUZBxkSGm7zpkPn2niWYZqDejdWxYSrigRrc4hpUnA4OPyUKqsthrSo02dHQhCenQoQC16hnWSBJCAV1ITA==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      '@thermal-label/contracts': ^0.6.0
+      '@thermal-label/letratag-core': ^0.6.0
+      '@thermal-label/transport': ^0.6.0
+
+  '@thermal-label/transport@0.6.0':
+    resolution: {integrity: sha512-Na1e0CrNBhCEFH1mxBTD6WUmuyjwuysZIUnBeYTPk2Y8FpAVSxKbXPs8INFBTQ4sJbRehkT8d/TgGjFhrZ6PFQ==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      serialport: '>=12.0.0'
+      usb: '>=2.14.0'
+    peerDependenciesMeta:
+      serialport:
+        optional: true
+      usb:
+        optional: true
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -3401,6 +3468,81 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.60.3':
     optional: true
+
+  '@thermal-label/brother-ql-core@0.6.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+
+  '@thermal-label/brother-ql-web@0.6.0(typescript@5.5.4)(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/brother-ql-core': 0.6.0
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - serialport
+      - usb
+
+  '@thermal-label/contracts@0.6.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+
+  '@thermal-label/d1-core@0.6.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+
+  '@thermal-label/labelmanager-core@0.6.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/d1-core': 0.6.0
+
+  '@thermal-label/labelmanager-web@0.6.0(typescript@5.5.4)(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/labelmanager-core': 0.6.0
+      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - serialport
+      - usb
+
+  '@thermal-label/labelwriter-core@0.6.0(@thermal-label/d1-core@0.6.0)':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+    optionalDependencies:
+      '@thermal-label/d1-core': 0.6.0
+
+  '@thermal-label/labelwriter-web@0.6.0(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/labelwriter-core': 0.6.0(@thermal-label/d1-core@0.6.0)
+      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - '@thermal-label/d1-core'
+      - serialport
+      - usb
+
+  '@thermal-label/letratag-core@0.6.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+
+  '@thermal-label/letratag-web@0.6.0(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.0)(@thermal-label/transport@0.6.0(usb@2.17.0))':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/letratag-core': 0.6.0
+      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+
+  '@thermal-label/transport@0.6.0(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+    optionalDependencies:
+      usb: 2.17.0
 
   '@tybys/wasm-util@0.10.2':
     dependencies:

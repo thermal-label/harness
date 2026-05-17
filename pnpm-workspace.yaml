@@ -1,3 +1,6 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # harness-niimbot is cut from the 0.6.0 release — niimbot-core/-web are
+  # unpublished, so it must not be a workspace member or pnpm install fails.
+  - '!apps/harness-niimbot'

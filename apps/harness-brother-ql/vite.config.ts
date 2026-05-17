@@ -2,25 +2,15 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
 
-// Sibling-checkout layout: `link:../contracts` in this app's package.json
-// covers the harness's direct dep, but linked sibling packages
-// (`@thermal-label/transport`, `@thermal-label/brother-ql-core`) carry
-// their own pre-installed `@thermal-label/contracts` in their per-repo
-// `node_modules/.pnpm/` stores at whatever version they pinned. Without
-// this alias, Vite picks up one of the transitive copies and a freshly-
-// added export on the local checkout (e.g. `getPrintableArea`) shows up
-// as missing at module-load time.
+// `@thermal-label/contracts` is no longer aliased — Wave 1 published it
+// to npm, so the harness root's pnpm override pins it to `^0.6.0` and
+// every importer resolves the one registry copy.
 //
-// Force every import of `@thermal-label/contracts` to resolve to the
-// sibling-checkout's built `dist/index.js`. Single canonical path,
-// matches what the link override intends.
-const contractsDist = fileURLToPath(new URL('../../../contracts/dist/index.js', import.meta.url));
-
-// Same trick for `@thermal-label/brother-ql-core` — the harness app
-// imports it directly, and Vite would otherwise pick up the copy
-// nested under brother-ql-core's `node_modules/.pnpm/` store via the
-// `link:` override rather than the sibling-checkout's freshly-built
-// dist.
+// `@thermal-label/brother-ql-core` is still a Wave-3 `link:` sibling
+// (not yet on npm). The harness app imports it directly; this alias
+// forces Vite to resolve it to the sibling-checkout's freshly-built
+// `dist/index.js` rather than a copy nested under brother-ql-core's
+// per-repo `node_modules/.pnpm/` store.
 const brotherQlCoreDist = fileURLToPath(
   new URL('../../../brother-ql/packages/core/dist/index.js', import.meta.url),
 );
@@ -32,15 +22,10 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {
-      '@thermal-label/contracts': contractsDist,
       '@thermal-label/brother-ql-core': brotherQlCoreDist,
     },
   },
   optimizeDeps: {
-    // Re-bundle `@thermal-label/contracts` whenever the local dist
-    // changes. Without this Vite caches the pre-bundled deps and
-    // updates to the contracts source don't propagate until you
-    // delete `node_modules/.vite/` by hand.
     force: false,
   },
   build: {
