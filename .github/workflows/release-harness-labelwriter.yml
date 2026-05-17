@@ -46,8 +46,10 @@ jobs:
       - name: Determine artifact name
         id: artifact
         run: |
+          # GITHUB_REF is already `harness-labelwriter-v<version>` — the tag
+          # itself is the artifact stem, so don't prefix it a second time.
           TAG="${GITHUB_REF#refs/tags/}"
-          echo "name=harness-labelwriter-${TAG}.zip" >> "$GITHUB_OUTPUT"
+          echo "name=${TAG}.zip" >> "$GITHUB_OUTPUT"
 
       - name: Zip dist/
         working-directory: apps/harness-labelwriter/dist
@@ -60,3 +62,22 @@ jobs:
           generate_release_notes: true
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
+
+      - name: Notify docs site to rebuild
+        # The docs site rebuilds and re-runs pull-harness-bundles to pick up
+        # this new bundle. Cross-repo repository_dispatch needs a token with
+        # write access to the docs repo — the built-in GITHUB_TOKEN is scoped
+        # to this repo only. Create a PAT (or fine-grained token) with
+        # `contents: write` on thermal-label/thermal-label.github.io and store
+        # it as the DOCS_DISPATCH_TOKEN secret. If the secret is absent this
+        # step is skipped — the release still succeeds and the docs site
+        # picks the bundle up on its next scheduled/pushed build.
+        env:
+          DOCS_DISPATCH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+        if: env.DOCS_DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ env.DOCS_DISPATCH_TOKEN }}
+          repository: thermal-label/thermal-label.github.io
+          event-type: docs-update
+          client-payload: '{"repo": "harness", "ref": "${{ github.ref_name }}"}'
