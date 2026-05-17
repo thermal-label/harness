@@ -31,7 +31,7 @@
  *
  * Bitmap orientation contract (from `brother-ql-core/protocol.ts`):
  *   - `bitmap.widthPx` is the head-perpendicular dimension — equals the
- *     media's `printAreaDots` (e.g. 696 dots for DK-22205 62 mm).
+ *     media's `printableDots` (e.g. 696 dots for DK-22205 62 mm).
  *   - `bitmap.heightPx` is the feed direction (along the tape).
  *
  * The head is wide on QL printers (696 dots for 62 mm DK), so the
@@ -94,17 +94,17 @@ const CUTTER_PROBE_STEP_HEIGHT_PX = 2;
 /**
  * Build the head-aligned diagnostic bitmap (black plane) plus an
  * optional red plane when the chosen media is two-color. Width matches
- * the media's `printAreaDots`; height grows as sections are stacked.
+ * the media's `printableDots`; height grows as sections are stacked.
  *
  * Exported separately from `encodeBitmap` so the orchestrator can
  * preview the bitmap before printing, and tests can snapshot bitmap
  * dimensions without going through `encodeJobForEngine`.
  */
 export function buildDiagnosticBitmap(input: DiagnosticPrintInput): DiagnosticPrintBitmaps {
-  const widthDots = input.media.printAreaDots;
+  const widthDots = input.media.printableDots;
   if (typeof widthDots !== 'number') {
     throw new Error(
-      `Media ${input.media.name} has no printAreaDots; brother-ql verify-cli only supports DK media today (TZe / HSe omitted).`,
+      `Media ${input.media.name} has no printableDots; brother-ql verify-cli only supports DK media today (TZe / HSe omitted).`,
     );
   }
 

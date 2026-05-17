@@ -229,7 +229,7 @@ export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
    * Build a printable media from operator-confirmed dimensions, for
    * the `detected-unrecognized` flow (a detection that maps to no
    * catalogue entry). The harness cannot synthesise a *printable*
-   * driver media generically — brother-ql needs `printAreaDots` /
+   * driver media generically — brother-ql needs `printableDots` /
    * margins, etc. — so the driver supplies this hook.
    *
    * Omit it if the driver cannot drive an uncatalogued media; the

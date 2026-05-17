@@ -32,10 +32,10 @@ const CUTTER_OFFSET_DOTS_QL = 84;
 export function buildDiagnosticImage(input: DiagnosticPrintInput): RawImageData {
   const m = input.media;
   const family = input.engine.headDots === 128 ? 'narrow' : 'wide';
-  const widthDots = m.printAreaDots ?? m.geometry?.[family]?.printAreaDots;
+  const widthDots = m.printableDots ?? m.geometry?.[family]?.printableDots;
   if (typeof widthDots !== 'number') {
     throw new Error(
-      `${m.name} has no printAreaDots (DK) and no geometry.${family} entry — encoder cannot resolve head-perpendicular width.`,
+      `${m.name} has no printableDots (DK) and no geometry.${family} entry — encoder cannot resolve head-perpendicular width.`,
     );
   }
   const isDieCut = m.type === 'die-cut';

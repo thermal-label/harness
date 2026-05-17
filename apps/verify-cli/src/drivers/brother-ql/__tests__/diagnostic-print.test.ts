@@ -13,14 +13,14 @@ const TWO_COLOR_62MM = media(251); // DK-22251
 const DIE_CUT_29X90 = media(271); // DK-11201
 
 describe('brother-ql diagnostic-print encoder', () => {
-  it('builds a bitmap whose width matches the media printAreaDots', () => {
+  it('builds a bitmap whose width matches the media printableDots', () => {
     const { black, red } = buildDiagnosticBitmap({
       device,
       media: MONO_62MM,
       harnessVersion: '0.0.0',
       driverVersion: '0.5.0',
     });
-    expect(black.widthPx).toBe(696); // 62 mm DK printAreaDots
+    expect(black.widthPx).toBe(696); // 62 mm DK printableDots
     expect(black.heightPx).toBeGreaterThan(50);
     expect(red).toBeUndefined();
   });
@@ -32,7 +32,7 @@ describe('brother-ql diagnostic-print encoder', () => {
       harnessVersion: '0.0.0',
       driverVersion: '0.5.0',
     });
-    expect(black.widthPx).toBe(306); // DK-11201 printAreaDots
+    expect(black.widthPx).toBe(306); // DK-11201 printableDots
   });
 
   it('two-color media produces a matching red plane', () => {
@@ -87,7 +87,7 @@ describe('brother-ql diagnostic-print encoder', () => {
 
   it('two-color encode produces strictly more bytes than mono at the same dimensions', () => {
     // Both DK-22205 (mono) and DK-22251 (two-color) are 62 mm continuous
-    // with printAreaDots = 696. Two-color writes both planes per row →
+    // with printableDots = 696. Two-color writes both planes per row →
     // larger byte stream. The diagnostic-print bitmaps differ in shape
     // (mono puts headers in black; two-color puts them in red), but the
     // total row count is similar. We assert the two-color byte count is
@@ -116,9 +116,9 @@ describe('brother-ql diagnostic-print encoder', () => {
     expect(twoColorBytes.length).toBeGreaterThan(monoBytes.length);
   });
 
-  it('rejects PT-only media (no printAreaDots) with a useful message', () => {
+  it('rejects PT-only media (no printableDots) with a useful message', () => {
     // PT engines fill `geometry.narrow` / `geometry.wide` instead of
-    // the flat printAreaDots field. The encoder is QL-only today.
+    // the flat printableDots field. The encoder is QL-only today.
     const ptMedia = media(404); // 12 mm TZe
     expect(() =>
       buildDiagnosticBitmap({
@@ -127,6 +127,6 @@ describe('brother-ql diagnostic-print encoder', () => {
         harnessVersion: '0.0.0',
         driverVersion: '0.5.0',
       }),
-    ).toThrowError(/no printAreaDots/);
+    ).toThrowError(/no printableDots/);
   });
 });

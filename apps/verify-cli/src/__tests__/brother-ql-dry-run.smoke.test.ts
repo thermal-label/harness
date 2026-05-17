@@ -194,7 +194,7 @@ describe('verify-cli brother-ql --dry-run end-to-end', () => {
 
 describe('verify-cli brother-ql diagnostic encoder bytes', () => {
   it('two-color media produces strictly more bytes than mono media at same dimensions', async () => {
-    // Both DK-22205 and DK-22251 are 62 mm continuous (printAreaDots = 696).
+    // Both DK-22205 and DK-22251 are 62 mm continuous (printableDots = 696).
     // Two-color encodes both planes → byte count must be larger.
     const monoResult = await runCli([
       'verify',
