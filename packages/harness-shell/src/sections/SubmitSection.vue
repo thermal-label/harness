@@ -79,6 +79,7 @@ const diagnosticsSnapshot = computed<DiagnosticsSnapshot | null>(() => {
     mocked: session.connection.mocked,
     device: identity,
     engines,
+    ...(session.environment.value ? { environment: session.environment.value } : {}),
   });
 });
 
@@ -145,7 +146,7 @@ function buildReport() {
       : assessedSessions[0];
   if (!primary || primary.rung === null || !primary.media) return null;
 
-  return adapter.buildReport({
+  const report = adapter.buildReport({
     device: session.device.value,
     identity: session.connection.identity,
     primarySession: primary,
@@ -154,6 +155,10 @@ function buildReport() {
     mocked: session.connection.mocked,
     ...(reporterHandle.value.trim() ? { reporter: reporterHandle.value.trim() } : {}),
   });
+  // The runtime/OS snapshot is shell-owned context, folded in here so
+  // no per-driver `buildReport` has to thread it through.
+  const env = session.environment.value;
+  return env ? { ...report, environment: env } : report;
 }
 
 async function doSubmit(): Promise<void> {

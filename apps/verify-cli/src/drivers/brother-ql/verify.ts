@@ -52,6 +52,8 @@ import {
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
 import type { VerifyOptions } from '../../verify.js';
+import { captureNodeEnvironment } from '../../environment.js';
+import { HARNESS_VERSION, driverVersion } from '../../versions.js';
 import {
   NoPromptError,
   promptConfirm,
@@ -75,8 +77,7 @@ import { renderBitmapPreview } from '../../bitmap-preview.js';
 import { writeBitmapPngToTmp, writeTwoColorPngToTmp } from '../../bitmap-png.js';
 
 const DRIVER_KEY = 'brother-ql';
-const HARNESS_VERSION = '0.0.0';
-const DRIVER_VERSION = '0.5.0';
+const DRIVER_VERSION = driverVersion('@thermal-label/brother-ql-core');
 const TARGET_REPO = 'thermal-label/brother-ql';
 const FALLBACK_EMAIL = 'mannes@krukje.nl';
 
@@ -692,6 +693,7 @@ function buildReport(input: BuildReportInput): HardwareReport {
       },
     },
     transports: transportReports,
+    environment: captureNodeEnvironment(),
     submittedAt: new Date().toISOString(),
     ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };

@@ -28,11 +28,14 @@ const RESULT_GLYPH = {
  */
 export function renderIssueBody(report: HardwareReport): string {
   const headline = renderHeadline(report);
+  const envLine = renderEnvironmentLine(report);
   const transportLines = report.transports.map(renderTransportLine);
   const engineBlock = renderEnginesBlock(report);
   const notesBlock = renderOperatorNotes(report);
 
-  const sections = [headline, ...transportLines];
+  const sections = [headline];
+  if (envLine) sections.push(envLine);
+  sections.push(...transportLines);
   if (engineBlock) sections.push(engineBlock);
   if (notesBlock) sections.push(notesBlock);
   sections.push(renderJsonBlock(report));
@@ -58,6 +61,25 @@ function pickHeadlineRung(report: HardwareReport): TransportReport['rung'] {
   if (rungs.has('unsupported')) return 'unsupported';
   if (rungs.has('partial')) return 'partial';
   return 'verified';
+}
+
+/**
+ * One-line environment note rendered under the headline — the browser
+ * + OS the report was captured on. Absent when the report carries no
+ * `environment` block (the CLI runtime, or a pre-environment build).
+ */
+function renderEnvironmentLine(report: HardwareReport): string | undefined {
+  const env = report.environment;
+  if (!env) return undefined;
+  const os = env.osVersion ? `${env.os} ${env.osVersion}` : env.os;
+  let runtime: string;
+  if (env.runtime === 'node') {
+    runtime = env.nodeVersion ? `Node.js ${env.nodeVersion}` : 'Node.js';
+  } else {
+    const browser = env.browser ?? 'browser';
+    runtime = env.browserVersion ? `${browser} ${env.browserVersion}` : browser;
+  }
+  return `_Captured on ${runtime} · ${os}._`;
 }
 
 function renderTransportLine(transport: TransportReport): string {

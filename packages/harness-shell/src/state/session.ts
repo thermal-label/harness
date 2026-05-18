@@ -27,8 +27,13 @@ import {
   type Ref,
 } from 'vue';
 import type { PrintEngine, PrinterAdapter, PrinterStatus } from '@thermal-label/contracts';
-import type { IdentitySnapshot, ProposedRung } from '@thermal-label/harness-core/shared';
+import type {
+  EnvironmentSnapshot,
+  IdentitySnapshot,
+  ProposedRung,
+} from '@thermal-label/harness-core/shared';
 import { useAdapter } from './adapterContext';
+import { captureEnvironment } from './captureEnvironment';
 import type { BrowserTransport, EngineSession } from '../types';
 
 export interface ConnectionState {
@@ -101,6 +106,12 @@ export interface Session<TDevice, TMedia> {
    * rendered). The keyed shape resolves that.
    */
   printerStatus: Record<string, PrinterStatus | null>;
+  /**
+   * Browser + OS snapshot, captured once asynchronously at session
+   * creation. `null` until the (near-instant) probe resolves; folded
+   * into the HardwareReport + DiagnosticsSnapshot at submit time.
+   */
+  environment: Ref<EnvironmentSnapshot | null>;
 
   // Derived computeds
   isConnected: ComputedRef<boolean>;
@@ -164,6 +175,15 @@ function createSession<TDevice, TMedia>(opts: {
     issueUrl: null,
   });
   const printerStatus = reactive({}) as Record<string, PrinterStatus | null>;
+
+  const environment = ref<EnvironmentSnapshot | null>(null);
+  // Probe the browser + OS once, asynchronously — the Client Hints
+  // high-entropy call is async. Fire-and-forget: it resolves within a
+  // few ms of page load, long before the operator reaches Submit.
+  // `captureEnvironment` never rejects.
+  void captureEnvironment().then(env => {
+    environment.value = env;
+  });
 
   function syncEngineSessions(d: TDevice | null): void {
     if (!d) {
@@ -267,6 +287,7 @@ function createSession<TDevice, TMedia>(opts: {
     selectedRole,
     submitState,
     printerStatus,
+    environment,
     isConnected,
     hasIdentity,
     activePrinter,

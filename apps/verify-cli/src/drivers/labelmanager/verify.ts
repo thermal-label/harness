@@ -39,6 +39,8 @@ import {
   type TransportReport,
 } from '@thermal-label/harness-core/shared';
 import type { VerifyOptions } from '../../verify.js';
+import { captureNodeEnvironment } from '../../environment.js';
+import { HARNESS_VERSION, driverVersion } from '../../versions.js';
 import {
   NoPromptError,
   promptConfirm,
@@ -54,8 +56,7 @@ import { writeBitmapPngToTmp } from '../../bitmap-png.js';
 import type { LabelBitmap } from '@mbtech-nl/bitmap';
 
 const DRIVER_KEY = 'labelmanager';
-const HARNESS_VERSION = '0.0.0';
-const DRIVER_VERSION = '0.5.1';
+const DRIVER_VERSION = driverVersion('@thermal-label/labelmanager-core');
 const TARGET_REPO = 'thermal-label/labelmanager';
 const FALLBACK_EMAIL = 'mannes@krukje.nl';
 
@@ -475,6 +476,7 @@ function buildReport(input: BuildReportInput): HardwareReport {
       },
     },
     transports: [transportReport],
+    environment: captureNodeEnvironment(),
     submittedAt: new Date().toISOString(),
     ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };

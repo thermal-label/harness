@@ -18,7 +18,7 @@
  */
 
 import type { PrinterStatus } from '@thermal-label/contracts';
-import type { IdentitySnapshot } from './hardware-report.js';
+import type { EnvironmentSnapshot, IdentitySnapshot } from './hardware-report.js';
 import { serializeStatus, type SerializedStatus } from './serialize-status.js';
 
 /**
@@ -70,6 +70,11 @@ export interface DiagnosticsSnapshot {
   };
   /** True when the connection is mock-backed. */
   mocked: boolean;
+  /**
+   * Browser + OS the harness ran in. Optional — absent on a snapshot
+   * captured before the environment probe resolved.
+   */
+  environment?: EnvironmentSnapshot;
   device: IdentitySnapshot;
   engines: DiagnosticsEngine[];
 }
@@ -86,6 +91,8 @@ export interface BuildDiagnosticsSnapshotInput {
   harnessVersion: string;
   driverVersion: string;
   mocked: boolean;
+  /** Browser + OS the harness ran in. Omitted ⇒ no `environment` block. */
+  environment?: EnvironmentSnapshot;
   device: IdentitySnapshot;
   engines: readonly DiagnosticsEngineInput[];
   /**
@@ -128,6 +135,7 @@ export function buildDiagnosticsSnapshot(
       driverVersion: input.driverVersion,
     },
     mocked: input.mocked,
+    ...(input.environment ? { environment: input.environment } : {}),
     device: input.device,
     engines: input.engines.map(engine => ({
       role: engine.role,

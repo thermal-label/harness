@@ -190,6 +190,48 @@ export interface ReporterInfo {
 }
 
 /**
+ * The harness runtime + OS a report was produced on, captured at
+ * submit time.
+ *
+ * Triage context only — never a parse target. The shape is flat and
+ * runtime-tagged rather than a discriminated union: matching the rest
+ * of this schema, every field past `runtime` + `os` is an optional
+ * hint, not load-bearing. `runtime` says which fields to expect —
+ * the browser apps fill `browser` / `browserVersion` / `userAgent`;
+ * the verify-cli fills `nodeVersion`.
+ *
+ * For the `'browser'` runtime the source is the structured User-Agent
+ * Client Hints API (the harness is Chromium-only — Web USB / Web
+ * Bluetooth / Web Serial), with `userAgent` as the raw fallback. For
+ * `'node'` it's `process` / `os`.
+ *
+ * Optional + additive on `HardwareReport` — pre-environment reports
+ * omit it entirely, so `schemaVersion` stays `1`.
+ */
+export interface EnvironmentSnapshot {
+  /**
+   * Which harness runtime produced the report — the browser apps set
+   * `'browser'`, the verify-cli sets `'node'`. Triage reads this to
+   * know which runtime-specific fields below to expect.
+   */
+  runtime: 'browser' | 'node';
+  /** Browser family — `'Chrome'`, `'Edge'`, `'Opera'`, `'Firefox'`, `'Safari'`, `'Unknown'`. `'browser'` runtime only. */
+  browser?: string;
+  /** Browser version — full from Client Hints, UA-string major otherwise. `'browser'` runtime only. */
+  browserVersion?: string;
+  /** Node.js version, e.g. `'22.3.0'`. `'node'` runtime only. */
+  nodeVersion?: string;
+  /** OS / platform — `'Windows'`, `'macOS'`, `'Linux'`, `'ChromeOS'`, `'Android'`, `'iOS'`. */
+  os: string;
+  /** OS version, when the runtime exposes one (Client Hints high-entropy value / `os.release()`). */
+  osVersion?: string;
+  /** True on a mobile form factor. `'browser'` runtime only. */
+  mobile?: boolean;
+  /** Raw `navigator.userAgent` — the triage ground-truth. `'browser'` runtime only. */
+  userAgent?: string;
+}
+
+/**
  * JSON-safe snapshot of an `ESC V`-style print-engine version block.
  *
  * Driver-agnostic identity fields a triage reader needs to confirm
@@ -285,6 +327,12 @@ export interface HardwareReport {
    * report debuggable instead of a bare verdict.
    */
   diagnostics?: ReportDiagnostics;
+  /**
+   * The harness runtime + OS the report was produced on. Triage
+   * context — additive and optional, so old parsers are unaffected
+   * and `schemaVersion` stays `1`.
+   */
+  environment?: EnvironmentSnapshot;
   /** ISO-8601 timestamp at submit time. */
   submittedAt: string;
   reporter?: ReporterInfo;
