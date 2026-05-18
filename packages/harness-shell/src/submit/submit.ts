@@ -40,7 +40,11 @@ export function urlExceedsLimit(url: string): boolean {
 }
 
 export interface SubmitResult {
-  /** Did the browser open the prefilled issue tab for us? */
+  /**
+   * Did the browser open the prefilled issue tab? Always `false` for
+   * `prefill: 'title'` — that path is operator-driven (copy first,
+   * then open), so the tab is never auto-opened.
+   */
   opened: boolean;
   /**
    * The prefilled new-issue URL we opened (or tried to). The
@@ -57,12 +61,16 @@ export interface SubmitResult {
 }
 
 /**
- * Open the report as a prefilled GitHub issue in a new tab.
+ * Submit the report as a prefilled GitHub issue.
  *
- * When the title + body fit GitHub's prefill-URL limit, both are
- * prefilled (`prefill: 'full'`). When the body overflows, a
- * title-only issue is opened instead (`prefill: 'title'`) — the
- * title always fits — and the caller surfaces a copy-the-body step.
+ * When the title + body fit GitHub's prefill-URL limit, the fully
+ * prefilled issue is opened straight away (`prefill: 'full'`).
+ *
+ * When the body overflows, `prefill: 'title'` is returned *without*
+ * opening anything: the caller guides the operator to copy the report
+ * first, then open the title-only issue, then paste. Auto-opening
+ * there would strand them on a near-empty GitHub page with no cue that
+ * the body is waiting back in the harness tab.
  *
  * `opened` reports whether the browser allowed the tab; callers must
  * invoke this from a click handler so pop-up blockers don't fire.
@@ -77,14 +85,16 @@ export async function submitReport(
 
   const fullUrl = buildPrefillUrl(targetRepo, title, body);
   if (!urlExceedsLimit(fullUrl)) {
+    // Body fits — open the fully prefilled issue straight away.
     return { opened: openIssueTab(fullUrl), url: fullUrl, prefill: 'full' };
   }
 
-  // The body overflows GitHub's prefill limit. Open a title-only
-  // prefill so the operator lands on a new issue with the title
-  // already set and only has to paste the body in.
+  // Body overflows the prefill URL. Deliberately do NOT auto-open the
+  // tab — the operator copies the report here first, then opens the
+  // (title-only) issue via the guided recovery step. Auto-opening would
+  // drop them on a near-empty GitHub page with no cue to come back.
   const titleUrl = buildPrefillUrl(targetRepo, title, '');
-  return { opened: openIssueTab(titleUrl), url: titleUrl, prefill: 'title' };
+  return { opened: false, url: titleUrl, prefill: 'title' };
 }
 
 /**

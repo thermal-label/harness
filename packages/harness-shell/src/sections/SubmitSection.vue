@@ -344,9 +344,8 @@ function activate(role: string): void {
       </p>
 
       <p v-if="previewUrlTooLong" class="muted small">
-        Heads up — this report is detailed enough that GitHub can't prefill the whole thing into a
-        link. Submitting opens a new issue with the title already filled in; you'll copy the report
-        and paste the body — about ten seconds.
+        Heads up — this report is too detailed for GitHub to prefill in one click. Submit walks you
+        through it: copy the report, open a title-prefilled issue, paste. About ten seconds.
       </p>
 
       <label class="reporter">
@@ -415,8 +414,8 @@ function activate(role: string): void {
       <template v-else>
         <p class="fallback-lead">
           <template v-if="submitResult?.prefill === 'title'">
-            This report is too detailed for GitHub to prefill whole — so we opened a new issue with
-            the title already set. Grab the body before you head over:
+            This report is too detailed for GitHub to prefill in one click — no problem. Three quick
+            steps file it; the link sets the issue title for you:
           </template>
           <template v-else>
             The report didn't reach GitHub automatically — no problem. File it in three quick steps:
