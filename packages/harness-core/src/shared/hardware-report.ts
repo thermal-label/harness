@@ -250,6 +250,13 @@ export interface EngineVersionSnapshot {
   fwReleaseDate?: string;
   /** USB product id reported by the engine. */
   pid?: number;
+  /**
+   * The raw `ESC V` response, hex-encoded — the verbatim bytes the
+   * decoded fields above were parsed from. Lets triage re-derive the
+   * block when the parse is wrong or a firmware revision adds fields,
+   * with no LW 5xx unit on hand to re-probe.
+   */
+  rawBytes?: string;
 }
 
 /**
@@ -260,6 +267,9 @@ export interface EngineVersionSnapshot {
  * count, ...). Populated by the LW 5xx adapter from the driver's
  * `SkuInfo`; the shape is intentionally a loose record — the triage
  * reviewer eyeballs it, the parser does not branch on it.
+ *
+ * Includes a `rawBytes` key: the hex-encoded verbatim `ESC U` response,
+ * so triage can re-derive the dump when the parse is wrong.
  */
 export type SkuInfoSnapshot = Readonly<Record<string, string | number | boolean>>;
 

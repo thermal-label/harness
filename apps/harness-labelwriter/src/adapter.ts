@@ -24,13 +24,14 @@ import type {
 } from '@thermal-label/harness-shell';
 import { buildReportDiagnostics } from '@thermal-label/harness-shell';
 import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
-import type {
-  EngineVersionSnapshot,
-  HardwareReport,
-  IdentitySnapshot,
-  EngineReport,
-  SkuInfoSnapshot,
-  TransportReport,
+import {
+  toHex,
+  type EngineVersionSnapshot,
+  type HardwareReport,
+  type IdentitySnapshot,
+  type EngineReport,
+  type SkuInfoSnapshot,
+  type TransportReport,
 } from '@thermal-label/harness-core/shared';
 import {
   DEVICES,
@@ -236,9 +237,7 @@ function buildMockPrinterMap(
 }
 
 /** Per-engine connect diagnostics surfaced to the harness shell. */
-type EngineDiagnostics = NonNullable<
-  ConnectResult<LabelWriterDevice>['engineDiagnostics']
->;
+type EngineDiagnostics = NonNullable<ConnectResult<LabelWriterDevice>['engineDiagnostics']>;
 
 /** Project a driver `EngineVersion` into the JSON-safe report snapshot. */
 function toEngineVersionSnapshot(v: EngineVersion): EngineVersionSnapshot {
@@ -250,6 +249,8 @@ function toEngineVersionSnapshot(v: EngineVersion): EngineVersionSnapshot {
     fwVersion: `${v.fwMajor}.${v.fwMinor}`.trim(),
     fwReleaseDate: v.fwReleaseDate,
     pid: v.pid,
+    // Verbatim `ESC V` response — hex so it survives JSON.stringify.
+    rawBytes: toHex(v.rawBytes),
   };
 }
 
@@ -272,6 +273,8 @@ function toSkuInfoSnapshot(sku: SkuInfo): SkuInfoSnapshot {
     counterStrategy: sku.counterStrategy,
     productionDate: sku.productionDate.trim(),
     productionTime: sku.productionTime.trim(),
+    // Verbatim `ESC U` response — hex so it survives JSON.stringify.
+    rawBytes: toHex(sku.rawBytes),
   };
 }
 

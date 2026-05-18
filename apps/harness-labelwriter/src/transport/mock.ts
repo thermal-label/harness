@@ -80,21 +80,34 @@ interface MockResponse {
    */
   sku550Unknown: Uint8Array;
   /**
-   * A 34-byte `parseEngineVersion` (`ESC V`) block — HW `1.0`, firmware
-   * application kind, version `0102.0003`, release `0521`, PID 0x0028.
+   * A 34-byte `parseEngineVersion` (`ESC V`) block for the LW 550 — HW
+   * `1.0`, firmware application kind, version `0102.0003`, release
+   * `0521`, PID 0x0028.
    */
   version550: Uint8Array;
+  /** As {@link MockResponse.version550}, but carrying the LW 5XL PID (0x002a). */
+  version5xl: Uint8Array;
+}
+
+/** Write a little-endian u16 at `offset`. */
+function writeU16(buf: Uint8Array, offset: number, value: number): void {
+  buf[offset] = value & 0xff;
+  buf[offset + 1] = (value >> 8) & 0xff;
 }
 
 /**
  * Build a well-formed 63-byte `ESC U` SKU dump.
  *
  * Field offsets per `labelwriter-core` `parseSkuInfo` (the 550
- * Technical Reference NFC table): magic u16 LE at 0-1, SKU ASCII at
- * 8-19, brand at 20, material index at 22, label-type index at 23
- * (0 = continuous, 1 = die), label length u16 LE at 40-41, label
- * width u16 LE at 42-43, total-label-count u16 LE at 50-51, counter
- * strategy at 56, production date ASCII at 60-61.
+ * Technical Reference NFC table). Beyond the identifying fields, the
+ * secondary geometry — marker pitch/width, liner width, printable
+ * offsets, total roll length — is derived from the label dimensions so
+ * the decoded `SkuInfo` and the verbatim `rawBytes` carried into the
+ * report resemble a real device's. Those derived values are plausible
+ * estimates, not device-confirmed (the maintainer has no LW 5xx unit).
+ *
+ * `crc` (bytes 4-5) is left zero: `parseSkuInfo` reads but never
+ * validates it, and the device's CRC algorithm is not public.
  */
 function buildSkuDump(opts: {
   sku: string;
@@ -107,11 +120,11 @@ function buildSkuDump(opts: {
   productionDate?: string;
 }): Uint8Array {
   const buf = new Uint8Array(63);
-  // magic 0xCAB6, little-endian.
-  buf[0] = 0xb6;
+  buf[0] = 0xb6; // magic 0xCAB6, little-endian
   buf[1] = 0xca;
   buf[2] = 0x30; // spec version byte
   buf[3] = 0x3b; // payload length (informational)
+  // bytes 4-5: CRC — left zero (see JSDoc).
   // SKU number — ASCII at bytes 8..19.
   for (let i = 0; i < opts.sku.length && i < 12; i++) {
     buf[8 + i] = opts.sku.charCodeAt(i);
@@ -120,18 +133,35 @@ function buildSkuDump(opts: {
   buf[21] = 0xff; // region = global
   buf[22] = opts.material ?? 0x03; // material (3 = paper)
   buf[23] = opts.dieCut ? 1 : 0; // label type
-  buf[40] = opts.lengthMm & 0xff;
-  buf[41] = (opts.lengthMm >> 8) & 0xff;
-  buf[42] = opts.widthMm & 0xff;
-  buf[43] = (opts.widthMm >> 8) & 0xff;
+  buf[24] = 1; // label colour: white (the common address-label stock)
+  buf[25] = 0x00; // content colour: black
+  // Marker geometry — die-cut media carry an inter-label gap marker;
+  // continuous media leave bytes 26..39 zero.
+  const pitchMm = opts.dieCut ? opts.lengthMm + 3 : opts.lengthMm;
+  if (opts.dieCut) {
+    buf[26] = 1; // marker type: gap
+    writeU16(buf, 28, pitchMm); // marker pitch = label length + ~3 mm gap
+    writeU16(buf, 30, 3); // marker 1 width (the gap)
+    writeU16(buf, 32, 2); // marker 1 to label start
+    // marker 2 (bytes 34..37) — single-marker media: unused, left zero.
+  }
+  // bytes 38-39: vertical offset — left zero.
+  writeU16(buf, 40, opts.lengthMm);
+  writeU16(buf, 42, opts.widthMm);
+  writeU16(buf, 44, 1); // printable horizontal offset (mm)
+  writeU16(buf, 46, 1); // printable vertical offset (mm)
+  writeU16(buf, 48, opts.widthMm + 4); // liner width ≈ label + 4 mm
   const total = opts.totalLabelCount ?? 0;
-  buf[50] = total & 0xff;
-  buf[51] = (total >> 8) & 0xff;
+  writeU16(buf, 50, total);
+  writeU16(buf, 52, Math.min(total * pitchMm, 0xffff)); // total roll length
+  // bytes 54-55: counter margin — left zero.
   buf[56] = opts.counterStrategy ?? 0; // 0 = count-up
   const prod = opts.productionDate ?? '';
   for (let i = 0; i < prod.length && i < 2; i++) {
-    buf[60 + i] = prod.charCodeAt(i);
+    buf[60 + i] = prod.charCodeAt(i); // production date ASCII, bytes 60..61
   }
+  // byte 62: production time — the 63-byte frame has no room for the
+  // full HHMM field; left zero (matches the driver's narrow read).
   return buf;
 }
 
@@ -162,12 +192,12 @@ function build550StatusFrame(): Uint8Array {
 }
 
 /**
- * Build a well-formed 34-byte `ESC V` engine-version block. Layout per
- * `labelwriter-core` `parseEngineVersion`: hw version ASCII 0-15, fw
- * kind ASCII 16-19, fw major 20-23, fw minor 24-27, release date
- * 28-31, PID u16 LE 32-33.
+ * Build a well-formed 34-byte `ESC V` engine-version block for the
+ * given USB PID. Layout per `labelwriter-core` `parseEngineVersion`:
+ * hw version ASCII 0-15, fw kind ASCII 16-19, fw major 20-23, fw minor
+ * 24-27, release date 28-31, PID u16 LE 32-33.
  */
-function build550VersionBlock(): Uint8Array {
+function build550VersionBlock(pid: number): Uint8Array {
   const buf = new Uint8Array(34);
   const write = (text: string, at: number, max: number): void => {
     for (let i = 0; i < text.length && i < max; i++) buf[at + i] = text.charCodeAt(i);
@@ -177,8 +207,7 @@ function build550VersionBlock(): Uint8Array {
   write('0102', 20, 4); // fw major
   write('0003', 24, 4); // fw minor
   write('0521', 28, 4); // release date MMYY
-  buf[32] = 0x28; // PID 0x0028 LE
-  buf[33] = 0x00;
+  writeU16(buf, 32, pid); // USB PID, little-endian
   return buf;
 }
 
@@ -217,10 +246,12 @@ function buildMockResponses(): MockResponse {
     totalLabelCount: 0,
   });
 
-  // 34-byte lw5-raster `ESC V` engine-version block.
-  const version550 = build550VersionBlock();
+  // 34-byte lw5-raster `ESC V` engine-version blocks — the USB PID
+  // differs per model (LW 550 = 0x0028, LW 5XL = 0x002a).
+  const version550 = build550VersionBlock(0x0028);
+  const version5xl = build550VersionBlock(0x002a);
 
-  return { status, status550, sku550, sku550Unknown, version550 };
+  return { status, status550, sku550, sku550Unknown, version550, version5xl };
 }
 
 const RESPONSES = buildMockResponses();
@@ -287,8 +318,13 @@ export class MockTransport implements Transport {
       this.readQueue =
         this.target === 'lw_550_unknown_media' ? RESPONSES.sku550Unknown : RESPONSES.sku550;
     } else if (this.matchesPrefix(data, [0x1b, 0x56])) {
-      // ESC V — only lw5-raster firmware answers; others stall.
-      this.readQueue = isLw5 ? RESPONSES.version550 : null;
+      // ESC V — only lw5-raster firmware answers; others stall. The
+      // version block's PID is model-specific (5XL = 0x002a).
+      if (!isLw5) {
+        this.readQueue = null;
+      } else {
+        this.readQueue = this.target === 'lw5xl' ? RESPONSES.version5xl : RESPONSES.version550;
+      }
     } else if (this.matchesPrefix(data, [0x1b, 0x41])) {
       this.readQueue = isLw5 ? RESPONSES.status550 : RESPONSES.status;
     }

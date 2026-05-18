@@ -19,9 +19,7 @@ import { adapter } from '../adapter';
 type LwSession = EngineSession<LabelWriterAnyMedia>;
 
 /** Connect the adapter against a mock target and return its result. */
-function connectMock(
-  mockTarget: string,
-): ReturnType<typeof adapter.connect> {
+function connectMock(mockTarget: string): ReturnType<typeof adapter.connect> {
   return adapter.connect({ mock: true, mockTarget });
 }
 
@@ -46,12 +44,17 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     expect(diag.engineVersion?.fwKind).toBe('application');
     expect(diag.engineVersion?.fwVersion).toBe('0102.0003');
     expect(diag.engineVersion?.pid).toBe(0x0028);
+    // Raw ESC V frame — hex-encoded, 34 bytes → 68 hex chars.
+    expect(diag.engineVersion?.rawBytes).toMatch(/^[0-9a-f]{68}$/);
 
     // ESC U → 63-byte catalogued SKU dump.
     expect(diag.skuInfo).toBeDefined();
     expect(diag.skuInfo?.sku).toBe('30252');
     expect(diag.skuInfo?.material).toBe('paper');
+    expect(diag.skuInfo?.labelColor).toBe('white');
     expect(diag.skuInfo?.totalLabelCount).toBe(260);
+    // Raw ESC U frame — hex-encoded, 63 bytes → 126 hex chars.
+    expect(diag.skuInfo?.rawBytes).toMatch(/^[0-9a-f]{126}$/);
   });
 
   it('getStatus() on the mock 550 decodes a 32-byte ESC A with details[]', async () => {
@@ -85,6 +88,15 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     expect(result.engineDiagnostics).toEqual({});
   });
 
+  it('lw5xl mock answers ESC V with the 5XL USB PID (0x002a)', async () => {
+    const result = await connectMock('lw5xl');
+    const roles = Object.keys(result.engineDiagnostics ?? {});
+    expect(roles.length).toBeGreaterThan(0);
+    const diag = result.engineDiagnostics![roles[0]!]!;
+    expect(diag.engineVersion?.pid).toBe(0x002a);
+    expect(diag.engineVersion?.rawBytes).toMatch(/^[0-9a-f]{68}$/);
+  });
+
   it('buildReport folds the captured diagnostics into HardwareReport.diagnostics', async () => {
     const result = await connectMock('lw550');
     const role = Object.keys(result.printers)[0]!;
@@ -109,7 +121,11 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
       ...(diag.skuInfo ? { skuInfo: diag.skuInfo } : {}),
     };
 
-    const identity: IdentitySnapshot = { advertisedName: 'LabelWriter 550', vid: 0x0922, pid: 0x0028 };
+    const identity: IdentitySnapshot = {
+      advertisedName: 'LabelWriter 550',
+      vid: 0x0922,
+      pid: 0x0028,
+    };
 
     const report: HardwareReport = adapter.buildReport({
       device: result.device,
@@ -127,7 +143,9 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     expect(d.prePrintStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
     expect(d.postPrintStatus).toBeDefined();
     expect(d.engineVersion?.fwVersion).toBe('0102.0003');
+    expect(d.engineVersion?.rawBytes).toMatch(/^[0-9a-f]{68}$/);
     expect(d.skuInfo?.sku).toBe('30252');
+    expect(d.skuInfo?.rawBytes).toMatch(/^[0-9a-f]{126}$/);
 
     // The whole report survives a JSON round-trip (no Uint8Array leaks).
     const round = JSON.parse(JSON.stringify(report)) as HardwareReport; // eslint-disable-line unicorn/prefer-structured-clone -- exercising the JSON.stringify path the report renderer uses
@@ -142,7 +160,13 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
 
     const session: LwSession = {
       engine,
-      media: { id: 'ADDRESS_STANDARD', name: 'Address', widthMm: 28, heightMm: 89, type: 'die-cut' },
+      media: {
+        id: 'ADDRESS_STANDARD',
+        name: 'Address',
+        widthMm: 28,
+        heightMm: 89,
+        type: 'die-cut',
+      },
       printed: true,
       rung: 'verified',
       notes: '',
