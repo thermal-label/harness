@@ -99,7 +99,10 @@ describe('letratag harness adapter — diagnostics path (mock lt_200b)', () => {
     const d = report.diagnostics!;
     // rawBytes hex-encoded — survives JSON.stringify.
     expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
+    // The print moved device state, so post is NOT byte-identical to
+    // pre — the builder keeps the pair (it only drops a duplicate post).
     expect(d.postPrintStatus).toBeDefined();
+    expect(d.postPrintStatus?.rawBytes).not.toBe(d.prePrintStatus?.rawBytes);
     // The captured status is the plain ready/errors shape — no
     // battery / details on this device.
     expect(d.prePrintStatus?.ready).toBe(true);

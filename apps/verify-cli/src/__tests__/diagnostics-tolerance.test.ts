@@ -13,8 +13,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  leanStatus,
   renderIssueBody,
-  serializeStatus,
   type HardwareReport,
   type ReportDiagnostics,
 } from '@thermal-label/harness-core/shared';
@@ -51,8 +51,11 @@ const lw550Status: PrinterStatus = {
 };
 
 const diagnostics: ReportDiagnostics = {
-  prePrintStatus: serializeStatus(lw550Status),
-  postPrintStatus: serializeStatus(lw550Status),
+  // `leanStatus` is the report-bound projection — `rawBytes` + the
+  // three booleans/`errors`, no decoded `details[]` (which `lw550Status`
+  // carries and the lean shape sheds to stay under the prefill cap).
+  prePrintStatus: leanStatus(lw550Status),
+  postPrintStatus: leanStatus(lw550Status),
   engineVersion: { hwVersion: 'HW1.0', fwKind: 'application', fwVersion: '0102.0003', pid: 0x0028 },
   skuInfo: { sku: '30252', material: 'paper', totalLabelCount: 220 },
 };
@@ -77,6 +80,9 @@ describe('verify-cli — HardwareReport.diagnostics tolerance', () => {
     );
     expect(parsed.diagnostics?.engineVersion?.fwVersion).toBe('0102.0003');
     expect(parsed.diagnostics?.skuInfo?.sku).toBe('30252');
+    // The lean status shape reaches the parser — no decoded `details[]`
+    // rode along to inflate the URL.
+    expect(parsed.diagnostics?.prePrintStatus).not.toHaveProperty('details');
     // The whole block survives the JSON round-trip intact.
     expect(parsed.diagnostics).toEqual(diagnostics);
   });

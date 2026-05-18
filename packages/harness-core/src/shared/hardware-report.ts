@@ -9,7 +9,7 @@
  */
 
 import type { TransportType } from '@thermal-label/contracts';
-import type { SerializedStatus } from './serialize-status.js';
+import type { LeanStatus } from './serialize-status.js';
 
 /**
  * Per-pattern result reported by the harness.
@@ -277,18 +277,30 @@ export type SkuInfoSnapshot = Readonly<Record<string, string | number | boolean>
  * Live device-state captured across the print flow, embedded in a
  * `HardwareReport`.
  *
- * Each `*Status` is a {@link SerializedStatus} (rawBytes hex-encoded
- * so the block survives `JSON.stringify`). Every field is optional —
- * the harness fills whatever the flow reached. For a "nothing happens"
- * report, `prePrintStatus` vs `postPrintStatus` (byte-0 sub-state +
- * job-ID echo) reveal whether the job was accepted or silently
- * dropped. Plan 13 §C.
+ * Each `*Status` is a {@link LeanStatus} — `rawBytes` hex plus
+ * `ready` / `mediaLoaded` / `errors`. The decoded `details[]` table and
+ * `detectedMedia` are deliberately dropped: both re-derive from
+ * `rawBytes` (verify-cli replays the driver decode), and the report's
+ * roll/media forensics already live in `skuInfo`. Keeping the block
+ * lean is what lets a standard single-engine LW 5xx report fit GitHub's
+ * prefill-URL limit and submit in one click — see {@link LeanStatus}.
+ *
+ * Every field is optional — the harness fills whatever the flow
+ * reached. For a "nothing happens" report, `prePrintStatus` vs
+ * `postPrintStatus` (byte-0 sub-state + job-ID echo) reveal whether the
+ * job was accepted or silently dropped. Plan 13 §C.
  */
 export interface ReportDiagnostics {
   /** `ESC A` status captured immediately before `printer.print()`. */
-  prePrintStatus?: SerializedStatus;
-  /** `ESC A` status captured immediately after `printer.print()` resolved. */
-  postPrintStatus?: SerializedStatus;
+  prePrintStatus?: LeanStatus;
+  /**
+   * `ESC A` status captured immediately after `printer.print()`
+   * resolved. Omitted when byte-identical to `prePrintStatus` — a clean
+   * run leaves the two the same, and the duplicate is dead weight in
+   * the prefill URL; the pair is carried only when the print actually
+   * moved device state.
+   */
+  postPrintStatus?: LeanStatus;
   /** `ESC V` engine version block (LW 5xx). */
   engineVersion?: EngineVersionSnapshot;
   /** `ESC U` SKU dump (LW 5xx), beyond what `detectedMedia` carries. */

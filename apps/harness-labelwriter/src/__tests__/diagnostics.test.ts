@@ -12,7 +12,12 @@
 import { describe, expect, it } from 'vitest';
 import type { PrintEngine, PrinterAdapter } from '@thermal-label/contracts';
 import type { EngineSession } from '@thermal-label/harness-shell';
-import type { HardwareReport, IdentitySnapshot } from '@thermal-label/harness-core/shared';
+import {
+  renderIssueBody,
+  type EnvironmentSnapshot,
+  type HardwareReport,
+  type IdentitySnapshot,
+} from '@thermal-label/harness-core/shared';
 import type { LabelWriterAnyMedia } from '@thermal-label/labelwriter-core';
 import { adapter } from '../adapter';
 
@@ -141,7 +146,9 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
     // rawBytes hex-encoded — survives JSON.stringify.
     expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
     expect(d.prePrintStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
-    expect(d.postPrintStatus).toBeDefined();
+    // Pre/post are the same mock `ESC A` reply (byte-identical) — the
+    // builder drops the duplicate post to keep the report URL-sized.
+    expect(d.postPrintStatus).toBeUndefined();
     expect(d.engineVersion?.fwVersion).toBe('0102.0003');
     expect(d.engineVersion?.rawBytes).toMatch(/^[0-9a-f]{68}$/);
     expect(d.skuInfo?.sku).toBe('30252');
@@ -185,5 +192,78 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
 
     expect(report.diagnostics).toBeUndefined();
     expect(report.schemaVersion).toBe(1);
+  });
+
+  it('a standard single-engine 550 report fits GitHub’s prefill-URL limit', async () => {
+    // Regression guard for REPORT_BLOAT_HANDOFF.md: a full SerializedStatus
+    // pre/post pair in `diagnostics` (decoded `details[]` + `detectedMedia`,
+    // ×2) pushed the common 550 report over GitHub's ~7.5 KB prefill cap,
+    // forcing the title-only paste-recovery path. The lean status
+    // projection + post-dedup must keep the common case a one-click submit.
+    // Reverting either change re-bloats this real `?mock=lw550` report and
+    // trips the assertion.
+    const URL_LENGTH_LIMIT = 7_500; // mirrors harness-shell/src/submit/submit.ts
+    const result = await connectMock('lw550');
+    const role = Object.keys(result.printers)[0]!;
+    const printer = result.printers[role]!;
+    const engine = engineOf(printer);
+
+    // A clean run — pre/post are the same `ESC A` reply, so the builder
+    // drops the duplicate post (the realistic standard-550 shape).
+    const prePrintStatus = await printer.getStatus();
+    const postPrintStatus = await printer.getStatus();
+    const diag = result.engineDiagnostics![role]!;
+
+    const session: LwSession = {
+      engine,
+      media: { id: 'sku-30252', name: '30252', widthMm: 28, heightMm: 89, type: 'die-cut' },
+      printed: true,
+      rung: 'verified',
+      notes: '',
+      prePrintStatus,
+      postPrintStatus,
+      ...(diag.engineVersion ? { engineVersion: diag.engineVersion } : {}),
+      ...(diag.skuInfo ? { skuInfo: diag.skuInfo } : {}),
+    };
+
+    // The shell stamps `environment` onto the report at submit time;
+    // include a representative browser block so the budget check matches
+    // a real one-click submit rather than an under-count.
+    const environment: EnvironmentSnapshot = {
+      runtime: 'browser',
+      browser: 'Chrome',
+      browserVersion: '124.0.6367.119',
+      os: 'Windows',
+      osVersion: '10.0.0',
+      mobile: false,
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    };
+
+    const report: HardwareReport = {
+      ...adapter.buildReport({
+        device: result.device,
+        identity: { advertisedName: 'LabelWriter 550', vid: 0x0922, pid: 0x0028 },
+        primarySession: session,
+        allSessions: [session],
+        multiEngine: false,
+        mocked: true,
+      }),
+      environment,
+    };
+
+    // The post was deduped — a standard clean 550 report carries one
+    // lean status, not a duplicated pair.
+    expect(report.diagnostics?.prePrintStatus).toBeDefined();
+    expect(report.diagnostics?.postPrintStatus).toBeUndefined();
+
+    const body = renderIssueBody(report);
+    const title = '[harness] LabelWriter 550 — usb=verified';
+    const url = `https://github.com/thermal-label/labelwriter/issues/new?${new URLSearchParams(
+      { title, body },
+    ).toString()}`;
+
+    expect(url.length).toBeLessThan(URL_LENGTH_LIMIT);
   });
 });

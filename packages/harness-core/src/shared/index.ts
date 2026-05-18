@@ -18,8 +18,8 @@ export type {
   TransportReport,
 } from './hardware-report.js';
 
-export type { SerializedStatus } from './serialize-status.js';
-export { serializeStatus, toHex } from './serialize-status.js';
+export type { LeanStatus, SerializedStatus } from './serialize-status.js';
+export { leanStatus, serializeStatus, toHex } from './serialize-status.js';
 
 export type { TestPattern } from './test-pattern.js';
 

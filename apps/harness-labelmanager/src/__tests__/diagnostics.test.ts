@@ -81,7 +81,9 @@ describe('labelmanager harness adapter — diagnostics path (mock lm_pnp)', () =
     const d = report.diagnostics!;
     // rawBytes hex-encoded — survives JSON.stringify.
     expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
-    expect(d.postPrintStatus).toBeDefined();
+    // Pre/post are the same mock status reply (byte-identical) — the
+    // builder drops the duplicate post to keep the report URL-sized.
+    expect(d.postPrintStatus).toBeUndefined();
     // D1 has no ESC V / ESC U — these stay unset.
     expect(d.engineVersion).toBeUndefined();
     expect(d.skuInfo).toBeUndefined();

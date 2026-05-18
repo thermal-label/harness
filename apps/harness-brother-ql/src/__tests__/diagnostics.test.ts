@@ -82,7 +82,9 @@ describe('brother-ql harness adapter — diagnostics path (mock ql_820nwbc)', ()
     // rawBytes hex-encoded — survives JSON.stringify.
     expect(typeof d.prePrintStatus?.rawBytes).toBe('string');
     expect(d.prePrintStatus?.rawBytes.length).toBe(64); // 32 bytes → 64 hex chars
-    expect(d.postPrintStatus).toBeDefined();
+    // Pre/post are the same mock status frame (byte-identical) — the
+    // builder drops the duplicate post to keep the report URL-sized.
+    expect(d.postPrintStatus).toBeUndefined();
     // No ESC V / ESC U on brother-ql — these stay unset.
     expect(d.engineVersion).toBeUndefined();
     expect(d.skuInfo).toBeUndefined();
