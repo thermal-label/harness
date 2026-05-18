@@ -127,6 +127,23 @@ describe('buildDiagnosticsSnapshot', () => {
     expect(snap.mocked).toBe(true);
   });
 
+  it('carries engineVersion / skuInfo when the adapter captured them', () => {
+    const engineVersion = { hwVersion: '1.0', fwVersion: '0102.0003', rawBytes: 'abcd' };
+    const skuInfo = { sku: '30252', rawBytes: 'beef' };
+    const snap = buildDiagnosticsSnapshot({
+      ...baseInput,
+      engines: [{ role: 'label', status, engineVersion, skuInfo }],
+    });
+    expect(snap.engines[0]!.engineVersion).toEqual(engineVersion);
+    expect(snap.engines[0]!.skuInfo).toEqual(skuInfo);
+  });
+
+  it('omits engineVersion / skuInfo for an engine that captured neither', () => {
+    const snap = buildDiagnosticsSnapshot(baseInput);
+    expect(snap.engines[0]).not.toHaveProperty('engineVersion');
+    expect(snap.engines[0]).not.toHaveProperty('skuInfo');
+  });
+
   it('handles a multi-engine device with one entry per role', () => {
     const snap = buildDiagnosticsSnapshot({
       ...baseInput,

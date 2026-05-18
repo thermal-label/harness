@@ -68,9 +68,13 @@ const copyState = ref<'idle' | 'copied'>('idle');
 const diagnosticsSnapshot = computed<DiagnosticsSnapshot | null>(() => {
   const identity = session.connection.identity;
   if (!session.isConnected.value || !identity) return null;
-  const engines = Object.entries(session.engineSessions).map(([role]) => ({
+  const engines = Object.entries(session.engineSessions).map(([role, es]) => ({
     role,
     status: session.printerStatus[role] ?? null,
+    // Connect-time ESC V / ESC U capture (LW 5xx) — the shell folds
+    // these onto the engine session; surface them in the snapshot too.
+    ...(es.engineVersion ? { engineVersion: es.engineVersion } : {}),
+    ...(es.skuInfo ? { skuInfo: es.skuInfo } : {}),
   }));
   return buildDiagnosticsSnapshot({
     driverKey: adapter.driverKey,

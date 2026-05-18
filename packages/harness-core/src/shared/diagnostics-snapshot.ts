@@ -18,7 +18,12 @@
  */
 
 import type { PrinterStatus } from '@thermal-label/contracts';
-import type { EnvironmentSnapshot, IdentitySnapshot } from './hardware-report.js';
+import type {
+  EngineVersionSnapshot,
+  EnvironmentSnapshot,
+  IdentitySnapshot,
+  SkuInfoSnapshot,
+} from './hardware-report.js';
 import { serializeStatus, type SerializedStatus } from './serialize-status.js';
 
 /**
@@ -50,6 +55,16 @@ export interface DiagnosticsEngine {
   status: SerializedStatus | null;
   /** JSON-safe projection of the detected media, if the printer reports any. */
   detectedMedia: DiagnosticsMedia | null;
+  /**
+   * `ESC V` engine-version block — present when the adapter captured
+   * one on connect (LW 5xx). Carries the hex `rawBytes` frame.
+   */
+  engineVersion?: EngineVersionSnapshot;
+  /**
+   * `ESC U` SKU dump — present when the adapter captured one on
+   * connect (LW 5xx). Carries the hex `rawBytes` frame.
+   */
+  skuInfo?: SkuInfoSnapshot;
 }
 
 /**
@@ -79,10 +94,17 @@ export interface DiagnosticsSnapshot {
   engines: DiagnosticsEngine[];
 }
 
-/** One engine's input to the builder — its role + latest polled status. */
+/**
+ * One engine's input to the builder — its role, latest polled status,
+ * and any connect-time `ESC V` / `ESC U` capture.
+ */
 export interface DiagnosticsEngineInput {
   role: string;
   status: PrinterStatus | null;
+  /** `ESC V` engine-version snapshot, when the adapter captured one. */
+  engineVersion?: EngineVersionSnapshot;
+  /** `ESC U` SKU snapshot, when the adapter captured one. */
+  skuInfo?: SkuInfoSnapshot;
 }
 
 /** Input to {@link buildDiagnosticsSnapshot}. */
@@ -141,6 +163,8 @@ export function buildDiagnosticsSnapshot(
       role: engine.role,
       status: engine.status ? serializeStatus(engine.status) : null,
       detectedMedia: engine.status ? projectMedia(engine.status.detectedMedia) : null,
+      ...(engine.engineVersion ? { engineVersion: engine.engineVersion } : {}),
+      ...(engine.skuInfo ? { skuInfo: engine.skuInfo } : {}),
     })),
   };
 }
