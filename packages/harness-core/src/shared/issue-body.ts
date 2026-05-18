@@ -31,13 +31,11 @@ export function renderIssueBody(report: HardwareReport): string {
   const envLine = renderEnvironmentLine(report);
   const transportLines = report.transports.map(renderTransportLine);
   const engineBlock = renderEnginesBlock(report);
-  const notesBlock = renderOperatorNotes(report);
 
   const sections = [headline];
   if (envLine) sections.push(envLine);
   sections.push(...transportLines);
   if (engineBlock) sections.push(engineBlock);
-  if (notesBlock) sections.push(notesBlock);
   sections.push(renderJsonBlock(report));
 
   return `${sections.join('\n\n')}\n`;
@@ -110,13 +108,6 @@ function renderEnginesBlock(report: HardwareReport): string | undefined {
 function renderEngineLine(engine: EngineReport): string {
   const note = engine.notes ? ` — ${engine.notes}` : '';
   return `- \`${engine.role}\` (${engine.mediaKey}) — ${RUNG_LABEL[engine.rung]}${note}`;
-}
-
-function renderOperatorNotes(report: HardwareReport): string | undefined {
-  const notes = report.transports.map(t => t.notes).filter((n): n is string => Boolean(n));
-  if (notes.length === 0) return undefined;
-  // Attribution is the GitHub issue author — no reporter field to render.
-  return notes.map(n => `> ${n}`).join('\n');
 }
 
 function renderJsonBlock(report: HardwareReport): string {

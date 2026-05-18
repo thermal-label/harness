@@ -60,21 +60,24 @@ describe('renderIssueBody', () => {
     expect(out).toContain('T3 [fail]');
   });
 
-  it('quotes operator notes as a blockquote', () => {
+  it('renders an operator note inline on its transport line — only once', () => {
     const out = renderIssueBody(baseReport);
-    expect(out).toContain('> cut blade jams on continuous');
+    // The note rides on the transport line, right after the glyphs.
+    expect(out).toContain('T3 [fail] — cut blade jams on continuous');
+    // It is not also repeated as a standalone blockquote.
+    expect(out).not.toMatch(/^> /m);
   });
 
-  it('omits the notes block when no transport carries notes', () => {
+  it('omits the inline note when a transport carries none', () => {
     const noNotesTransport = { ...baseReport.transports[0]! };
     delete (noNotesTransport as { notes?: string }).notes;
     const out = renderIssueBody({
       ...baseReport,
       transports: [noNotesTransport],
     });
-    // Markdown blockquote lines (`> `) appear only in the operator-notes
-    // block; the embedded JSON's `</details>` is a different glyph context.
-    expect(out).not.toMatch(/^> /m);
+    // The transport line ends at the glyphs — no trailing ` — <note>`.
+    expect(out).toContain('T3 [fail]\n');
+    expect(out).not.toContain('cut blade jams on continuous');
   });
 
   it('uses the worst rung for the headline when transports disagree', () => {
