@@ -40,26 +40,32 @@ export function urlExceedsLimit(url: string): boolean {
 }
 
 export interface SubmitResult {
-  /** Path taken: opened the URL, or fell back to clipboard. */
-  path: 'prefill-url' | 'clipboard-fallback';
-  /** The issue URL when applicable. */
-  url?: string;
+  /** Did the browser open the prefilled issue tab for us? */
+  opened: boolean;
   /**
-   * Why the clipboard fallback fired — drives the recovery copy the
-   * SubmitSection shows. Absent on the `prefill-url` happy path.
+   * The prefilled new-issue URL we opened (or tried to). The
+   * SubmitSection links to it as the manual recovery path.
    */
-  reason?: 'url-too-long' | 'popup-blocked';
+  url: string;
+  /**
+   * How much of the issue the URL prefills:
+   *  - `'full'`  — title + body; nothing left to paste.
+   *  - `'title'` — title only; the body overflowed GitHub's URL limit,
+   *    so the operator copies it and pastes it into the description.
+   */
+  prefill: 'full' | 'title';
 }
 
 /**
- * Try to open the prefilled URL in a new tab. If the URL exceeds the
- * safe length, surface the clipboard-fallback path so the caller
- * renders the textarea + Copy button.
+ * Open the report as a prefilled GitHub issue in a new tab.
  *
- * Browser pop-up blockers fire when `window.open` runs outside a
- * direct user gesture — callers must invoke this from a click
- * handler. We do best-effort detection of a blocked pop-up and fall
- * back gracefully.
+ * When the title + body fit GitHub's prefill-URL limit, both are
+ * prefilled (`prefill: 'full'`). When the body overflows, a
+ * title-only issue is opened instead (`prefill: 'title'`) — the
+ * title always fits — and the caller surfaces a copy-the-body step.
+ *
+ * `opened` reports whether the browser allowed the tab; callers must
+ * invoke this from a click handler so pop-up blockers don't fire.
  */
 // eslint-disable-next-line @typescript-eslint/require-await
 export async function submitReport(
@@ -68,18 +74,36 @@ export async function submitReport(
 ): Promise<SubmitResult> {
   const body = renderIssueBody(report);
   const title = buildIssueTitle(report);
-  const url = buildPrefillUrl(targetRepo, title, body);
 
-  if (urlExceedsLimit(url)) {
-    return { path: 'clipboard-fallback', reason: 'url-too-long' };
+  const fullUrl = buildPrefillUrl(targetRepo, title, body);
+  if (!urlExceedsLimit(fullUrl)) {
+    return { opened: openIssueTab(fullUrl), url: fullUrl, prefill: 'full' };
   }
 
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!opened) {
-    return { path: 'clipboard-fallback', reason: 'popup-blocked', url };
-  }
+  // The body overflows GitHub's prefill limit. Open a title-only
+  // prefill so the operator lands on a new issue with the title
+  // already set and only has to paste the body in.
+  const titleUrl = buildPrefillUrl(targetRepo, title, '');
+  return { opened: openIssueTab(titleUrl), url: titleUrl, prefill: 'title' };
+}
 
-  return { path: 'prefill-url', url };
+/**
+ * Open `url` in a new tab, reporting whether the browser allowed it.
+ *
+ * `window.open` returns `null` whenever `noopener` is in the feature
+ * string, which makes open-vs-blocked indistinguishable — so we omit
+ * it and sever `opener` by hand instead. Safe here: the target is
+ * always github.com, a trusted origin.
+ */
+function openIssueTab(url: string): boolean {
+  const opened = window.open(url, '_blank');
+  if (!opened) return false;
+  try {
+    opened.opener = null;
+  } catch {
+    // A cross-origin WindowProxy may refuse the assignment — harmless.
+  }
+  return true;
 }
 
 export async function copyToClipboard(text: string): Promise<void> {

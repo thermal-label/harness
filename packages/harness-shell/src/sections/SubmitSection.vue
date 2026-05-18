@@ -32,6 +32,7 @@ import {
   renderBody,
   submitReport,
   urlExceedsLimit,
+  type SubmitResult,
 } from '../submit/submit';
 import SectionCard from './SectionCard.vue';
 
@@ -56,12 +57,13 @@ const reporterHandle = ref('');
 const errorMessage = ref<string | null>(null);
 const fallbackBody = ref<string | null>(null);
 /**
- * Why the manual-filing fallback is showing — `null` on a clean
- * submit. Drives the fallback block's recovery copy and keeps the
- * "on its way" banner honest.
+ * Structured result of the last submit attempt — `null` before the
+ * first attempt or after a hard error. Drives the post-submit banner
+ * and the recovery block.
  */
-const fallbackReason = ref<'url-too-long' | 'popup-blocked' | 'submit-error' | null>(null);
+const submitResult = ref<SubmitResult | null>(null);
 const copyState = ref<'idle' | 'copied'>('idle');
+const reportCopyState = ref<'idle' | 'copied'>('idle');
 
 // ─── Diagnostics snapshot (ungated — available from connect) ──────
 //
@@ -174,24 +176,21 @@ function buildReport() {
 async function doSubmit(): Promise<void> {
   errorMessage.value = null;
   fallbackBody.value = null;
-  fallbackReason.value = null;
+  submitResult.value = null;
   const report = buildReport();
   if (!report) return;
 
   try {
     const result = await submitReport(report, adapter.targetRepo);
+    submitResult.value = result;
     session.submitState.submitted = true;
-    session.submitState.issueUrl = result.url ?? null;
-    if (result.path === 'clipboard-fallback') {
-      // Not an error — an expected, recoverable path. The fallback
-      // block below walks the operator through filing it by hand.
-      fallbackReason.value = result.reason ?? 'popup-blocked';
-      fallbackBody.value = renderBody(report);
-    }
+    session.submitState.issueUrl = result.url;
+    // The body must be hand-pasted only when it overflowed the prefill
+    // URL — a title-only issue was opened in that case.
+    if (result.prefill === 'title') fallbackBody.value = renderBody(report);
   } catch (err) {
     session.submitState.submitted = false;
     errorMessage.value = err instanceof Error ? err.message : String(err);
-    fallbackReason.value = 'submit-error';
     fallbackBody.value = renderBody(report);
   }
 }
@@ -216,6 +215,41 @@ const previewUrlTooLong = computed(() => {
     buildPrefillUrl(adapter.targetRepo, buildIssueTitle(report), renderBody(report)),
   );
 });
+
+/** The exact issue body that submit will file — for the preview + Copy. */
+const reportPreview = computed(() => {
+  const report = buildReport();
+  return report ? renderBody(report) : '';
+});
+
+/** True only when the browser opened a fully-prefilled issue — a clean submit. */
+const submitCleanlyOpened = computed(
+  () => submitResult.value?.opened === true && submitResult.value.prefill === 'full',
+);
+
+/** The recovery block shows whenever submit didn't cleanly open a full prefill. */
+const showRecovery = computed(
+  () => fallbackBody.value !== null || (submitResult.value !== null && !submitCleanlyOpened.value),
+);
+
+/** New-issue URL the recovery link points at — the prefilled one when we have it. */
+const recoveryUrl = computed(
+  () => submitResult.value?.url ?? `https://github.com/${adapter.targetRepo}/issues/new`,
+);
+
+async function copyReport(): Promise<void> {
+  const text = reportPreview.value;
+  if (!text) return;
+  try {
+    await copyToClipboard(text);
+    reportCopyState.value = 'copied';
+    setTimeout(() => {
+      reportCopyState.value = 'idle';
+    }, 2000);
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  }
+}
 
 interface CoverageRow {
   role: string;
@@ -310,14 +344,20 @@ function activate(role: string): void {
       </p>
 
       <p v-if="previewUrlTooLong" class="muted small">
-        Heads up — this report is detailed enough that GitHub can't prefill it into a link. After
-        you click submit you'll get a one-click Copy button and a link to file it in a few seconds.
+        Heads up — this report is detailed enough that GitHub can't prefill the whole thing into a
+        link. Submitting opens a new issue with the title already filled in; you'll copy the report
+        and paste the body — about ten seconds.
       </p>
 
       <label class="reporter">
         Your handle (optional, attribution only)
         <input v-model="reporterHandle" placeholder="@yourname" />
       </label>
+
+      <details class="payload-preview">
+        <summary>Preview the report you're filing</summary>
+        <textarea readonly rows="12" :value="reportPreview" aria-label="Report payload" />
+      </details>
 
       <div class="actions">
         <button
@@ -328,11 +368,14 @@ function activate(role: string): void {
         >
           {{ submitButtonLabel }}
         </button>
+        <button class="secondary" type="button" @click="copyReport">
+          {{ reportCopyState === 'copied' ? 'Copied ✓' : 'Copy report' }}
+        </button>
       </div>
     </template>
 
     <template v-else>
-      <p v-if="fallbackReason === null" class="ok-banner">
+      <p v-if="submitCleanlyOpened" class="ok-banner">
         Thanks — the report is on its way.
         <a
           v-if="session.submitState.issueUrl"
@@ -348,7 +391,7 @@ function activate(role: string): void {
         to finish filing it.
       </p>
 
-      <p v-if="fallbackReason === null">
+      <p v-if="submitCleanlyOpened">
         <strong>Have a photo of the print?</strong> Drop it into the GitHub issue's comment thread
         you just opened — GitHub's native attachment UI handles the upload. The harness
         intentionally doesn't host photos.
@@ -357,46 +400,51 @@ function activate(role: string): void {
 
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
-    <div v-if="fallbackBody" class="fallback">
-      <p class="fallback-lead">
-        <template v-if="fallbackReason === 'url-too-long'">
-          This report is too detailed for GitHub to prefill into a link — no problem. File it in
-          three quick steps:
-        </template>
-        <template v-else-if="fallbackReason === 'popup-blocked'">
-          Your browser blocked the GitHub tab — no problem. File the report in three quick steps:
-        </template>
-        <template v-else>
-          The report didn't reach GitHub automatically — no problem. File it in three quick steps:
-        </template>
-      </p>
-      <ol class="fallback-steps">
-        <li>
-          <a
-            class="step-link"
-            :href="`https://github.com/${adapter.targetRepo}/issues/new`"
-            target="_blank"
-            rel="noopener"
-          >
-            Open a new issue on {{ adapter.targetRepo }} ↗
+    <div v-if="showRecovery" class="fallback">
+      <template v-if="submitResult && submitResult.prefill === 'full' && !submitResult.opened">
+        <p class="fallback-lead">
+          Your browser blocked the new tab — no problem. The issue is fully prefilled, so a single
+          click finishes it:
+        </p>
+        <p class="fallback-single">
+          <a class="step-link" :href="submitResult.url" target="_blank" rel="noopener">
+            Open the prefilled issue ↗
           </a>
-        </li>
-        <li>
-          <button class="primary" type="button" @click="copyBody">
-            {{ copyState === 'copied' ? 'Report copied ✓' : 'Copy the report' }}
-          </button>
-        </li>
-        <li>Paste it into the issue description, then submit it there.</li>
-      </ol>
-      <textarea readonly rows="10" :value="fallbackBody" aria-label="Report body" />
+        </p>
+      </template>
+      <template v-else>
+        <p class="fallback-lead">
+          <template v-if="submitResult?.prefill === 'title'">
+            This report is too detailed for GitHub to prefill whole — so we opened a new issue with
+            the title already set. Grab the body before you head over:
+          </template>
+          <template v-else>
+            The report didn't reach GitHub automatically — no problem. File it in three quick steps:
+          </template>
+        </p>
+        <ol class="fallback-steps">
+          <li>
+            <button class="primary" type="button" @click="copyBody">
+              {{ copyState === 'copied' ? 'Report copied ✓' : 'Copy the report' }}
+            </button>
+          </li>
+          <li>
+            <a class="step-link" :href="recoveryUrl" target="_blank" rel="noopener">
+              Open the new issue ↗
+            </a>
+          </li>
+          <li>Paste the report into the issue description, then submit it there.</li>
+        </ol>
+        <textarea readonly rows="10" :value="fallbackBody ?? ''" aria-label="Report body" />
+      </template>
     </div>
     <!-- Diagnostics — copy-only, ungated by the verdict. Rendered in
-         SectionCard's `#ungated` slot so it stays full-opacity and
-         interactive even while the Submit step is `pending`; visible
-         from connect onward so a reporter can paste a snapshot into an
-         existing ticket without printing. -->
+         SectionCard's `#ungated` slot so it stays interactive while
+         the Submit step is `pending`. Shown only until a verdict is
+         picked: once there's a real report, the "Preview the report"
+         payload above supersedes it — two payloads at once confuse. -->
     <template #ungated>
-      <div v-if="diagnosticsSnapshot" class="diagnostics">
+      <div v-if="diagnosticsSnapshot && !session.canSubmit.value" class="diagnostics">
         <p class="muted small">
           Triaging an existing issue? Copy this and paste it into the ticket — no need to submit a
           new report.
@@ -430,6 +478,10 @@ function activate(role: string): void {
 
 .actions {
   margin-top: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
 }
 
 .primary {
@@ -444,6 +496,21 @@ function activate(role: string): void {
 
 .primary:hover:not(:disabled) {
   background: var(--accent-hover);
+}
+
+.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.secondary:hover {
+  background: var(--bg);
 }
 
 .ok-banner {
@@ -500,6 +567,11 @@ function activate(role: string): void {
   font-size: 0.9rem;
 }
 
+.fallback-single {
+  margin: var(--space-3) 0 0;
+  font-size: 0.9rem;
+}
+
 .fallback textarea {
   width: 100%;
   font-family: var(--font-mono);
@@ -514,6 +586,23 @@ function activate(role: string): void {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
+}
+
+.payload-preview {
+  margin-top: var(--space-3);
+}
+
+.payload-preview summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.payload-preview textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  resize: vertical;
+  margin-top: var(--space-2);
 }
 
 .diagnostics-preview {
