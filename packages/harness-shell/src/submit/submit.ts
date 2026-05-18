@@ -44,8 +44,11 @@ export interface SubmitResult {
   path: 'prefill-url' | 'clipboard-fallback';
   /** The issue URL when applicable. */
   url?: string;
-  /** Error if anything went wrong. */
-  error?: string;
+  /**
+   * Why the clipboard fallback fired — drives the recovery copy the
+   * SubmitSection shows. Absent on the `prefill-url` happy path.
+   */
+  reason?: 'url-too-long' | 'popup-blocked';
 }
 
 /**
@@ -68,16 +71,12 @@ export async function submitReport(
   const url = buildPrefillUrl(targetRepo, title, body);
 
   if (urlExceedsLimit(url)) {
-    return { path: 'clipboard-fallback', error: 'URL would exceed GitHub limits' };
+    return { path: 'clipboard-fallback', reason: 'url-too-long' };
   }
 
   const opened = window.open(url, '_blank', 'noopener,noreferrer');
   if (!opened) {
-    return {
-      path: 'clipboard-fallback',
-      error: 'Browser blocked the new tab — use the Copy button below to grab the report body.',
-      url,
-    };
+    return { path: 'clipboard-fallback', reason: 'popup-blocked', url };
   }
 
   return { path: 'prefill-url', url };

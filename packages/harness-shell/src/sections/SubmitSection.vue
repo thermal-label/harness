@@ -55,6 +55,12 @@ const sectionState = computed<'pending' | 'active' | 'done'>(() => {
 const reporterHandle = ref('');
 const errorMessage = ref<string | null>(null);
 const fallbackBody = ref<string | null>(null);
+/**
+ * Why the manual-filing fallback is showing — `null` on a clean
+ * submit. Drives the fallback block's recovery copy and keeps the
+ * "on its way" banner honest.
+ */
+const fallbackReason = ref<'url-too-long' | 'popup-blocked' | 'submit-error' | null>(null);
 const copyState = ref<'idle' | 'copied'>('idle');
 
 // ─── Diagnostics snapshot (ungated — available from connect) ──────
@@ -168,6 +174,7 @@ function buildReport() {
 async function doSubmit(): Promise<void> {
   errorMessage.value = null;
   fallbackBody.value = null;
+  fallbackReason.value = null;
   const report = buildReport();
   if (!report) return;
 
@@ -176,14 +183,15 @@ async function doSubmit(): Promise<void> {
     session.submitState.submitted = true;
     session.submitState.issueUrl = result.url ?? null;
     if (result.path === 'clipboard-fallback') {
-      errorMessage.value =
-        result.error ??
-        "Couldn't open the issue tab — we copied the report body to your clipboard.";
+      // Not an error — an expected, recoverable path. The fallback
+      // block below walks the operator through filing it by hand.
+      fallbackReason.value = result.reason ?? 'popup-blocked';
       fallbackBody.value = renderBody(report);
     }
   } catch (err) {
     session.submitState.submitted = false;
     errorMessage.value = err instanceof Error ? err.message : String(err);
+    fallbackReason.value = 'submit-error';
     fallbackBody.value = renderBody(report);
   }
 }
@@ -302,8 +310,8 @@ function activate(role: string): void {
       </p>
 
       <p v-if="previewUrlTooLong" class="muted small">
-        Heads up: this report's body exceeds GitHub's URL limit. After submit, use the Copy button
-        below to grab the body and paste it into a fresh issue manually.
+        Heads up — this report is detailed enough that GitHub can't prefill it into a link. After
+        you click submit you'll get a one-click Copy button and a link to file it in a few seconds.
       </p>
 
       <label class="reporter">
@@ -324,7 +332,7 @@ function activate(role: string): void {
     </template>
 
     <template v-else>
-      <p class="ok-banner">
+      <p v-if="fallbackReason === null" class="ok-banner">
         Thanks — the report is on its way.
         <a
           v-if="session.submitState.issueUrl"
@@ -335,36 +343,52 @@ function activate(role: string): void {
           Re-open the issue tab →
         </a>
       </p>
+      <p v-else class="warn">
+        Almost there — the report didn't reach GitHub on its own. The steps below take a few seconds
+        to finish filing it.
+      </p>
 
-      <p>
+      <p v-if="fallbackReason === null">
         <strong>Have a photo of the print?</strong> Drop it into the GitHub issue's comment thread
         you just opened — GitHub's native attachment UI handles the upload. The harness
         intentionally doesn't host photos.
-      </p>
-
-      <p class="muted small">
-        If the issue tab didn't open or the URL was too long, copy the report body below and paste
-        into a fresh issue at
-        <a
-          :href="`https://github.com/${adapter.targetRepo}/issues/new`"
-          target="_blank"
-          rel="noopener"
-        >
-          {{ adapter.targetRepo }}/issues/new </a
-        >.
       </p>
     </template>
 
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
     <div v-if="fallbackBody" class="fallback">
-      <p class="muted small">Report body — copy and paste into a fresh issue manually:</p>
-      <textarea readonly rows="10" :value="fallbackBody" />
-      <div class="fallback-actions">
-        <button class="primary" type="button" @click="copyBody">
-          {{ copyState === 'copied' ? 'Copied ✓' : 'Copy to clipboard' }}
-        </button>
-      </div>
+      <p class="fallback-lead">
+        <template v-if="fallbackReason === 'url-too-long'">
+          This report is too detailed for GitHub to prefill into a link — no problem. File it in
+          three quick steps:
+        </template>
+        <template v-else-if="fallbackReason === 'popup-blocked'">
+          Your browser blocked the GitHub tab — no problem. File the report in three quick steps:
+        </template>
+        <template v-else>
+          The report didn't reach GitHub automatically — no problem. File it in three quick steps:
+        </template>
+      </p>
+      <ol class="fallback-steps">
+        <li>
+          <a
+            class="step-link"
+            :href="`https://github.com/${adapter.targetRepo}/issues/new`"
+            target="_blank"
+            rel="noopener"
+          >
+            Open a new issue on {{ adapter.targetRepo }} ↗
+          </a>
+        </li>
+        <li>
+          <button class="primary" type="button" @click="copyBody">
+            {{ copyState === 'copied' ? 'Report copied ✓' : 'Copy the report' }}
+          </button>
+        </li>
+        <li>Paste it into the issue description, then submit it there.</li>
+      </ol>
+      <textarea readonly rows="10" :value="fallbackBody" aria-label="Report body" />
     </div>
     <!-- Diagnostics — copy-only, ungated by the verdict. Rendered in
          SectionCard's `#ungated` slot so it stays full-opacity and
@@ -456,6 +480,24 @@ function activate(role: string): void {
 
 .fallback {
   margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.fallback-lead {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.fallback-steps {
+  margin: var(--space-3) 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.9rem;
 }
 
 .fallback textarea {
@@ -492,12 +534,6 @@ function activate(role: string): void {
 }
 
 .diagnostics-actions {
-  margin-top: var(--space-3);
-}
-
-.fallback-actions {
-  display: flex;
-  gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
