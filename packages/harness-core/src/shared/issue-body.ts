@@ -31,11 +31,13 @@ export function renderIssueBody(report: HardwareReport): string {
   const envLine = renderEnvironmentLine(report);
   const transportLines = report.transports.map(renderTransportLine);
   const engineBlock = renderEnginesBlock(report);
+  const notesBlock = renderOperatorNotes(report);
 
   const sections = [headline];
   if (envLine) sections.push(envLine);
   sections.push(...transportLines);
   if (engineBlock) sections.push(engineBlock);
+  if (notesBlock) sections.push(notesBlock);
   sections.push(renderJsonBlock(report));
 
   return `${sections.join('\n\n')}\n`;
@@ -84,8 +86,9 @@ function renderTransportLine(transport: TransportReport): string {
   const patternEntries = Object.entries(transport.patterns);
   const glyphs = patternEntries.map(([id, result]) => `${id} ${RESULT_GLYPH[result]}`).join('  ');
   const head = `**${transport.name}** — ${RUNG_LABEL[transport.rung]}`;
-  const note = transport.notes ? ` — ${transport.notes}` : '';
-  return `${head}\n\n${glyphs}${note}`;
+  // The operator note is not appended here — it stands on its own as a
+  // blockquote (`renderOperatorNotes`); the line stays rung + glyphs.
+  return `${head}\n\n${glyphs}`;
 }
 
 /**
@@ -108,6 +111,18 @@ function renderEnginesBlock(report: HardwareReport): string | undefined {
 function renderEngineLine(engine: EngineReport): string {
   const note = engine.notes ? ` — ${engine.notes}` : '';
   return `- \`${engine.role}\` (${engine.mediaKey}) — ${RUNG_LABEL[engine.rung]}${note}`;
+}
+
+/**
+ * Operator notes block — the free-text caveats the operator typed,
+ * rendered as a standalone Markdown blockquote so each note stands on
+ * its own rather than riding on a transport's glyph line. Absent when
+ * no transport carries a note.
+ */
+function renderOperatorNotes(report: HardwareReport): string | undefined {
+  const notes = report.transports.map(t => t.notes).filter((n): n is string => Boolean(n));
+  if (notes.length === 0) return undefined;
+  return notes.map(n => `> ${n}`).join('\n');
 }
 
 function renderJsonBlock(report: HardwareReport): string {
