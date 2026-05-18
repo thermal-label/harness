@@ -21,7 +21,7 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
   'bluetooth-spp',
   'bluetooth-gatt',
 ];
-const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'unsupported'];
+const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'failing'];
 const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter', 'brother-ql'] as const;
 
 interface VerifyCommandOptions {

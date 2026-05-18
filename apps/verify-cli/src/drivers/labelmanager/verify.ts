@@ -74,8 +74,8 @@ const RUNG_CHOICES: readonly { value: ProposedRung; name: string; description: s
     description: 'Some aspect (margin, cutter, density, occasional drop) is off.',
   },
   {
-    value: 'unsupported',
-    name: 'unsupported — known-broken on this build',
+    value: 'failing',
+    name: 'failing — bytes go out, nothing usable comes back',
     description: 'Bytes go out but the printer produces nothing usable.',
   },
 ];

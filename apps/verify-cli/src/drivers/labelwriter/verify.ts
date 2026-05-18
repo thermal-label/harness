@@ -101,8 +101,8 @@ const RUNG_CHOICES: readonly { value: ProposedRung; name: string; description: s
       'mechanical reach (chassis geometry, automatically respected by the driver).',
   },
   {
-    value: 'unsupported',
-    name: 'unsupported — known-broken on this build',
+    value: 'failing',
+    name: 'failing — bytes go out, nothing usable comes back',
     description:
       'Bytes go out but the printer produces nothing usable. Empty borders are expected ' +
       'chassis geometry, not a defect.',

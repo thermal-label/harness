@@ -3,7 +3,7 @@ import type { EngineReport, HardwareReport, TransportReport } from './hardware-r
 const RUNG_LABEL: Record<TransportReport['rung'], string> = {
   verified: 'verified',
   partial: 'partial',
-  unsupported: 'unsupported',
+  failing: 'failing',
 };
 
 const RESULT_GLYPH = {
@@ -52,13 +52,13 @@ function renderHeadline(report: HardwareReport): string {
 
 /**
  * The headline carries one rung even when the report covers multiple
- * transports. Rule: worst rung wins (unsupported beats partial beats
+ * transports. Rule: worst rung wins (failing beats partial beats
  * verified) — matches how a human would summarise "two transports tested,
  * one broke" at a glance.
  */
 function pickHeadlineRung(report: HardwareReport): TransportReport['rung'] {
   const rungs = new Set(report.transports.map(t => t.rung));
-  if (rungs.has('unsupported')) return 'unsupported';
+  if (rungs.has('failing')) return 'failing';
   if (rungs.has('partial')) return 'partial';
   return 'verified';
 }

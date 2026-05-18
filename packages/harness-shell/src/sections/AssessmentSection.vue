@@ -44,7 +44,7 @@ const choices = [
       "shifted within the head's reach.",
   },
   {
-    value: 'unsupported',
+    value: 'failing',
     title: 'Not usable',
     blurb:
       'Bytes went out but nothing usable came back — blank output, garbled rows, completely off ' +

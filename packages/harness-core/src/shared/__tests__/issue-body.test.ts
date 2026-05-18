@@ -87,12 +87,12 @@ describe('renderIssueBody', () => {
         {
           name: 'tcp',
           patterns: { T1: 'fail' },
-          rung: 'unsupported',
+          rung: 'failing',
         },
       ],
     };
     const out = renderIssueBody(mixed);
-    expect(out.split('\n')[0]).toContain('— unsupported');
+    expect(out.split('\n')[0]).toContain('— failing');
   });
 
   it('round-trips JSON.stringify -> parse with all fields preserved', () => {

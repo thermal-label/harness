@@ -32,7 +32,7 @@ export type PatternResult = 'pass' | 'fail' | 'skipped';
  * the harness does not synthesise it from booleans (only a human can tell if
  * a thermal print "looks right").
  */
-export type ProposedRung = 'verified' | 'partial' | 'unsupported';
+export type ProposedRung = 'verified' | 'partial' | 'failing';
 
 /**
  * Identity-probe snapshot of a connected device, captured before any test

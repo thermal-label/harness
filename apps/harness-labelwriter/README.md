@@ -30,7 +30,7 @@ operator makes progress, but completed sections stay visible and editable.
 4. **Print the diagnostic** — sends one comprehensive print: header, asymmetric
    orientation markers, edge probes, sample text at two scales, fill region, and a
    trailing-edge probe. Operator can request a second copy before assessing.
-5. **What does it look like?** — three radios (`verified` / `partial` / `unsupported`)
+5. **What does it look like?** — three radios (`verified` / `partial` / `failing`)
    with one-line guidance per option, plus an optional notes textarea.
 6. **Submit the report** — opens a prefilled GitHub issue in a new tab. If the URL
    exceeds GitHub's limit (~8 kB) or the pop-up blocker fires, the body lands on the
