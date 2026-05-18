@@ -206,7 +206,6 @@ export async function runBrotherQlVerify(options: VerifyOptions): Promise<void> 
     device,
     media,
     runs,
-    reporter: options.reporter,
   });
   const body = renderIssueBody(report);
 
@@ -639,7 +638,6 @@ interface BuildReportInput {
   device: BrotherQLDevice;
   media: BrotherQLMedia;
   runs: readonly PerTransportRun[];
-  reporter: string | undefined;
 }
 
 function synthesiseIdentity(device: BrotherQLDevice, transport: TransportType): IdentitySnapshot {
@@ -695,7 +693,6 @@ function buildReport(input: BuildReportInput): HardwareReport {
     transports: transportReports,
     environment: captureNodeEnvironment(),
     submittedAt: new Date().toISOString(),
-    ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };
 }
 

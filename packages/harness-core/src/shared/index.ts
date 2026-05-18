@@ -13,7 +13,6 @@ export type {
   PatternResult,
   ProposedRung,
   ReportDiagnostics,
-  ReporterInfo,
   SkuInfoSnapshot,
   TransportReport,
 } from './hardware-report.js';

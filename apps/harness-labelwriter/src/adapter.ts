@@ -417,7 +417,6 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
     allSessions,
     multiEngine,
     mocked,
-    reporter,
   }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
@@ -483,7 +482,6 @@ export const adapter: DriverAdapter<LabelWriterDevice, LabelWriterAnyMedia> = {
       ...(multiEngine && engineReports.length > 0 ? { engines: engineReports } : {}),
       ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
-      ...(reporter ? { reporter: { handle: reporter } } : {}),
     } satisfies HardwareReport;
   },
 };

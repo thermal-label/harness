@@ -181,15 +181,6 @@ export interface DeviceIdentity {
 }
 
 /**
- * Optional reporter metadata. Never auto-filled with PII (see open question
- * in plan 03 §reporter PII); operator types `handle` voluntarily if they
- * want attribution.
- */
-export interface ReporterInfo {
-  handle?: string;
-}
-
-/**
  * The harness runtime + OS a report was produced on, captured at
  * submit time.
  *
@@ -357,8 +348,13 @@ export interface HardwareReport {
   environment?: EnvironmentSnapshot;
   /** ISO-8601 timestamp at submit time. */
   submittedAt: string;
-  reporter?: ReporterInfo;
 }
+
+// Reporter attribution intentionally not in the schema — every submit path
+// (browser prefill URL, verify-cli `gh issue create`) files the issue under
+// the reporter's own GitHub account, so the issue author already records who
+// ran the test. A free-text handle field only duplicated that (and could
+// drift from it), so it was dropped.
 
 // Photos intentionally not in the schema — operators drop them into the
 // GitHub issue comment after submit using GitHub's native attachment UI. The

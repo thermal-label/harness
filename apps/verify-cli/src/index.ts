@@ -35,7 +35,6 @@ interface VerifyCommandOptions {
   submit?: boolean;
   preview?: boolean;
   previewPng?: boolean;
-  reporter?: string;
   tapeWidth?: 6 | 9 | 12 | 19;
   /** Loaded label / tape SKU. Optional when the printer auto-detects (LW 5xx, brother-ql). */
   media?: string;
@@ -96,10 +95,6 @@ program
     'Write the diagnostic bitmap as a PNG to a tmp file and auto-open it in your default image viewer.',
   )
   .option(
-    '--reporter <handle>',
-    'Optional reporter handle (e.g. @mannes); appears in the issue body.',
-  )
-  .option(
     '--tape-width <mm>',
     'Legacy labelmanager shorthand: pick the canonical black-on-white STANDARD cartridge for the given width (6, 9, 12, 19). Superseded by --media; kept so existing one-liners still work.',
     (value): 6 | 9 | 12 | 19 => {
@@ -149,7 +144,6 @@ program
         noSubmit: options.submit === false,
         preview: options.preview === true,
         previewPng: options.previewPng === true,
-        reporter: options.reporter,
         tapeWidth: options.tapeWidth,
         media: options.media,
         host: options.host,

@@ -66,8 +66,6 @@ describe('verify-cli --dry-run end-to-end', () => {
       'bench self-validation',
       '--no-prompt',
       '--dry-run',
-      '--reporter',
-      '@mannes',
     ]);
 
     expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
@@ -83,7 +81,6 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(report.transports[0]?.rung).toBe('verified');
     expect(report.transports[0]?.notes).toBe('bench self-validation');
     expect(report.transports[0]?.patterns.diagnostic).toBe('pass');
-    expect(report.reporter?.handle).toBe('@mannes');
     // submittedAt should parse as a valid ISO timestamp.
     expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
   }, 30_000);
@@ -135,8 +132,6 @@ describe('verify-cli --dry-run end-to-end', () => {
       'bench self-validation',
       '--no-prompt',
       '--dry-run',
-      '--reporter',
-      '@mannes',
     ]);
 
     expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
@@ -152,7 +147,6 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(report.transports[0]?.rung).toBe('verified');
     expect(report.transports[0]?.notes).toBe('bench self-validation');
     expect(report.device.confirmed.overrides?.label).toBe('address-standard');
-    expect(report.reporter?.handle).toBe('@mannes');
     expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
   }, 30_000);
 

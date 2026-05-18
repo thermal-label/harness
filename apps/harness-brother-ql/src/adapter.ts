@@ -234,7 +234,7 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
   buildDiagnosticImage: ({ device, engine, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, engine, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
+  buildReport: ({ device, identity, primarySession, mocked }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -279,7 +279,6 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
       transports: [transportReport],
       ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
-      ...(reporter ? { reporter: { handle: reporter } } : {}),
     };
     return report;
   },

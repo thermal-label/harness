@@ -65,8 +65,7 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
   --rung verified \
   --notes "bench self-validation" \
   --no-prompt \
-  --dry-run \
-  --reporter "@mannes"
+  --dry-run
 ```
 
 | Flag                     | Effect                                                                                                                                                                                                                                                                                                                                                   |
@@ -81,7 +80,6 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 | `--no-submit`            | Run the real print + assessment, but render the body to stdout instead of submitting. Use when iterating on the print before filing.                                                                                                                                                                                                                     |
 | `--preview`              | Print the diagnostic bitmap as Braille to stdout before sending bytes. Combine with `--dry-run` for a hardware-free preview.                                                                                                                                                                                                                             |
 | `--preview-png`          | Write the diagnostic bitmap as a PNG to a tmp file and auto-open in your default image viewer. Most accurate "what you're sending" view.                                                                                                                                                                                                                 |
-| `--reporter <handle>`    | Optional reporter handle (e.g. `@mannes`); appears in the issue body.                                                                                                                                                                                                                                                                                    |
 | `--tape-width <mm>`      | Labelmanager-only. One of `6`, `9`, `12`, `19`. Defaults to `12`.                                                                                                                                                                                                                                                                                        |
 | `--media <key>`          | Loaded label / tape. Labelwriter accepts a media key (`ADDRESS_STANDARD`) or SKU (`30334`); brother-ql accepts a DK SKU (`DK-22205`). **Optional** when the printer auto-detects (LW 5xx via NFC, brother-ql via status query); **required** for LW 3xx/4xx. Wizard prompts when detection fails and no flag is passed. Flag always overrides detection. |
 | `--host <host>`          | TCP-9100 host (IP or hostname). Required for labelwriter `--transport tcp` and brother-ql `--transport tcp`. Wizard prompts when omitted.                                                                                                                                                                                                                |
@@ -98,8 +96,7 @@ from a real one in triage. Sample run:
 pnpm --filter verify-cli verify labelmanager LM_PNP \
   --transport usb --rung verified \
   --notes "bench self-validation" \
-  --no-prompt --dry-run \
-  --reporter "@mannes"
+  --no-prompt --dry-run
 ```
 
 Expected stdout (timestamp varies):
@@ -150,8 +147,7 @@ diagnostic [pass] — bench self-validation
       "notes": "bench self-validation"
     }
   ],
-  "submittedAt": "2026-05-07T12:55:00.090Z",
-  "reporter": { "handle": "@mannes" }
+  "submittedAt": "2026-05-07T12:55:00.090Z"
 }
 ``\`
 
@@ -305,8 +301,7 @@ pnpm --filter verify-cli verify brother-ql QL_820NWBc \
   --transport usb \
   --rung verified \
   --notes "bench self-validation" \
-  --no-prompt \
-  --reporter "@mannes"
+  --no-prompt
 ```
 
 ### Two-color self-validation (USB, DK-22251)
@@ -317,8 +312,7 @@ pnpm --filter verify-cli verify brother-ql QL_820NWBc \
   --transport usb \
   --rung verified \
   --notes "two-colour ribbon, header reads red as expected" \
-  --no-prompt \
-  --reporter "@mannes"
+  --no-prompt
 ```
 
 The diagnostic print's header strings (harness version, model key) and

@@ -85,7 +85,7 @@ Required fields:
 - `mockTargets`, `defaultMockTarget`
 - `media`, `mediaPicker.{filterByDeviceEngine, groupBy, defaultMediaId, detectionCapability}`
 - `encoder.{buildBitmap, encodeBytes}`
-- `buildReport({device, identity, primarySession, allSessions, multiEngine, mocked, reporter})` — returns a `HardwareReport`
+- `buildReport({device, identity, primarySession, allSessions, multiEngine, mocked})` — returns a `HardwareReport`
 
 Optional:
 

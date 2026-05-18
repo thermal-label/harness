@@ -223,7 +223,7 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
   buildDiagnosticImage: ({ device, media, harnessVersion, driverVersion }) =>
     buildDiagnosticImage({ device, media, harnessVersion, driverVersion }),
 
-  buildReport: ({ device, identity, primarySession, mocked, reporter }) => {
+  buildReport: ({ device, identity, primarySession, mocked }) => {
     if (primarySession.rung === null || primarySession.media === null) {
       throw new Error('buildReport: primary session must have rung and media set.');
     }
@@ -268,7 +268,6 @@ export const adapter: DriverAdapter<LabelManagerDevice, LabelManagerMedia> = {
       transports: [transportReport],
       ...(diagnostics ? { diagnostics } : {}),
       submittedAt: new Date().toISOString(),
-      ...(reporter ? { reporter: { handle: reporter } } : {}),
     };
     return report;
   },

@@ -115,10 +115,8 @@ function renderEngineLine(engine: EngineReport): string {
 function renderOperatorNotes(report: HardwareReport): string | undefined {
   const notes = report.transports.map(t => t.notes).filter((n): n is string => Boolean(n));
   if (notes.length === 0) return undefined;
-  // Reporter attribution is intentionally light — plan 03 keeps PII opt-in.
-  const reporter = report.reporter?.handle ? ` — ${report.reporter.handle}` : '';
-  const quoted = notes.map(n => `> ${n}`).join('\n');
-  return `${quoted}${reporter}`;
+  // Attribution is the GitHub issue author — no reporter field to render.
+  return notes.map(n => `> ${n}`).join('\n');
 }
 
 function renderJsonBlock(report: HardwareReport): string {

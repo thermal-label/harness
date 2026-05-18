@@ -28,7 +28,6 @@ const baseReport: HardwareReport = {
     },
   ],
   submittedAt: '2026-05-07T10:00:00.000Z',
-  reporter: { handle: 'mannes' },
 };
 
 describe('renderIssueBody', () => {
@@ -61,10 +60,9 @@ describe('renderIssueBody', () => {
     expect(out).toContain('T3 [fail]');
   });
 
-  it('quotes operator notes and attributes them when reporter handle is set', () => {
+  it('quotes operator notes as a blockquote', () => {
     const out = renderIssueBody(baseReport);
     expect(out).toContain('> cut blade jams on continuous');
-    expect(out).toContain('— mannes');
   });
 
   it('omits the notes block when no transport carries notes', () => {

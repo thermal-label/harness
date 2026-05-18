@@ -306,8 +306,6 @@ export interface BuildReportInput<TDevice, TMedia> {
   multiEngine: boolean;
   /** True if the run used the mock transport. */
   mocked: boolean;
-  /** Optional reporter handle from the submit form. */
-  reporter?: string;
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────

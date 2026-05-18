@@ -36,7 +36,6 @@ export interface VerifyOptions {
   preview: boolean;
   /** Write the diagnostic bitmap as a PNG to a tmp file and auto-open it. */
   previewPng: boolean;
-  reporter: string | undefined;
   /**
    * Labelmanager-only legacy shorthand: pick the canonical black-on-
    * white STANDARD cartridge for the given width. Superseded by

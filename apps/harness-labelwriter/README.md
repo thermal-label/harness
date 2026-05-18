@@ -130,8 +130,8 @@ Each submit produces a `HardwareReport` (per
 the issue body, alongside a human-readable prose summary. The triage runbook
 (plan 04) parses the JSON directly; the prose is for the maintainer's eyes.
 
-PII discipline: the `reporter` field is opt-in only, the operator types their handle if
-they want attribution. No auto-fill from the browser identity, no email harvest. USB
+PII discipline: the harness carries no reporter-identity field — attribution is the
+GitHub issue author. No auto-fill from the browser identity, no email harvest. USB
 serial numbers and other potentially-identifying USB descriptors are kept out of
 `detected.extra` (the WebUSB `productName` is included as `advertisedName`, but Dymo
 hardware doesn't advertise per-unit serials there).

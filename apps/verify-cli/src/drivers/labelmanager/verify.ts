@@ -132,7 +132,6 @@ export async function runLabelmanagerVerify(options: VerifyOptions): Promise<voi
     transport,
     rung,
     notes,
-    reporter: options.reporter,
   });
 
   const body = renderIssueBody(report);
@@ -441,7 +440,6 @@ interface BuildReportInput {
   transport: TransportType;
   rung: ProposedRung;
   notes: string | undefined;
-  reporter: string | undefined;
 }
 
 function synthesiseIdentity(device: LabelManagerDevice): IdentitySnapshot {
@@ -478,6 +476,5 @@ function buildReport(input: BuildReportInput): HardwareReport {
     transports: [transportReport],
     environment: captureNodeEnvironment(),
     submittedAt: new Date().toISOString(),
-    ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };
 }

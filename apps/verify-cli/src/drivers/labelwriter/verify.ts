@@ -295,7 +295,6 @@ async function runOneTransport(input: RunOneTransportInput): Promise<void> {
     detectedIdentity: identity,
     transports: input.runs,
     engines: device.engines.length > 1 ? input.engineRuns : undefined,
-    reporter: options.reporter,
   });
 
   const body = renderIssueBody(report);
@@ -791,7 +790,6 @@ interface BuildReportInput {
   detectedIdentity: IdentitySnapshot;
   transports: readonly TransportReport[];
   engines: readonly EngineReport[] | undefined;
-  reporter: string | undefined;
 }
 
 function synthesiseIdentity(
@@ -837,6 +835,5 @@ function buildReport(input: BuildReportInput): HardwareReport {
     ...(input.engines && input.engines.length > 0 ? { engines: input.engines } : {}),
     environment: captureNodeEnvironment(),
     submittedAt: new Date().toISOString(),
-    ...(input.reporter ? { reporter: { handle: input.reporter } } : {}),
   };
 }

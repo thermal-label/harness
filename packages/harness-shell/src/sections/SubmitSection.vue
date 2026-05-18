@@ -53,7 +53,6 @@ const sectionState = computed<'pending' | 'active' | 'done'>(() => {
   return 'done';
 });
 
-const reporterHandle = ref('');
 const errorMessage = ref<string | null>(null);
 const fallbackBody = ref<string | null>(null);
 /**
@@ -165,7 +164,6 @@ function buildReport() {
     allSessions: assessedSessions,
     multiEngine: isMultiEngine.value,
     mocked: session.connection.mocked,
-    ...(reporterHandle.value.trim() ? { reporter: reporterHandle.value.trim() } : {}),
   });
   // The runtime/OS snapshot is shell-owned context, folded in here so
   // no per-driver `buildReport` has to thread it through.
@@ -348,11 +346,6 @@ function activate(role: string): void {
         through it: copy the report, open a title-prefilled issue, paste. About ten seconds.
       </p>
 
-      <label class="reporter">
-        Your handle (optional, attribution only)
-        <input v-model="reporterHandle" placeholder="@yourname" />
-      </label>
-
       <details class="payload-preview">
         <summary>Preview the report you're filing</summary>
         <textarea readonly rows="12" :value="reportPreview" aria-label="Report payload" />
@@ -463,18 +456,6 @@ function activate(role: string): void {
 </template>
 
 <style scoped>
-.reporter {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: 0.9rem;
-  margin-top: var(--space-3);
-}
-
-.reporter input {
-  max-width: 16rem;
-}
-
 .actions {
   margin-top: var(--space-4);
   display: flex;
