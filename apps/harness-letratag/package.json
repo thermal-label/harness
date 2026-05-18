@@ -1,6 +1,6 @@
 {
   "name": "@thermal-label/harness-letratag",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Browser-hosted letratag hardware-reporting harness. Single-page guided UX, Web Bluetooth connect, diagnostic-print, prefilled GitHub-issue submit. Workspace-internal — released only as zipped static-bundle GitHub Release artifacts.",
   "type": "module",

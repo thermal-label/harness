@@ -1,6 +1,6 @@
 {
   "name": "@thermal-label/harness-brother-ql",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Browser-hosted brother-ql hardware-reporting harness (plan 06). Single-page guided UX, WebUSB connect, diagnostic-print, prefilled GitHub-issue submit. First consumer of the shared harness-shell's `auto-locked` MediaPicker mode (QL_700+ class with media auto-detection). Workspace-internal — released only as zipped static-bundle GitHub Release artifacts.",
   "type": "module",

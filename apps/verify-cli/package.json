@@ -1,6 +1,6 @@
 {
   "name": "verify-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Node-side hardware-reporting harness CLI for the thermal-label drivers (plan 05). Local dev only; never published.",
   "type": "module",
