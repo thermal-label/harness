@@ -33,6 +33,17 @@ export default defineConfig({
   // Static-bundle output: relative asset paths so the bundle works
   // when served from a sub-path (docs site mounts at /harness/labelwriter/).
   base: './',
+  server: {
+    fs: {
+      // labelwriter-core/-web are `link:`-overridden to the sibling
+      // checkout (outside the harness root) for local debug of the
+      // unreleased 0.6.3-debug print-flow branch. Vite's dev server
+      // refuses to serve files outside its allow-list, so widen it to
+      // the ~/thermal-label workspace parent. Dev-only; inert once the
+      // override returns to a registry pin.
+      allow: ['../../..'],
+    },
+  },
   optimizeDeps: {
     force: false,
   },
