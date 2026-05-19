@@ -22,8 +22,8 @@
     "@thermal-label/harness-core": "workspace:*",
     "@thermal-label/harness-shell": "workspace:*",
     "@thermal-label/labelmanager-core": "^0.6.0",
-    "@thermal-label/labelwriter-core": "^0.6.2",
-    "@thermal-label/labelwriter-web": "^0.6.2",
+    "@thermal-label/labelwriter-core": "0.6.3-debug.0",
+    "@thermal-label/labelwriter-web": "0.6.3-debug.0",
     "@thermal-label/transport": "^0.6.0",
     "vue": "^3.5.0"
   },
