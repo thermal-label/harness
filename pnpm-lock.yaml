@@ -11,8 +11,8 @@ overrides:
   '@thermal-label/d1-core': ^0.6.0
   '@thermal-label/labelmanager-core': ^0.6.0
   '@thermal-label/labelmanager-web': ^0.6.0
-  '@thermal-label/labelwriter-core': ^0.6.2
-  '@thermal-label/labelwriter-web': ^0.6.2
+  '@thermal-label/labelwriter-core': link:../labelwriter/packages/core
+  '@thermal-label/labelwriter-web': link:../labelwriter/packages/web
   '@thermal-label/letratag-core': ^0.6.0
   '@thermal-label/letratag-web': ^0.6.0
   '@thermal-label/transport': ^0.6.0
@@ -192,11 +192,11 @@ importers:
         specifier: ^0.6.0
         version: 0.6.0
       '@thermal-label/labelwriter-core':
-        specifier: ^0.6.2
-        version: 0.6.2(@thermal-label/d1-core@0.6.0)
+        specifier: link:../../../labelwriter/packages/core
+        version: link:../../../labelwriter/packages/core
       '@thermal-label/labelwriter-web':
-        specifier: ^0.6.2
-        version: 0.6.2(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)
+        specifier: link:../../../labelwriter/packages/web
+        version: link:../../../labelwriter/packages/web
       '@thermal-label/transport':
         specifier: ^0.6.0
         version: 0.6.0(usb@2.17.0)
@@ -311,8 +311,8 @@ importers:
         specifier: ^0.6.0
         version: 0.6.0
       '@thermal-label/labelwriter-core':
-        specifier: ^0.6.2
-        version: 0.6.2(@thermal-label/d1-core@0.6.0)
+        specifier: link:../../../labelwriter/packages/core
+        version: link:../../../labelwriter/packages/core
       '@thermal-label/transport':
         specifier: ^0.6.0
         version: 0.6.0(usb@2.17.0)
@@ -1254,21 +1254,6 @@ packages:
 
   '@thermal-label/labelmanager-web@0.6.0':
     resolution: {integrity: sha512-JtVeJpQeJTwxFZzr0XfDab8YjQdjpXNUtb7Po0YVXUnqLUakMAfP7WB/yJcc05tBLhxwWVFPx07+nARfbMSzSA==}
-    engines: {node: '>=20.9.0'}
-    peerDependencies:
-      typescript: '>=5.0'
-
-  '@thermal-label/labelwriter-core@0.6.2':
-    resolution: {integrity: sha512-0+Pb/AWfk3IdCxqv0jjO4NiA4J9PWcimD9oHc8IVq+amagfgfZFgNF0cDm0T5vUbRSke9G2yTK9vFRNXzhdkfA==}
-    engines: {node: '>=20.9.0'}
-    peerDependencies:
-      '@thermal-label/d1-core': ^0.6.0
-    peerDependenciesMeta:
-      '@thermal-label/d1-core':
-        optional: true
-
-  '@thermal-label/labelwriter-web@0.6.2':
-    resolution: {integrity: sha512-jnEFuQwhPCTKhmVIXkD3TDPgnMj6z1SM9xh1T1FgAFa4nM3w6Mlpk4d1/UJjCqI5SG53sJsZSxOF1s851qC/VA==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       typescript: '>=5.0'
@@ -3506,24 +3491,6 @@ snapshots:
       '@thermal-label/transport': 0.6.0(usb@2.17.0)
       typescript: 5.5.4
     transitivePeerDependencies:
-      - serialport
-      - usb
-
-  '@thermal-label/labelwriter-core@0.6.2(@thermal-label/d1-core@0.6.0)':
-    dependencies:
-      '@mbtech-nl/bitmap': 1.3.0
-      '@thermal-label/contracts': 0.6.0
-    optionalDependencies:
-      '@thermal-label/d1-core': 0.6.0
-
-  '@thermal-label/labelwriter-web@0.6.2(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)':
-    dependencies:
-      '@thermal-label/contracts': 0.6.0
-      '@thermal-label/labelwriter-core': 0.6.2(@thermal-label/d1-core@0.6.0)
-      '@thermal-label/transport': 0.6.0(usb@2.17.0)
-      typescript: 5.5.4
-    transitivePeerDependencies:
-      - '@thermal-label/d1-core'
       - serialport
       - usb
 
