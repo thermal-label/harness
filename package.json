@@ -28,6 +28,8 @@
       "@thermal-label/labelwriter-web": "0.6.3-debug.0",
       "@thermal-label/letratag-core": "^0.6.0",
       "@thermal-label/letratag-web": "^0.6.0",
+      "@thermal-label/niimbot-core": "link:../niimbot/packages/core",
+      "@thermal-label/niimbot-web": "link:../niimbot/packages/web",
       "@thermal-label/transport": "^0.6.0"
     }
   },

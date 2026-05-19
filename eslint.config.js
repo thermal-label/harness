@@ -8,10 +8,6 @@ export default [
       '**/coverage/**',
       '**/*.d.ts',
       '**/vitest.config.ts',
-      // harness-niimbot is cut from the 0.6.0 release (see pnpm-workspace.yaml).
-      // It is no longer a workspace member, so its deps are never installed and
-      // type-aware lint cannot resolve them. Exclude it until niimbot ships.
-      'apps/harness-niimbot/**',
     ],
   },
   {
