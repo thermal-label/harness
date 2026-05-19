@@ -66,19 +66,60 @@ const rawDetectedMedia = computed<MediaDescriptor | null>(() => {
 });
 
 /**
- * Detected media resolved back to a *catalogue* entry by id — the
- * canonical object the picker pre-selects in `auto-locked` mode.
- * `null` when nothing is detected OR when the detected media maps to
- * no catalogue entry (an unknown roll / unlisted SKU).
+ * SKU strings carried by the detected media. The LW 5xx NFC path reads
+ * the loaded roll's vendor SKU off its tag and surfaces it in
+ * `detectedMedia.name` (e.g. `"30252"`); a driver may also populate
+ * `skus[]` directly. Both feed the catalogue SKU match below. Trimmed,
+ * deduped, empty strings dropped.
+ */
+const detectedSkus = computed<readonly string[]>(() => {
+  const d = rawDetectedMedia.value;
+  if (!d) return [];
+  const out = new Set<string>();
+  const name = d.name.trim();
+  if (name) out.add(name);
+  for (const s of d.skus ?? []) {
+    const trimmed = s.trim();
+    if (trimmed) out.add(trimmed);
+  }
+  return [...out];
+});
+
+/**
+ * Detected media resolved back to a *catalogue* entry — the canonical
+ * object the picker pre-selects in `auto-locked` mode. `null` when
+ * nothing is detected OR when the detected media maps to no catalogue
+ * entry (an unknown roll / unlisted SKU).
+ *
+ * Two strategies, in order:
+ *  1. `id` equality — a driver whose detection round-trips a catalogue
+ *     `id` directly.
+ *  2. SKU match — the LW 5xx NFC path can't round-trip an `id` (its
+ *     detected `id` is a synthetic `sku-<n>` that equals no catalogue
+ *     entry), but it does carry the vendor SKU. Match that SKU against
+ *     each catalogue entry's `skus[]`; a hit means the roll is in the
+ *     registry under a proper name, so auto-lock to that entry.
+ *
+ * No hit by either strategy keeps the existing fallback in place — the
+ * picker drops to `detected-unrecognized` (geometry known, name not).
  */
 const matchedMedia = computed<MediaDescriptor | null>(() => {
   const fromStatus = rawDetectedMedia.value;
   if (!fromStatus) return null;
+  const list = compatibleMedia.value;
+
   const id = (fromStatus as { id?: unknown }).id;
   if (id !== undefined) {
-    const match = compatibleMedia.value.find(m => (m as { id?: unknown }).id === id);
-    if (match) return match;
+    const byId = list.find(m => (m as { id?: unknown }).id === id);
+    if (byId) return byId;
   }
+
+  const skus = detectedSkus.value;
+  if (skus.length > 0) {
+    const bySku = list.find(m => m.skus?.some(s => skus.includes(s.trim())));
+    if (bySku) return bySku;
+  }
+
   return null;
 });
 
@@ -185,6 +226,33 @@ const issueUrl = computed(() => {
   );
   return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
 });
+
+// Prefilled issue URL for an uncatalogued *detected* roll — the
+// printer read a real SKU + geometry (LW 5xx NFC tag) that the
+// thermal-label catalogue doesn't list yet. Distinct from the generic
+// "Don't see your label?" link below: this one comes pre-populated
+// from the detection, so contributing the missing SKU is one click.
+// `null` whenever detection matched the catalogue or produced nothing.
+const detectedIssueUrl = computed<string | null>(() => {
+  const d = rawDetected.value;
+  if (!d) return null;
+  const dims =
+    typeof d.heightMm === 'number' && d.heightMm > 0
+      ? `${String(d.widthMm)} × ${String(d.heightMm)} mm`
+      : `${String(d.widthMm)} mm continuous`;
+  const title = encodeURIComponent(`[media] Add ${d.name} to the ${adapter.driverKey} catalogue`);
+  const body = encodeURIComponent(
+    `The harness detected a roll that isn't in the thermal-label media catalogue yet.\n\n` +
+      `Driver: ${adapter.driverKey}\n` +
+      `Device: ${session.device.value ? adapter.deviceName(session.device.value) : '(unknown)'}\n\n` +
+      `Detected media — read from the printer:\n` +
+      `- SKU / identifier: ${d.name}\n` +
+      `- Dimensions: ${dims}\n` +
+      `- Type: ${d.type}\n\n` +
+      `Please add this SKU to the driver's media registry.\n`,
+  );
+  return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
+});
 </script>
 
 <template>
@@ -215,7 +283,14 @@ const issueUrl = computed(() => {
         @update:model-value="onUpdate"
       />
 
-      <p class="muted small dont-see">
+      <p
+        v-if="detectedIssueUrl"
+        class="muted small dont-see detected-unknown"
+      >
+        Detected <code>{{ rawDetected?.name }}</code> — not in the thermal-label catalogue yet.
+        <a :href="detectedIssueUrl" target="_blank" rel="noopener">Submit it for the library →</a>
+      </p>
+      <p v-else class="muted small dont-see">
         Don't see your label?
         <a :href="issueUrl" target="_blank" rel="noopener">Add support for label type X →</a>
       </p>
@@ -234,5 +309,10 @@ const issueUrl = computed(() => {
 
 .dont-see a {
   color: var(--accent);
+}
+
+.detected-unknown code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
 }
 </style>

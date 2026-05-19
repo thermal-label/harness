@@ -1,8 +1,10 @@
 /**
  * Capability-resolution tests for `MediaSection.vue`.
  *
- * Focus: the `detectionCapability` computed — specifically the new
- * `detected-unrecognized` branch and its graceful degrade. The
+ * Focus: the `detectionCapability` computed — the `detected-unrecognized`
+ * branch and its graceful degrade, the SKU-against-catalogue match that
+ * round-trips an LW 5xx NFC detection back to `auto-locked`, and the
+ * prefilled SKU-submission invite shown for an uncatalogued roll. The
  * resolved mode is observable on the rendered `<MediaPicker>`'s
  * `data-detection` attribute.
  *
@@ -45,6 +47,7 @@ const CATALOGUE_MEDIA: FakeMedia = {
   widthMm: 28,
   heightMm: 89,
   type: 'die-cut',
+  skus: ['30251', '30252'],
 };
 
 const FAKE_DEVICE: FakeDevice = {
@@ -96,15 +99,14 @@ function makeAdapter(withCustomMedia: boolean): DriverAdapter<FakeDevice, FakeMe
 
 /**
  * Mount MediaSection with a connected, identified session whose active
- * status carries `detectedMedia`. Returns the rendered detection mode
- * read off the `<MediaPicker>`'s `data-detection` attribute.
+ * status carries `detectedMedia`. Returns the mounted wrapper; read the
+ * resolved detection mode with `detectionModeOf`.
  */
 async function mountWithDetection(opts: {
   withCustomMedia: boolean;
   detectedMedia: MediaDescriptor | undefined;
-}): Promise<string | undefined> {
+}): Promise<ReturnType<typeof mount>> {
   const adapter = makeAdapter(opts.withCustomMedia);
-  let detectionMode: string | undefined;
 
   // `provide` is visible to descendants only — the providing
   // component's own `setup` can't `inject` it. So the adapter is
@@ -139,49 +141,97 @@ async function mountWithDetection(opts: {
 
   const wrapper = mount(Harness);
   await nextTick();
+  return wrapper;
+}
+
+/** The detection mode the rendered `<MediaPicker>` resolved to. */
+function detectionModeOf(wrapper: ReturnType<typeof mount>): string | undefined {
   const picker = wrapper.find('.media-picker');
-  if (picker.exists()) detectionMode = picker.attributes('data-detection');
-  return detectionMode;
+  return picker.exists() ? picker.attributes('data-detection') : undefined;
 }
 
 describe('MediaSection — detectionCapability', () => {
-  // An unmatched detection — id maps to no catalogue entry.
+  // An unmatched detection — id maps to no catalogue entry, and the
+  // SKU-shaped name (`99999`) is in no catalogue entry's `skus[]`.
   const UNKNOWN_DETECTED: MediaDescriptor = {
     id: 'sku-99999',
-    name: 'Unknown SKU',
+    name: '99999',
     widthMm: 41,
     type: 'continuous',
   };
 
   it('resolves detected-unrecognized when detection is unmatched and the adapter supplies customMedia', async () => {
-    const mode = await mountWithDetection({
-      withCustomMedia: true,
-      detectedMedia: UNKNOWN_DETECTED,
-    });
+    const mode = detectionModeOf(
+      await mountWithDetection({ withCustomMedia: true, detectedMedia: UNKNOWN_DETECTED }),
+    );
     expect(mode).toBe('detected-unrecognized');
   });
 
   it('degrades to auto-suggest when detection is unmatched and there is no customMedia hook', async () => {
-    const mode = await mountWithDetection({
-      withCustomMedia: false,
-      detectedMedia: UNKNOWN_DETECTED,
-    });
+    const mode = detectionModeOf(
+      await mountWithDetection({ withCustomMedia: false, detectedMedia: UNKNOWN_DETECTED }),
+    );
     expect(mode).toBe('auto-suggest');
   });
 
-  it('resolves auto-locked when the detected media matches a catalogue entry', async () => {
-    const mode = await mountWithDetection({
-      withCustomMedia: true,
-      detectedMedia: { ...CATALOGUE_MEDIA },
-    });
+  it('resolves auto-locked when the detected media matches a catalogue entry by id', async () => {
+    const mode = detectionModeOf(
+      await mountWithDetection({ withCustomMedia: true, detectedMedia: { ...CATALOGUE_MEDIA } }),
+    );
+    expect(mode).toBe('auto-locked');
+  });
+
+  it('resolves auto-locked when the detected SKU (in the name field) matches a catalogue skus[]', async () => {
+    // LW 5xx NFC detection: the `id` is a synthetic `sku-<n>` that
+    // equals no catalogue id, but `name` carries the vendor SKU —
+    // `30252` is listed under ADDRESS_STANDARD's `skus[]`.
+    const mode = detectionModeOf(
+      await mountWithDetection({
+        withCustomMedia: true,
+        detectedMedia: {
+          id: 'sku-30252',
+          name: '30252',
+          widthMm: 28,
+          heightMm: 89,
+          type: 'die-cut',
+        },
+      }),
+    );
     expect(mode).toBe('auto-locked');
   });
 
   it('resolves auto-suggest when detection-capable but nothing detected', async () => {
-    const mode = await mountWithDetection({
-      withCustomMedia: true,
-      detectedMedia: undefined,
-    });
+    const mode = detectionModeOf(
+      await mountWithDetection({ withCustomMedia: true, detectedMedia: undefined }),
+    );
     expect(mode).toBe('auto-suggest');
+  });
+
+  it('offers a prefilled SKU-submission invite for an uncatalogued detected roll', async () => {
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: UNKNOWN_DETECTED,
+    });
+    const invite = wrapper.find('.detected-unknown a');
+    expect(invite.exists()).toBe(true);
+    const href = decodeURIComponent(invite.attributes('href') ?? '');
+    expect(href).toContain('issues/new');
+    // The detected SKU + geometry ride into the prefilled issue body.
+    expect(href).toContain('99999');
+    expect(href).toContain('41 mm continuous');
+  });
+
+  it('shows the generic "don\'t see your label" link when nothing was detected', async () => {
+    const wrapper = await mountWithDetection({ withCustomMedia: true, detectedMedia: undefined });
+    expect(wrapper.find('.detected-unknown').exists()).toBe(false);
+    expect(wrapper.find('.dont-see a').exists()).toBe(true);
+  });
+
+  it('shows no SKU-submission invite once detection matched the catalogue', async () => {
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: { ...CATALOGUE_MEDIA },
+    });
+    expect(wrapper.find('.detected-unknown').exists()).toBe(false);
   });
 });
