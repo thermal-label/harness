@@ -247,10 +247,15 @@ describe('MediaSection — detectionCapability', () => {
     expect(href).not.toContain('Raw SKU dump');
   });
 
-  it('shows the generic "don\'t see your label" link when nothing was detected', async () => {
+  it('shows the generic add-support link with the [media] title when nothing was detected', async () => {
     const wrapper = await mountWithDetection({ withCustomMedia: true, detectedMedia: undefined });
     expect(wrapper.find('.detected-unknown').exists()).toBe(false);
-    expect(wrapper.find('.dont-see a').exists()).toBe(true);
+    const link = wrapper.find('.dont-see a');
+    expect(link.exists()).toBe(true);
+    // Same destination + title shape as the detected-roll invite.
+    const href = decodeURIComponent(link.attributes('href') ?? '');
+    expect(href).toContain('/issues/new');
+    expect(href).toContain('[media] Add a label type to the fake catalogue');
   });
 
   it('shows no SKU-submission invite once detection matched the catalogue', async () => {
@@ -259,5 +264,21 @@ describe('MediaSection — detectionCapability', () => {
       detectedMedia: { ...CATALOGUE_MEDIA },
     });
     expect(wrapper.find('.detected-unknown').exists()).toBe(false);
+  });
+
+  it('folds detection context into the generic add-support link when a roll matched the catalogue', async () => {
+    // auto-locked: a catalogued roll is loaded, so the generic link
+    // shows — and still carries what the printer reported plus the
+    // raw SKU bytes, as context for the by-hand label report.
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: { ...CATALOGUE_MEDIA },
+      skuRawBytes: 'b6ca3000aabbcc',
+    });
+    expect(wrapper.find('.detected-unknown').exists()).toBe(false);
+    const href = decodeURIComponent(wrapper.find('.dont-see a').attributes('href') ?? '');
+    expect(href).toContain('Printer currently reports');
+    expect(href).toContain('89×28mm Address');
+    expect(href).toContain('b6ca3000aabbcc');
   });
 });

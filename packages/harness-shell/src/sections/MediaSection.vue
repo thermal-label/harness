@@ -210,65 +210,99 @@ function onUpdate(next: MediaDescriptor | null): void {
 const swatchFn = adapter.mediaPicker.swatch ?? (() => null);
 const describeFn = adapter.mediaPicker.describe ?? ((m: MediaDescriptor) => m.name);
 
-// "Don't see your label?" CTA — opens a prefilled issue against the
-// driver's repo. Replaces the in-app custom-dimensions drawer per
-// the user's harness-v2 split.
-const issueUrl = computed(() => {
-  const title = encodeURIComponent(`[harness] Add support for label type X`);
-  const body = encodeURIComponent(
-    `Reporting a label type not yet in the thermal-label catalogue.\n\n` +
-      `Driver: ${adapter.driverKey}\n` +
-      `Device: ${session.device.value ? adapter.deviceName(session.device.value) : '(unknown)'}\n\n` +
-      `Label details (please fill in):\n` +
-      `- Manufacturer SKU / part number:\n` +
-      `- Width × length (mm):\n` +
-      `- Where I bought it:\n`,
-  );
-  return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
-});
+// ─── "Add this media" GitHub issue ───────────────────────────────
 
-// Verbatim on-wire bytes behind the detected SKU (the LW 5xx `ESC U`
-// dump), hex-encoded — captured into the active engine session by
-// ConnectSection from the adapter's connect diagnostics. Rides into
-// the SKU-submission issue so a maintainer can reconstruct the media
-// entry from the raw frame, not just the decoded geometry. `null`
-// when the driver captured no SKU bytes.
+/**
+ * Verbatim on-wire bytes behind the detected SKU (the LW 5xx `ESC U`
+ * dump), hex-encoded — captured into the active engine session by
+ * ConnectSection from the adapter's connect diagnostics. `null` when
+ * the driver captured no SKU bytes.
+ */
 const detectedSkuRawBytes = computed<string | null>(() => {
   const raw = session.activeSession.value?.skuInfo?.rawBytes;
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
 });
 
-// Prefilled issue URL for an uncatalogued *detected* roll — the
-// printer read a real SKU + geometry (LW 5xx NFC tag) that the
-// thermal-label catalogue doesn't list yet. Distinct from the generic
-// "Don't see your label?" link below: this one comes pre-populated
-// from the detection, so contributing the missing SKU is one click.
-// `null` whenever detection matched the catalogue or produced nothing.
-const detectedIssueUrl = computed<string | null>(() => {
-  const d = rawDetected.value;
-  if (!d) return null;
-  const dims =
-    typeof d.heightMm === 'number' && d.heightMm > 0
-      ? `${String(d.widthMm)} × ${String(d.heightMm)} mm`
-      : `${String(d.widthMm)} mm continuous`;
-  // The raw SKU dump is the load-bearing artifact — geometry decoded
-  // wrong (the deci-mm bug) is recoverable from these bytes. Fenced so
-  // it round-trips clean through copy-paste into a registry entry.
-  const rawBytes = detectedSkuRawBytes.value;
-  const rawBytesBlock = rawBytes ? `\nRaw SKU dump (hex):\n\`\`\`\n${rawBytes}\n\`\`\`\n` : '';
-  const title = encodeURIComponent(`[media] Add ${d.name} to the ${adapter.driverKey} catalogue`);
-  const body = encodeURIComponent(
-    `The harness detected a roll that isn't in the thermal-label media catalogue yet.\n\n` +
-      `Driver: ${adapter.driverKey}\n` +
-      `Device: ${session.device.value ? adapter.deviceName(session.device.value) : '(unknown)'}\n\n` +
+/** `"<w> × <h> mm"` for a fixed length, `"<w> mm continuous"` otherwise. */
+function dimsOf(m: MediaDescriptor): string {
+  return typeof m.heightMm === 'number' && m.heightMm > 0
+    ? `${String(m.widthMm)} × ${String(m.heightMm)} mm`
+    : `${String(m.widthMm)} mm continuous`;
+}
+
+/**
+ * A fenced hex block for the captured raw SKU dump, or '' when absent.
+ * The raw dump is the load-bearing artifact — geometry decoded wrong
+ * (the deci-mm bug) is still recoverable from these bytes; the fence
+ * keeps it copy-paste-clean into a registry entry.
+ */
+function rawBytesBlock(): string {
+  const raw = detectedSkuRawBytes.value;
+  return raw ? `\nRaw SKU dump (hex):\n\`\`\`\n${raw}\n\`\`\`\n` : '';
+}
+
+/**
+ * Prefilled "add this media to the catalogue" issue. One builder, one
+ * destination (`<targetRepo>/issues/new`), one title shape — both the
+ * detected-unrecognized "Submit it" link and the generic "Add support"
+ * link point here, so a maintainer gets a consistent ticket either way.
+ *
+ *  - Uncatalogued *detected* roll (`rawDetected`): the printer read a
+ *    real SKU + geometry the catalogue doesn't list — the body is
+ *    fully pre-populated (SKU, dimensions, type, raw `ESC U` bytes),
+ *    one click to submit.
+ *  - Otherwise: the operator is reporting a label by hand. The body
+ *    carries fill-in fields, plus whatever the printer *did* report
+ *    (a matched roll, a raw SKU dump) folded in as context.
+ */
+const issueUrl = computed<string>(() => {
+  const driver = adapter.driverKey;
+  const device = session.device.value ? adapter.deviceName(session.device.value) : '(unknown)';
+  const detected = rawDetected.value;
+
+  let subject: string;
+  let body: string;
+
+  if (detected) {
+    subject = detected.name;
+    body =
+      `The harness detected a roll that isn't in the thermal-label media catalogue yet.\n\n` +
+      `Driver: ${driver}\n` +
+      `Device: ${device}\n\n` +
       `Detected media — read from the printer:\n` +
-      `- SKU / identifier: ${d.name}\n` +
-      `- Dimensions: ${dims}\n` +
-      `- Type: ${d.type}\n` +
-      rawBytesBlock +
-      `\nPlease add this SKU to the driver's media registry.\n`,
-  );
-  return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
+      `- SKU / identifier: ${detected.name}\n` +
+      `- Dimensions: ${dimsOf(detected)}\n` +
+      `- Type: ${detected.type}\n` +
+      rawBytesBlock() +
+      `\nPlease add this SKU to the driver's media registry.\n`;
+  } else {
+    subject = 'a label type';
+    // Any detection present when nothing reached detected-unrecognized
+    // is a catalogued roll (auto-locked) — context, not the subject.
+    let context = '';
+    const reported = rawDetectedMedia.value;
+    if (reported || detectedSkuRawBytes.value) {
+      context = `\nPrinter currently reports:\n`;
+      if (reported) {
+        context += `- Loaded media: ${reported.name} (${dimsOf(reported)}, ${reported.type})\n`;
+      }
+      context += rawBytesBlock();
+    }
+    body =
+      `Reporting a label type not yet in the thermal-label media catalogue.\n\n` +
+      `Driver: ${driver}\n` +
+      `Device: ${device}\n` +
+      context +
+      `\nLabel details (please fill in):\n` +
+      `- Manufacturer SKU / part number:\n` +
+      `- Width × length (mm):\n` +
+      `- Where I bought it:\n`;
+  }
+
+  const title = encodeURIComponent(`[media] Add ${subject} to the ${driver} catalogue`);
+  return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${encodeURIComponent(
+    body,
+  )}`;
 });
 </script>
 
@@ -300,12 +334,9 @@ const detectedIssueUrl = computed<string | null>(() => {
         @update:model-value="onUpdate"
       />
 
-      <p
-        v-if="detectedIssueUrl"
-        class="muted small dont-see detected-unknown"
-      >
+      <p v-if="rawDetected" class="muted small dont-see detected-unknown">
         Detected <code>{{ rawDetected?.name }}</code> — not in the thermal-label catalogue yet.
-        <a :href="detectedIssueUrl" target="_blank" rel="noopener">Submit it for the library →</a>
+        <a :href="issueUrl" target="_blank" rel="noopener">Submit it for the library →</a>
       </p>
       <p v-else class="muted small dont-see">
         Don't see your label?
