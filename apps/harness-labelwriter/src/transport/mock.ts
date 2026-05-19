@@ -23,13 +23,17 @@
  *  - Print writes: silently accepted (counted, not stored).
  *
  * `lw_550_unknown_media` (`?mock=lw_550_unknown_media`, alias
- * `?mock=550-unknown`): an LW 550 whose `ESC U` SKU dump is a
- * well-formed 63-byte NFC structure carrying a SKU **absent from the
- * labelwriter media registry**. `getMedia()` parses it into a
- * geometry-bearing `detectedMedia` that maps to no catalogue entry, so
- * the connect lands straight in the `detected-unrecognized` panel.
- * This is the URL the LW 550 retester (and the maintainer, who has no
- * 550) uses to walk the flow without hardware.
+ * `?mock=550-unknown`): an LW 550 replaying a **real `ESC U` reply
+ * captured off hardware** — SKU `S0722540`, a 57.1 × 31.7 mm die-cut
+ * roll **absent from the labelwriter media registry**. `getMedia()`
+ * parses it into a geometry-bearing `detectedMedia` that maps to no
+ * catalogue entry, so the connect lands straight in the
+ * `detected-unrecognized` panel. The dimensions are deliberately
+ * non-integer (raw u16 `0x023B` → 57.1 mm via `u16DeciMm`): this is
+ * the frame that surfaced the deci-mm parsing bug, so the target
+ * doubles as a decimal-geometry regression walk-through. This is the
+ * URL the LW 550 retester (and the maintainer, who has no 550) uses
+ * to walk the flow without hardware.
  *
  * Intentionally tiny — drives the UI; doesn't simulate USB protocol
  * edge cases. The real WebUSB path is what the harness exercises in
@@ -74,9 +78,10 @@ interface MockResponse {
   /** A 63-byte `parseSkuInfo` response carrying SKU 30252 (catalogued). */
   sku550: Uint8Array;
   /**
-   * A 63-byte `parseSkuInfo` response carrying an uncatalogued SKU —
-   * a 41 mm continuous roll. Used by the `lw_550_unknown_media`
-   * target to drive the `detected-unrecognized` panel.
+   * A verbatim 63-byte `ESC U` reply captured off a real LW 550 —
+   * uncatalogued SKU `S0722540`, a 57.1 × 31.7 mm die-cut roll. Used
+   * by the `lw_550_unknown_media` target to drive the
+   * `detected-unrecognized` panel against genuine deci-mm geometry.
    */
   sku550Unknown: Uint8Array;
   /**
@@ -233,18 +238,32 @@ function buildMockResponses(): MockResponse {
     productionDate: '21',
   });
 
-  // Uncatalogued SKU — 41 mm continuous. SKU `99999` is deliberately
+  // Uncatalogued SKU — a real `ESC U` reply captured off an LW 550 by
+  // a community tester: the frame that surfaced the deci-mm parsing
+  // bug (raw u16 `0x023B` is 57.1 mm, not 571). SKU `S0722540` is
   // absent from the labelwriter media registry, so `skuInfoToMedia`
-  // yields a geometry-bearing descriptor (`id: 'sku-99999'`) that
-  // maps to no catalogue entry → `detected-unrecognized`.
-  const sku550Unknown = buildSkuDump({
-    sku: '99999',
-    widthMm: 41,
-    lengthMm: 0,
-    dieCut: false,
-    material: 0x03,
-    totalLabelCount: 0,
-  });
+  // yields a geometry-bearing descriptor (`id: 'sku-S0722540'`,
+  // 57.1 × 31.7 mm die-cut) that maps to no catalogue entry →
+  // `detected-unrecognized`. Stored as the verbatim bytes — the
+  // 59-byte capture zero-padded over its empty production-date/time
+  // tail to the 63-byte `SKU_INFO_BYTE_COUNT` — so the harness
+  // exercises the real `parseSkuInfo` path, not a synthesised one.
+  const sku550Unknown = new Uint8Array([
+    0xb6, 0xca, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, // magic / version / length / crc
+    0x53, 0x30, 0x37, 0x32, 0x32, 0x35, 0x34, 0x30, // SKU "S0722540" (bytes 8-15)
+    0x00, 0x00, 0x00, 0x00, // SKU field padding (bytes 16-19)
+    0x00, 0xff, 0x06, 0x01, // brand=dymo, region, material, labelType=die
+    0x01, 0x00, 0x00, 0x00, // labelColor=white, contentColor=black, markerType=0
+    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 28-31)
+    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 32-35)
+    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 36-39)
+    0x3d, 0x01, 0x3b, 0x02, // labelLength=317 (31.7 mm), labelWidth=571 (57.1 mm)
+    0x00, 0x00, 0x00, 0x00, // printable offsets (bytes 44-47)
+    0x00, 0x00, 0x00, 0x00, // liner width / total label count (bytes 48-51)
+    0x00, 0x00, 0x00, 0x00, // total length / counter margin (bytes 52-55)
+    0x00, 0x00, 0x00, // counterStrategy=count-up (bytes 56-58)
+    0x00, 0x00, 0x00, 0x00, // production date/time — empty (zero pad, bytes 59-62)
+  ]);
 
   // 34-byte lw5-raster `ESC V` engine-version blocks — the USB PID
   // differs per model (LW 550 = 0x0028, LW 5XL = 0x002a).

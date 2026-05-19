@@ -266,4 +266,24 @@ describe('LabelWriter harness adapter — diagnostics path (mock lw550)', () => 
 
     expect(url.length).toBeLessThan(URL_LENGTH_LIMIT);
   });
+
+  it('lw_550_unknown_media decodes the captured ESC U reply with deci-mm dimensions', async () => {
+    const result = await connectMock('lw_550_unknown_media');
+
+    // The roll's SKU + geometry reach the report via engineDiagnostics.
+    const role = Object.keys(result.engineDiagnostics ?? {})[0]!;
+    const diag = result.engineDiagnostics![role]!;
+    expect(diag.skuInfo?.sku).toBe('S0722540');
+    // Deci-mm regression guard: the captured raw u16 `0x023B` must
+    // decode to 57.1 mm, not 571 — the bug this fixture reproduces.
+    expect(diag.skuInfo?.labelWidthMm).toBeCloseTo(57.1);
+    expect(diag.skuInfo?.labelLengthMm).toBeCloseTo(31.7);
+
+    // …and the SKU-derived detectedMedia the media picker consumes.
+    const detected = (await result.printers[role]!.getStatus()).detectedMedia;
+    expect(detected?.name).toBe('S0722540');
+    expect(detected?.widthMm).toBeCloseTo(57.1);
+    expect(detected?.heightMm).toBeCloseTo(31.7);
+    expect(detected?.type).toBe('die-cut');
+  });
 });
