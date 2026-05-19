@@ -227,6 +227,17 @@ const issueUrl = computed(() => {
   return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
 });
 
+// Verbatim on-wire bytes behind the detected SKU (the LW 5xx `ESC U`
+// dump), hex-encoded — captured into the active engine session by
+// ConnectSection from the adapter's connect diagnostics. Rides into
+// the SKU-submission issue so a maintainer can reconstruct the media
+// entry from the raw frame, not just the decoded geometry. `null`
+// when the driver captured no SKU bytes.
+const detectedSkuRawBytes = computed<string | null>(() => {
+  const raw = session.activeSession.value?.skuInfo?.rawBytes;
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+});
+
 // Prefilled issue URL for an uncatalogued *detected* roll — the
 // printer read a real SKU + geometry (LW 5xx NFC tag) that the
 // thermal-label catalogue doesn't list yet. Distinct from the generic
@@ -240,6 +251,11 @@ const detectedIssueUrl = computed<string | null>(() => {
     typeof d.heightMm === 'number' && d.heightMm > 0
       ? `${String(d.widthMm)} × ${String(d.heightMm)} mm`
       : `${String(d.widthMm)} mm continuous`;
+  // The raw SKU dump is the load-bearing artifact — geometry decoded
+  // wrong (the deci-mm bug) is recoverable from these bytes. Fenced so
+  // it round-trips clean through copy-paste into a registry entry.
+  const rawBytes = detectedSkuRawBytes.value;
+  const rawBytesBlock = rawBytes ? `\nRaw SKU dump (hex):\n\`\`\`\n${rawBytes}\n\`\`\`\n` : '';
   const title = encodeURIComponent(`[media] Add ${d.name} to the ${adapter.driverKey} catalogue`);
   const body = encodeURIComponent(
     `The harness detected a roll that isn't in the thermal-label media catalogue yet.\n\n` +
@@ -248,8 +264,9 @@ const detectedIssueUrl = computed<string | null>(() => {
       `Detected media — read from the printer:\n` +
       `- SKU / identifier: ${d.name}\n` +
       `- Dimensions: ${dims}\n` +
-      `- Type: ${d.type}\n\n` +
-      `Please add this SKU to the driver's media registry.\n`,
+      `- Type: ${d.type}\n` +
+      rawBytesBlock +
+      `\nPlease add this SKU to the driver's media registry.\n`,
   );
   return `https://github.com/${adapter.targetRepo}/issues/new?title=${title}&body=${body}`;
 });

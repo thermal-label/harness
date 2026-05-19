@@ -105,6 +105,8 @@ function makeAdapter(withCustomMedia: boolean): DriverAdapter<FakeDevice, FakeMe
 async function mountWithDetection(opts: {
   withCustomMedia: boolean;
   detectedMedia: MediaDescriptor | undefined;
+  /** Hex SKU dump to seed onto the active engine session's `skuInfo`. */
+  skuRawBytes?: string;
 }): Promise<ReturnType<typeof mount>> {
   const adapter = makeAdapter(opts.withCustomMedia);
 
@@ -120,6 +122,10 @@ async function mountWithDetection(opts: {
       session.connection.identity = { advertisedName: 'LabelWriter 550' };
       session.device.value = FAKE_DEVICE;
       session.syncEngineSessions(FAKE_DEVICE);
+      if (opts.skuRawBytes !== undefined) {
+        const slot = session.engineSessions.primary;
+        if (slot) slot.skuInfo = { rawBytes: opts.skuRawBytes };
+      }
       const status: PrinterStatus = {
         ready: true,
         mediaLoaded: true,
@@ -219,6 +225,26 @@ describe('MediaSection — detectionCapability', () => {
     // The detected SKU + geometry ride into the prefilled issue body.
     expect(href).toContain('99999');
     expect(href).toContain('41 mm continuous');
+  });
+
+  it('embeds the captured raw SKU bytes in the submission invite when present', async () => {
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: UNKNOWN_DETECTED,
+      skuRawBytes: 'b6ca3000c0ffee',
+    });
+    const href = decodeURIComponent(wrapper.find('.detected-unknown a').attributes('href') ?? '');
+    expect(href).toContain('Raw SKU dump');
+    expect(href).toContain('b6ca3000c0ffee');
+  });
+
+  it('omits the raw-bytes block from the invite when no SKU bytes were captured', async () => {
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: UNKNOWN_DETECTED,
+    });
+    const href = decodeURIComponent(wrapper.find('.detected-unknown a').attributes('href') ?? '');
+    expect(href).not.toContain('Raw SKU dump');
   });
 
   it('shows the generic "don\'t see your label" link when nothing was detected', async () => {
