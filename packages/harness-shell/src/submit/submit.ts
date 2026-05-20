@@ -12,6 +12,112 @@
 import { renderIssueBody, type HardwareReport } from '@thermal-label/harness-core/shared';
 
 /**
+ * Niimbot-RFID block as it lands on `NiimbotStatus.rfid`. Defined here
+ * (rather than imported from niimbot-core) so the shell stays
+ * driver-agnostic at the type layer — the shape is duck-typed off
+ * whatever the driver puts on `status.rfid`.
+ */
+export interface RfidBlock {
+  source?: 'paper' | 'ribbon';
+  uuid?: string;
+  barcode?: string;
+  serialNumber?: string;
+  allPaper?: number;
+  usedPaper?: number;
+  labelType?: number;
+  capacity?: number;
+  rawHex?: string;
+}
+
+/**
+ * Pretty-print an RFID payload for the catalogue-contribution issue
+ * body. Lists only the fields the niimbot parser populated; ends with a
+ * fenced hex dump when the raw bytes are available. The maintainer
+ * pastes this verbatim into a new `media.json5` entry — barcode +
+ * labelType become catalogue fields; allPaper / usedPaper are
+ * roll-instance forensics that survive in the report.
+ */
+export function renderRfidBlock(rfid: RfidBlock): string {
+  const lines: string[] = ['', 'RFID payload (from `0x1A` / `0x1C`):'];
+  if (rfid.source !== undefined) lines.push(`- source: ${rfid.source}`);
+  if (rfid.uuid !== undefined) lines.push(`- uuid: ${rfid.uuid}`);
+  if (rfid.barcode !== undefined) lines.push(`- barcode: ${rfid.barcode}`);
+  if (rfid.serialNumber !== undefined) lines.push(`- serialNumber: ${rfid.serialNumber}`);
+  if (rfid.allPaper !== undefined) lines.push(`- allPaper: ${String(rfid.allPaper)}`);
+  if (rfid.usedPaper !== undefined) lines.push(`- usedPaper: ${String(rfid.usedPaper)}`);
+  if (rfid.labelType !== undefined) lines.push(`- labelType: ${String(rfid.labelType)}`);
+  if (rfid.capacity !== undefined) lines.push(`- capacity: ${String(rfid.capacity)}`);
+  if (rfid.rawHex !== undefined) {
+    lines.push('', 'Raw RFID payload (hex):', '```', rfid.rawHex, '```');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Prefilled "catalogue this new RFID barcode" GitHub issue, mirroring
+ * the LW 5xx unrecognized-NFC flow for niimbot. Fires once the operator
+ * has confirmed physical dimensions in the `detected-unrecognized`
+ * panel (the synthetic media id starts with `unknown-`), so the body
+ * carries everything the maintainer needs to append a `media.json5`
+ * entry without a second round-trip.
+ */
+export function buildRfidCatalogueIssue(opts: {
+  driver: string;
+  targetRepo: string;
+  device: string;
+  rfid: RfidBlock;
+  /** Operator-confirmed media (from `customMedia.build`). */
+  confirmedMedia?: {
+    widthMm?: number;
+    heightMm?: number;
+    type?: string;
+    name?: string;
+  } | null;
+}): { url: string; title: string; body: string } {
+  const { driver, targetRepo, device, rfid, confirmedMedia } = opts;
+  const w =
+    typeof confirmedMedia?.widthMm === 'number' && confirmedMedia.widthMm > 0
+      ? String(confirmedMedia.widthMm)
+      : '?';
+  const h =
+    typeof confirmedMedia?.heightMm === 'number' && confirmedMedia.heightMm > 0
+      ? String(confirmedMedia.heightMm)
+      : confirmedMedia?.type === 'continuous'
+        ? 'continuous'
+        : '?';
+  const barcode = rfid.barcode ?? '(unknown)';
+  const title = `media(${driver}): catalogue new barcode ${barcode} (${w}×${h})`;
+  const dimsLine =
+    confirmedMedia?.type === 'continuous'
+      ? `- Width: ${w} mm (continuous)`
+      : `- Dimensions: ${w} × ${h} mm`;
+  const identifierLine = confirmedMedia?.name
+    ? `- Operator identifier: ${confirmedMedia.name}\n`
+    : '';
+  const intro =
+    `The harness read an RFID tag whose barcode isn't in ` +
+    `\`niimbot/packages/core/data/media.json5\` yet. Operator-confirmed ` +
+    `physical dimensions below; full RFID payload pretty-printed for the ` +
+    `new catalogue entry.`;
+  const footer =
+    `Please append a new entry to \`media.json5\` using the barcode + ` +
+    `labelType above and the operator-confirmed dimensions.`;
+  const body = `${intro}
+
+Driver: ${driver}
+Device: ${device}
+
+Operator-confirmed dimensions:
+${dimsLine}
+- Type: ${confirmedMedia?.type ?? '(not confirmed)'}
+${identifierLine}${renderRfidBlock(rfid)}
+${footer}
+`;
+  const url = buildPrefillUrl(targetRepo, title, body);
+  return { url, title, body };
+}
+
+/**
  * GitHub's prefill URL has a soft limit somewhere around 8 kB. We
  * stay conservative and switch to the clipboard-fallback path before
  * we hit the actual cap.

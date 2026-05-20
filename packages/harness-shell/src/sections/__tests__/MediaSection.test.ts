@@ -112,6 +112,23 @@ async function mountWithDetection(opts: {
   detectedMedia: MediaDescriptor | undefined;
   /** Hex SKU dump to seed onto the active engine session's `skuInfo`. */
   skuRawBytes?: string;
+  /**
+   * Niimbot-style rfid block to seed onto the active status. When
+   * `detectedMedia` is undefined and `rfid.barcode` is present, the
+   * MediaSection synthesises a `rawDetected` from rfid so the picker
+   * drops into `detected-unrecognized` mode.
+   */
+  rfid?: {
+    source?: 'paper' | 'ribbon';
+    uuid?: string;
+    barcode?: string;
+    serialNumber?: string;
+    allPaper?: number;
+    usedPaper?: number;
+    labelType?: number;
+    capacity?: number;
+    rawHex?: string;
+  };
 }): Promise<ReturnType<typeof mount>> {
   const adapter = makeAdapter(opts.withCustomMedia);
 
@@ -131,12 +148,13 @@ async function mountWithDetection(opts: {
         const slot = session.engineSessions.primary;
         if (slot) slot.skuInfo = { rawBytes: opts.skuRawBytes };
       }
-      const status: PrinterStatus = {
+      const status: PrinterStatus & { rfid?: typeof opts.rfid } = {
         ready: true,
         mediaLoaded: true,
         errors: [],
         rawBytes: new Uint8Array(0),
         ...(opts.detectedMedia ? { detectedMedia: opts.detectedMedia } : {}),
+        ...(opts.rfid ? { rfid: opts.rfid } : {}),
       };
       session.printerStatus.primary = status;
       return () => h(MediaSection);
@@ -269,6 +287,62 @@ describe('MediaSection — detectionCapability', () => {
       detectedMedia: { ...CATALOGUE_MEDIA },
     });
     expect(wrapper.find('.detected-unknown').exists()).toBe(false);
+  });
+
+  it('resolves detected-unrecognized from rfid.barcode when detectedMedia is undefined', async () => {
+    // Niimbot scenario: chassis read an RFID barcode the driver
+    // couldn't resolve to a catalogue entry. The shell synthesises a
+    // rawDetected from rfid so the picker engages the geometry-edit
+    // panel.
+    const mode = detectionModeOf(
+      await mountWithDetection({
+        withCustomMedia: true,
+        detectedMedia: undefined,
+        rfid: { source: 'paper', uuid: 'deadbeef', barcode: 'NEW-OEM-XYZ' },
+      }),
+    );
+    expect(mode).toBe('detected-unrecognized');
+  });
+
+  it('folds the full rfid payload into the prefilled catalogue invite', async () => {
+    const wrapper = await mountWithDetection({
+      withCustomMedia: true,
+      detectedMedia: undefined,
+      rfid: {
+        source: 'paper',
+        uuid: '1122334455667788',
+        barcode: 'NEW-OEM-XYZ',
+        serialNumber: 'SN42',
+        allPaper: 200,
+        usedPaper: 7,
+        labelType: 1,
+        rawHex: 'aa11bb22',
+      },
+    });
+    const href = decodeURIComponent(wrapper.find('.detected-unknown a').attributes('href') ?? '');
+    // The synthesised barcode flows into the subject.
+    expect(href).toContain('NEW-OEM-XYZ');
+    // The pretty-printed rfid block carries every populated field.
+    expect(href).toContain('uuid: 1122334455667788');
+    expect(href).toContain('barcode: NEW-OEM-XYZ');
+    expect(href).toContain('serialNumber: SN42');
+    expect(href).toContain('allPaper: 200');
+    expect(href).toContain('usedPaper: 7');
+    expect(href).toContain('labelType: 1');
+    expect(href).toContain('aa11bb22');
+  });
+
+  it('omits the rfid fallback when the barcode is empty', async () => {
+    // rfid present but no barcode → no synthesised detection. Picker
+    // degrades to auto-suggest just like a hint-less detection.
+    const mode = detectionModeOf(
+      await mountWithDetection({
+        withCustomMedia: true,
+        detectedMedia: undefined,
+        rfid: { source: 'paper', uuid: 'deadbeef' },
+      }),
+    );
+    expect(mode).toBe('auto-suggest');
   });
 
   it('folds detection context into the generic add-support link when a roll matched the catalogue', async () => {
