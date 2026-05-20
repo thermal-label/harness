@@ -240,6 +240,19 @@ export interface MediaPickerConfig<TDevice, TMedia extends MediaDescriptor> {
     /** Returns a full `TMedia` with real geometry + driver-specific fields. */
     build: (input: CustomMediaInput) => TMedia;
   };
+  /**
+   * `true` when the printer enforces the detected media — it will
+   * refuse to print on anything else (brother-ql with media detection
+   * on; some LW 550 NFC paths). The shell then renders the
+   * "Locked to detected media" banner with the catalogue
+   * visually disabled.
+   *
+   * Default `false`: detection is a *hint*; the operator can still
+   * pick anything from the catalogue and the printer will accept it
+   * (niimbot, letratag, LW 450 Duo). The shell renders the softer
+   * "Detected: X — confirm or pick a different entry" banner.
+   */
+  detectionEnforced?: boolean;
 }
 
 // ─── Diagnostic image ────────────────────────────────────────────

@@ -229,6 +229,11 @@ export const adapter: DriverAdapter<BrotherQLDevice, BrotherQLMedia> = {
     groupBy,
     swatch,
     describe: m => m.name,
+    // Brother QL with media detection enabled is the canonical strict
+    // case — the printer reads the roll's continuous/die-cut shape and
+    // refuses to print on anything else. The shell renders the
+    // "Locked to detected media" banner with the catalogue disabled.
+    detectionEnforced: true,
   },
 
   buildDiagnosticImage: ({ device, engine, media, harnessVersion, driverVersion }) =>

@@ -140,17 +140,24 @@ const buildCustomMedia = computed<((input: CustomMediaInput) => MediaDescriptor)
 
 const detectionCapability = computed<DetectionCapability>(() => {
   // Drivers expose detection capability per engine via
-  // `engine.capabilities.mediaDetection`.
+  // `engine.capabilities.mediaDetection`. `'auto-locked'` is reserved
+  // for printers that actually enforce the detected media (refuse to
+  // print on anything else — brother-ql with media-detection on);
+  // soft-hint detection (niimbot RFID, LW 450 Duo, letratag advertising)
+  // stays in `'auto-suggest'` so the operator can override without
+  // the picker yelling "wrong media".
+  //
   //   - no capability                       → 'none'
-  //   - capability, no detectedMedia        → 'auto-suggest'
-  //   - capability, detected matches catalogue → 'auto-locked'
+  //   - capability, detected matches catalogue, enforced → 'auto-locked'
+  //   - capability, detected matches catalogue, not enforced → 'auto-suggest'
   //   - capability, detected present, no match,
   //     adapter supplies customMedia.build  → 'detected-unrecognized'
-  //   - capability, no match, no customMedia hook → 'auto-suggest'
+  //   - capability, no detection / no match → 'auto-suggest'
   //     (graceful degrade — never hard-lock to a non-catalogue object)
   const engine = activeEngine.value as { capabilities?: { mediaDetection?: boolean } } | null;
   if (!engine?.capabilities?.mediaDetection) return 'none';
-  if (matchedMedia.value) return 'auto-locked';
+  const enforced = adapter.mediaPicker.detectionEnforced === true;
+  if (matchedMedia.value) return enforced ? 'auto-locked' : 'auto-suggest';
   if (rawDetected.value) {
     return buildCustomMedia.value ? 'detected-unrecognized' : 'auto-suggest';
   }

@@ -86,6 +86,11 @@ function makeAdapter(withCustomMedia: boolean): DriverAdapter<FakeDevice, FakeMe
     mediaPicker: {
       filterByDeviceEngine: media => media,
       groupBy: () => ({ key: 'all', label: 'All', priority: 'primary' }),
+      // The capability tests exercise the auto-locked path, so opt
+      // into strict enforcement (brother-ql's behaviour). Drivers
+      // that only soft-hint detection (niimbot, letratag) leave this
+      // unset and the picker uses 'auto-suggest' instead.
+      detectionEnforced: true,
       ...(withCustomMedia ? { customMedia: { build: buildCustomMedia } } : {}),
     },
     buildDiagnosticImage: () => {
