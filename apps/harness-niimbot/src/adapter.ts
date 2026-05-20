@@ -25,7 +25,7 @@
  *    pre-completed `PrintStatus` so the strategy resolves instantly
  *    during a self-walk.
  */
-import type { DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
+import type { CustomMediaInput, DriverAdapter, MockSpec } from '@thermal-label/harness-shell';
 import type {
   HardwareReport,
   IdentitySnapshot,
@@ -129,6 +129,54 @@ function swatch(): MediaSwatch | null {
   return null;
 }
 
+/** Sentinel `id` marking a media synthesised by the custom-media flow. */
+const CUSTOM_MEDIA_ID_PREFIX = 'unknown-';
+
+/**
+ * Build a printable `NiimbotMedia` from operator-confirmed dimensions,
+ * for the `detected-unrecognized` flow — a roll whose RFID barcode is
+ * not yet in `niimbot/packages/core/data/media.json5`. Mirrors the LW
+ * 5xx `buildCustomLabelMedia` hook (LW NFC SKU not in the registry).
+ *
+ * The niimbot strategy code consumes `widthMm` / `heightMm` / `type`
+ * from the media + falls back to `labelType: 1` (gap) in
+ * `resolveLabelType` when no override is passed. `targetModels` is
+ * informational (catalogue filter only — bypassed for the unrecognized
+ * media, which is emitted directly as `modelValue`), so empty is safe.
+ * `barcodes` / `skus` stay empty too — this object isn't a catalogue
+ * entry, just a print-time geometry holder.
+ *
+ * `identifier` carries the operator-supplied barcode / SKU when they
+ * filled it in. We surface it in the synthetic `id` so the report's
+ * `confirmed.overrides.media` field reads as `unknown-<barcode>` —
+ * triage-readable without crossing into "this is in the catalogue".
+ */
+function buildCustomNiimbotMedia(input: CustomMediaInput): NiimbotMedia {
+  const { widthMm, heightMm, type, identifier } = input;
+  const idSuffix = identifier.trim() || `${String(widthMm)}x${String(heightMm ?? 'continuous')}`;
+  const derivedName =
+    identifier.trim() ||
+    (type === 'die-cut' && heightMm !== undefined
+      ? `${String(widthMm)} × ${String(heightMm)} mm die-cut`
+      : `${String(widthMm)} mm continuous`);
+  return {
+    id: `${CUSTOM_MEDIA_ID_PREFIX}${idSuffix}`,
+    name: derivedName,
+    widthMm,
+    type,
+    category: type === 'continuous' ? 'continuous' : 'multi-purpose',
+    targetModels: [],
+    barcodes: [],
+    skus: identifier.trim() ? [identifier.trim()] : [],
+    // Default to `1` (gap / WithGaps) — niimbot-core's resolveLabelType
+    // also falls back to 1 when no override is passed. The operator's
+    // RFID dump in the issue body lets the maintainer set the right
+    // value when they add this to media.json5.
+    labelTypeId: 1,
+    ...(type === 'die-cut' && heightMm !== undefined ? { heightMm } : {}),
+  };
+}
+
 // ─── DriverAdapter ───────────────────────────────────────────────
 
 export const adapter: DriverAdapter<NiimbotDevice, NiimbotMedia> = {
@@ -194,6 +242,15 @@ export const adapter: DriverAdapter<NiimbotDevice, NiimbotMedia> = {
     groupBy,
     swatch,
     describe: m => m.name,
+    // Niimbot detects media via RFID (`0x1A` paper-tag query). When
+    // the tag's barcode is in `media.json5`'s `barcodes[]`, the driver
+    // resolves `status.detectedMedia` and the picker auto-fills. When
+    // it isn't (a new OEM SKU we haven't bench-captured yet), the
+    // shell synthesises a `rawDetectedMedia` from `status.rfid` so the
+    // picker drops into `detected-unrecognized` mode — operator types
+    // the physical dimensions, this builder produces a printable
+    // media, and SubmitSection renders the catalogue-contribution CTA.
+    customMedia: { build: buildCustomNiimbotMedia },
   },
 
   buildDiagnosticImage: ({ device, media, harnessVersion, driverVersion }) =>
@@ -214,9 +271,23 @@ export const adapter: DriverAdapter<NiimbotDevice, NiimbotMedia> = {
     // detected media) into `detected.extra`. The last status snapshot
     // is the most recent observation the harness took — post-print if
     // a print ran, otherwise the pre-print snapshot from connect.
+    //
+    // The RFID block shape matches `NiimbotStatus.rfid` (niimbot-core
+    // types.ts): `source / uuid / barcode / serialNumber / allPaper /
+    // usedPaper / labelType / capacity / rawHex`.
     const status = (primarySession.postPrintStatus ?? primarySession.prePrintStatus) as
       | (typeof primarySession.postPrintStatus & {
-          rfid?: { barcode?: string; usedLengthMm?: number; totalLengthMm?: number; rawHex?: string };
+          rfid?: {
+            source?: 'paper' | 'ribbon';
+            uuid?: string;
+            barcode?: string;
+            serialNumber?: string;
+            allPaper?: number;
+            usedPaper?: number;
+            labelType?: number;
+            capacity?: number;
+            rawHex?: string;
+          };
           batteryPercent?: number;
           headTemperatureC?: number;
           rfidValid?: boolean;

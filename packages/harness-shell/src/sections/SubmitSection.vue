@@ -28,10 +28,12 @@ import { useSession } from '../state/session';
 import {
   buildIssueTitle,
   buildPrefillUrl,
+  buildRfidCatalogueIssue,
   copyToClipboard,
   renderBody,
   submitReport,
   urlExceedsLimit,
+  type RfidBlock,
   type SubmitResult,
 } from '../submit/submit';
 import SectionCard from './SectionCard.vue';
@@ -282,6 +284,53 @@ const coverageRows = computed<CoverageRow[]>(() => {
 function activate(role: string): void {
   session.selectedRole.value = role;
 }
+
+// ─── Niimbot: catalogue-new-RFID-barcode CTA ─────────────────────
+//
+// Mirrors the LW 5xx unrecognized-NFC SubmitSection flow for niimbot.
+// Fires when the chassis reported an RFID barcode whose value isn't
+// in the driver's media catalogue — `status.detectedMedia` is
+// undefined but `status.rfid.barcode` is populated. The MediaSection
+// has by then dropped into `detected-unrecognized` mode and the
+// operator has confirmed physical dimensions (the picker synthesises
+// a media via `adapter.mediaPicker.customMedia.build`); this CTA
+// renders the operator-confirmed dimensions + the full rfid payload
+// as a prefilled GitHub issue body the maintainer can paste straight
+// into `media.json5`.
+
+const rfidUnknownIssue = computed<{ url: string; title: string } | null>(() => {
+  const status = session.activeStatus.value as
+    | (typeof session.activeStatus.value & {
+        detectedMedia?: unknown;
+        rfid?: RfidBlock;
+      })
+    | null;
+  if (!status) return null;
+  // Only fire on the unknown-barcode shape: rfid carries a barcode AND
+  // the driver couldn't resolve it to a catalogue entry.
+  if (status.detectedMedia !== undefined) return null;
+  const rfid = status.rfid;
+  if (!rfid?.barcode) return null;
+
+  // Operator-confirmed dimensions ride from the synthetic media the
+  // picker emitted. Undefined when the operator hasn't reached the
+  // panel yet — the issue body still files, just with the unconfirmed
+  // placeholders.
+  const media = session.activeSession.value?.media as
+    | { widthMm?: number; heightMm?: number; type?: string; name?: string }
+    | null
+    | undefined;
+
+  const device = session.device.value ? adapter.deviceName(session.device.value) : '(unknown)';
+  const { url, title } = buildRfidCatalogueIssue({
+    driver: adapter.driverKey,
+    targetRepo: adapter.targetRepo,
+    device,
+    rfid,
+    confirmedMedia: media ?? null,
+  });
+  return { url, title };
+});
 </script>
 
 <template>
@@ -363,6 +412,23 @@ function activate(role: string): void {
         <button class="secondary" type="button" @click="copyReport">
           {{ reportCopyState === 'copied' ? 'Copied ✓' : 'Copy report' }}
         </button>
+        <!-- Niimbot unrecognized-barcode CTA: mirrors the LW 5xx
+             unrecognized-NFC catalogue-contribution flow. Renders next
+             to the main Submit button when the chassis reported an
+             RFID barcode the driver couldn't resolve to a catalogue
+             entry — opens a prefilled issue at the driver repo with
+             the operator-confirmed dimensions + the full rfid payload,
+             ready for the maintainer to append to `media.json5`. -->
+        <a
+          v-if="rfidUnknownIssue"
+          class="secondary catalogue-cta"
+          :href="rfidUnknownIssue.url"
+          target="_blank"
+          rel="noopener"
+          :title="rfidUnknownIssue.title"
+        >
+          Catalogue this RFID barcode →
+        </a>
       </div>
     </template>
 
@@ -491,6 +557,13 @@ function activate(role: string): void {
 
 .secondary:hover {
   background: var(--bg);
+}
+
+.catalogue-cta {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .ok-banner {
