@@ -210,6 +210,28 @@ export const adapter: DriverAdapter<NiimbotDevice, NiimbotMedia> = {
       rung: primarySession.rung,
       ...(primarySession.notes.trim() ? { notes: primarySession.notes.trim() } : {}),
     };
+    // Surface niimbot-specific runtime state (RFID, battery, head temp,
+    // detected media) into `detected.extra`. The last status snapshot
+    // is the most recent observation the harness took — post-print if
+    // a print ran, otherwise the pre-print snapshot from connect.
+    const status = (primarySession.postPrintStatus ?? primarySession.prePrintStatus) as
+      | (typeof primarySession.postPrintStatus & {
+          rfid?: { barcode?: string; usedLengthMm?: number; totalLengthMm?: number; rawHex?: string };
+          batteryPercent?: number;
+          headTemperatureC?: number;
+          rfidValid?: boolean;
+          detectedMedia?: { id: string | number };
+        })
+      | null
+      | undefined;
+    const niimbotExtras: Record<string, unknown> = {};
+    if (status?.rfid !== undefined) niimbotExtras.rfid = status.rfid;
+    if (status?.batteryPercent !== undefined) niimbotExtras.batteryPercent = status.batteryPercent;
+    if (status?.headTemperatureC !== undefined) niimbotExtras.headTemperatureC = status.headTemperatureC;
+    if (status?.rfidValid !== undefined) niimbotExtras.rfidValid = status.rfidValid;
+    if (status?.detectedMedia !== undefined) {
+      niimbotExtras.detectedMedia = String(status.detectedMedia.id);
+    }
     // Surface the GATT service UUID on `detected` so triage always
     // sees a service identifier — same fallback pattern as the
     // letratag adapter (plan 11 §IdentitySnapshot.serviceUuid).
@@ -218,7 +240,11 @@ export const adapter: DriverAdapter<NiimbotDevice, NiimbotMedia> = {
       ...(identity.serviceUuid === undefined && gatt
         ? { serviceUuid: gatt.serviceUuid }
         : {}),
-      extra: { ...identity.extra, ...(mocked ? { mocked: true } : {}) },
+      extra: {
+        ...identity.extra,
+        ...niimbotExtras,
+        ...(mocked ? { mocked: true } : {}),
+      },
     };
     const media = primarySession.media;
     const report: HardwareReport = {
