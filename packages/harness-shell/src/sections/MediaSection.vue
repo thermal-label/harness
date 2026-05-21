@@ -27,6 +27,7 @@ import type { DetectionCapability } from '@thermal-label/harness-components/type
 import { useAdapter } from '../state/adapterContext';
 import { useSession } from '../state/session';
 import { engineNoun, statusToMediaPill } from '../state/statusPills';
+import { renderRfidBlock, type RfidBlock } from '../submit/submit';
 import type { CustomMediaInput } from '../types';
 import SectionCard from './SectionCard.vue';
 
@@ -60,9 +61,43 @@ const compatibleMedia = computed<readonly MediaDescriptor[]>(() => {
  * The raw `detectedMedia` off the polled `PrinterStatus`, or `null`
  * when the driver reports nothing. Drivers that can't detect (LM,
  * LW 450) leave `detectedMedia` undefined.
+ *
+ * Niimbot fallback: the niimbot driver only populates `detectedMedia`
+ * when the RFID tag's barcode is in `media.json5`'s `barcodes[]`. For
+ * any new OEM SKU the chassis reports `status.rfid.barcode` but leaves
+ * `detectedMedia` undefined. Synthesise a minimal `MediaDescriptor`
+ * from the rfid block so the `detected-unrecognized` panel engages and
+ * the catalogue-contribution invite can carry the barcode. Geometry is
+ * not on the rfid tag (only roll-length / labelType codes), so
+ * `widthMm` / `heightMm` stay undefined — the picker's panel renders
+ * blank "Width (mm)" / "Length (mm)" inputs and the operator types in
+ * the physical dimensions.
  */
 const rawDetectedMedia = computed<MediaDescriptor | null>(() => {
-  return (session.activeStatus.value?.detectedMedia as MediaDescriptor | undefined) ?? null;
+  const status = session.activeStatus.value as
+    | (typeof session.activeStatus.value & { rfid?: RfidBlock })
+    | null;
+  const direct = (status?.detectedMedia as MediaDescriptor | undefined) ?? null;
+  if (direct) return direct;
+  // No catalogue match — fall back to the rfid beacon if present.
+  const barcode = status?.rfid?.barcode?.trim();
+  if (!barcode) return null;
+  // labelType 3 (Continuous) is the only continuous code in the niimbot
+  // enum today; everything else (1 WithGaps, 2 Black, 4 Perforated, 5
+  // Transparent, 6 PvcTag, 10 BlackMarkGap, 11 HeatShrinkTube) is some
+  // flavour of die-cut / segmented. Default to continuous when the code
+  // is missing — die-cut requires a length the operator must supply.
+  const type: 'die-cut' | 'continuous' =
+    status?.rfid?.labelType === 3 || status?.rfid?.labelType === undefined ? 'continuous' : 'die-cut';
+  // widthMm intentionally left undefined: niimbot RFID doesn't carry
+  // physical dimensions. Cast through `unknown` to satisfy the
+  // required-by-type-but-undefined-at-runtime shape; the picker's panel
+  // and the issue-link builder both probe with `typeof`.
+  return {
+    id: `rfid-${barcode}`,
+    name: barcode,
+    type,
+  } as unknown as MediaDescriptor;
 });
 
 /**
@@ -140,17 +175,24 @@ const buildCustomMedia = computed<((input: CustomMediaInput) => MediaDescriptor)
 
 const detectionCapability = computed<DetectionCapability>(() => {
   // Drivers expose detection capability per engine via
-  // `engine.capabilities.mediaDetection`.
+  // `engine.capabilities.mediaDetection`. `'auto-locked'` is reserved
+  // for printers that actually enforce the detected media (refuse to
+  // print on anything else — brother-ql with media-detection on);
+  // soft-hint detection (niimbot RFID, LW 450 Duo, letratag advertising)
+  // stays in `'auto-suggest'` so the operator can override without
+  // the picker yelling "wrong media".
+  //
   //   - no capability                       → 'none'
-  //   - capability, no detectedMedia        → 'auto-suggest'
-  //   - capability, detected matches catalogue → 'auto-locked'
+  //   - capability, detected matches catalogue, enforced → 'auto-locked'
+  //   - capability, detected matches catalogue, not enforced → 'auto-suggest'
   //   - capability, detected present, no match,
   //     adapter supplies customMedia.build  → 'detected-unrecognized'
-  //   - capability, no match, no customMedia hook → 'auto-suggest'
+  //   - capability, no detection / no match → 'auto-suggest'
   //     (graceful degrade — never hard-lock to a non-catalogue object)
   const engine = activeEngine.value as { capabilities?: { mediaDetection?: boolean } } | null;
   if (!engine?.capabilities?.mediaDetection) return 'none';
-  if (matchedMedia.value) return 'auto-locked';
+  const enforced = adapter.mediaPicker.detectionEnforced === true;
+  if (matchedMedia.value) return enforced ? 'auto-locked' : 'auto-suggest';
   if (rawDetected.value) {
     return buildCustomMedia.value ? 'detected-unrecognized' : 'auto-suggest';
   }
@@ -223,11 +265,17 @@ const detectedSkuRawBytes = computed<string | null>(() => {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
 });
 
-/** `"<w> × <h> mm"` for a fixed length, `"<w> mm continuous"` otherwise. */
+/**
+ * `"<w> × <h> mm"` for a fixed length, `"<w> mm continuous"` otherwise.
+ * `widthMm` is required on `MediaDescriptor` but the niimbot rfid
+ * fallback (geometry not on the tag) leaves it undefined at runtime;
+ * `'?'` is the user-visible placeholder until the operator types one.
+ */
 function dimsOf(m: MediaDescriptor): string {
+  const w = typeof m.widthMm === 'number' && m.widthMm > 0 ? String(m.widthMm) : '?';
   return typeof m.heightMm === 'number' && m.heightMm > 0
-    ? `${String(m.widthMm)} × ${String(m.heightMm)} mm`
-    : `${String(m.widthMm)} mm continuous`;
+    ? `${w} × ${String(m.heightMm)} mm`
+    : `${w} mm continuous`;
 }
 
 /**
@@ -240,6 +288,22 @@ function rawBytesBlock(): string {
   const raw = detectedSkuRawBytes.value;
   return raw ? `\nRaw SKU dump (hex):\n\`\`\`\n${raw}\n\`\`\`\n` : '';
 }
+
+/**
+ * Niimbot-RFID block — present when `status.rfid` carries a tag
+ * payload. The catalogue-contribution issue body pretty-prints this so
+ * the maintainer can paste it verbatim into a new `media.json5` entry
+ * (barcode + labelType become catalogue fields; allPaper / usedPaper
+ * are roll-instance forensics).
+ */
+const rfidBlock = computed<RfidBlock | null>(() => {
+  const status = session.activeStatus.value as
+    | (typeof session.activeStatus.value & { rfid?: RfidBlock })
+    | null;
+  const rfid = status?.rfid;
+  if (!rfid || !rfid.barcode) return null;
+  return rfid;
+});
 
 /**
  * Prefilled "add this media to the catalogue" issue. One builder, one
@@ -265,6 +329,7 @@ const issueUrl = computed<string>(() => {
 
   if (detected) {
     subject = detected.name;
+    const rfid = rfidBlock.value;
     body =
       `The harness detected a roll that isn't in the thermal-label media catalogue yet.\n\n` +
       `Driver: ${driver}\n` +
@@ -274,6 +339,7 @@ const issueUrl = computed<string>(() => {
       `- Dimensions: ${dimsOf(detected)}\n` +
       `- Type: ${detected.type}\n` +
       rawBytesBlock() +
+      (rfid ? renderRfidBlock(rfid) : '') +
       `\nPlease add this SKU to the driver's media registry.\n`;
   } else {
     subject = 'a label type';

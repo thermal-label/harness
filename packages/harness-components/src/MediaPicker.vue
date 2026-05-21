@@ -241,8 +241,13 @@ const secondaryCount = computed(() =>
  *    "selected" something — they couldn't really, the catalogue is
  *    disabled). Updates flow live as the polled status changes:
  *    swap a DK roll, picker reflects within one poll cycle.
- *  - `auto-suggest` / `none`: only auto-select when `modelValue`
- *    is null. Once the operator picks, leave their choice alone.
+ *  - `auto-suggest`: detected wins over the catalogue fallback (the
+ *    initial `defaultMediaId` auto-pick), but the operator can
+ *    override and we leave that alone. A `modelValue` that is null
+ *    OR still equals `defaultMediaId` is treated as "operator hasn't
+ *    picked yet" — detected is allowed to claim it.
+ *  - `none`: no detection capability; only auto-select when
+ *    `modelValue` is null.
  *  - `detected` non-null: prefer it over `defaultMediaId`.
  */
 function pickInitial(): void {
@@ -259,12 +264,20 @@ function pickInitial(): void {
     }
     return;
   }
-  // none / auto-suggest: don't clobber an existing operator pick.
-  if (props.modelValue !== null) return;
-  if (detectionMode.value !== 'none' && props.detected) {
-    emit('update:modelValue', props.detected);
+  // auto-suggest: detected wins over the default-fallback auto-pick
+  // but not over an explicit operator pick. We can't distinguish those
+  // two perfectly, so the heuristic is "modelValue still equals
+  // defaultMediaId" ⇒ treat as not-yet-picked.
+  if (detectionMode.value === 'auto-suggest' && props.detected) {
+    const stillOnDefault =
+      props.modelValue === null || props.modelValue.id === props.defaultMediaId;
+    if (stillOnDefault && props.modelValue?.id !== props.detected.id) {
+      emit('update:modelValue', props.detected);
+    }
     return;
   }
+  // none: don't clobber an existing operator pick.
+  if (props.modelValue !== null) return;
   const byId = props.available.find(m => m.id === props.defaultMediaId);
   emit('update:modelValue', byId ?? props.available[0] ?? null);
 }
