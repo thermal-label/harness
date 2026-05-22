@@ -15,6 +15,7 @@ overrides:
   '@thermal-label/labelwriter-web': 0.6.3-debug.0
   '@thermal-label/letratag-core': ^0.6.0
   '@thermal-label/letratag-web': ^0.6.0
+  '@thermal-label/marklife-core': link:../marklife/packages/core
   '@thermal-label/transport': ^0.6.0
 
 importers:
@@ -313,6 +314,9 @@ importers:
       '@thermal-label/labelwriter-core':
         specifier: 0.6.3-debug.0
         version: 0.6.3-debug.0(@thermal-label/d1-core@0.6.0)
+      '@thermal-label/marklife-core':
+        specifier: link:../../../marklife/packages/core
+        version: link:../../../marklife/packages/core
       '@thermal-label/transport':
         specifier: ^0.6.0
         version: 0.6.0(usb@2.17.0)

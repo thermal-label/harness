@@ -18,9 +18,9 @@ and is not intended for end users.
 | labelmanager | `usb`               | First MVP per plan 05 §sequencing.                                                                                         |
 | labelwriter  | `usb`, `tcp` (9100) | Multi-transport: USB on every model, TCP-9100 on Wi-Fi-capable models (LW Wireless, LW 4xx Wi-Fi, 550 Turbo, 5XL).         |
 | brother-ql   | `usb`, `tcp` (9100) | QL-820NWB / QL-820NWBc reference target. Bluetooth-SPP supported by the production node adapter; not wired in the CLI yet. |
+| marklife     | `bluetooth-spp`     | Deli/FeiOou AbleMark/YXQ family. Classic-BT-SPP over an OS-paired RFCOMM device node; `--device <path>`. BLE deferred.     |
 
-Subsequent drivers (niimbot, marklife, ...) land as
-separate PRs.
+Subsequent drivers (niimbot, ...) land as separate PRs.
 
 ## Wizard flow
 
@@ -70,7 +70,7 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 
 | Flag                     | Effect                                                                                                                                                                                                                                                                                                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<driver>` (positional)  | Driver key. One of: `labelmanager`, `labelwriter`, `brother-ql`.                                                                                                                                                                                                                                                                                         |
+| `<driver>` (positional)  | Driver key. One of: `labelmanager`, `labelwriter`, `brother-ql`, `marklife`.                                                                                                                                                                                                                                                                              |
 | `[model]` (positional)   | Device key from the driver registry (e.g. `LM_PNP`). Prompted if omitted.                                                                                                                                                                                                                                                                                |
 | `-t, --transport <type>` | One of `usb`, `tcp`, `serial`, `bluetooth-spp`, `bluetooth-gatt`. Skips auto-detect.                                                                                                                                                                                                                                                                     |
 | `-r, --rung <rung>`      | One of `verified`, `partial`, `failing`. Skips the assessment prompt.                                                                                                                                                                                                                                                                                |
@@ -84,6 +84,7 @@ pnpm --filter verify-cli verify labelmanager LM_PNP \
 | `--media <key>`          | Loaded label / tape. Labelwriter accepts a media key (`ADDRESS_STANDARD`) or SKU (`30334`); brother-ql accepts a DK SKU (`DK-22205`). **Optional** when the printer auto-detects (LW 5xx via NFC, brother-ql via status query); **required** for LW 3xx/4xx. Wizard prompts when detection fails and no flag is passed. Flag always overrides detection. |
 | `--host <host>`          | TCP-9100 host (IP or hostname). Required for labelwriter `--transport tcp` and brother-ql `--transport tcp`. Wizard prompts when omitted.                                                                                                                                                                                                                |
 | `--port <port>`          | TCP-9100 port (default `9100`). Brother-ql `tcp` transport only.                                                                                                                                                                                                                                                                                         |
+| `--device <path>`        | Marklife-only. OS serial / RFCOMM device path for the `bluetooth-spp` transport (`/dev/rfcomm0`, `COM5`). Bind it after OS-level pairing — see the Marklife section. Wizard prompts when omitted.                                                                                                                                                          |
 
 ## Dry-run output
 
@@ -366,6 +367,81 @@ DK; 306 dots for 29 mm DK).
 printed x-axis (QL pin 0 sits on the right side of the printed face).
 Same convention as the production node adapter.
 
+## Marklife — model + RFCOMM device path
+
+Reference target: **P12** (`P12` registry key) — the 0.5"-class
+narrow-tape chassis, YXQ-stream protocol id 4. The marklife family
+(Deli / FeiOou AbleMark / YXQ) is **Classic-Bluetooth-SPP only** on
+the print path — the vendor APK declares no USB / TCP
+(`~/marklife/hardware.md` § 1).
+
+| Aspect        | Coverage                                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transports    | `bluetooth-spp` only. The CLI opens an OS-paired RFCOMM device node via `SerialTransport`; pass its path with `--device`.                                |
+| Media         | `--media <key>` against `@thermal-label/marklife-core`'s `MEDIA` registry (`CONTINUOUS_15MM`, `GAP_50X30`, …). Optional — defaults to the head-size class. |
+| Identity      | Bluetooth-SPP surfaces no vid/pid and marklife has no host-readable identity probe, so the report's `detected` block is the registry name + device path. |
+| BLE           | The P12 is dual-mode (Classic SPP + a `*_BLE` GATT advertisement). The driver declares no BLE profile for the P12 — BLE is a web-harness follow-up.      |
+
+### Pairing + RFCOMM bind (Linux)
+
+Classic-BT SPP is not auto-enumerable — the operator pairs the printer
+and binds an RFCOMM node once, then the CLI opens that path:
+
+```sh
+# 1. Pair + trust the printer (one-time). In bluetoothctl, find the
+#    Classic name (no _BLE suffix) and note its MAC:
+bluetoothctl
+# scan on → note e.g. 55:55:09:23:A1:5B  P12_ZA15B → scan off
+pair 55:55:09:23:A1:5B
+trust 55:55:09:23:A1:5B
+exit
+
+# 2. Bind an RFCOMM device node (channel 1 is the SPP default; run
+#    `sdptool browse <MAC>` and use the Serial Port channel if it fails):
+sudo rfcomm bind /dev/rfcomm0 55:55:09:23:A1:5B
+
+# 3. /dev/rfcomm0 now exists — point the CLI at it.
+```
+
+macOS exposes `/dev/tty.<Name>-SPPDev` after pairing; Windows assigns
+a `COMx` port in the Bluetooth settings.
+
+### Maintainer one-liner
+
+```sh
+pnpm --filter verify-cli verify marklife P12 \
+  --transport bluetooth-spp \
+  --device /dev/rfcomm0 \
+  --rung verified \
+  --notes "bench self-validation" \
+  --no-prompt
+```
+
+Drop `--no-prompt` to walk the wizard (it prompts for the device path).
+Add `--dry-run` to render the issue body with no hardware, or
+`--preview` / `--preview-png` to inspect the diagnostic bitmap first.
+
+### Diagnostic-print layout (marklife)
+
+One head-aligned print authored at the chassis head-dot count (100
+dots for the P12's 0.5" head) and handed to the marklife-core YXQ
+encoder. Sections, stacked vertically with a 4-px white gap:
+
+1. **Header** — `v<harness-version>` and the model key, 1x. Strings
+   kept short so they don't clip so narrow a head.
+2. **Top orientation marker** — `TOP>` at 1x.
+3. **Edge probes** — left and right; bars step outward in 2-dot
+   increments. The first row whose bar didn't print marks the
+   printable margin.
+4. **Sample text** — `TXT 1X` (1x) and `2X` (2x) for a legibility
+   eyeball at both scales.
+5. **Fill region** — diagonal stripes for density uniformity.
+6. **Bottom orientation marker** — `B` at 1x.
+
+No cutter probe — the marklife family has no auto-cut. No
+leading/trailing dead-zone pad — the YXQ encoder emits its own `ESC J`
+feed past the head.
+
 ## Local commands
 
 ```sh
@@ -398,8 +474,14 @@ pnpm --filter verify-cli verify brother-ql QL_820NWBc \
 # brother-ql — two-color (DK-22251)
 pnpm --filter verify-cli verify brother-ql QL_820NWBc \
   --media DK-22251 --transport usb --rung verified --no-prompt
+
+# marklife (P12) — Bluetooth-SPP, after `rfcomm bind /dev/rfcomm0 <MAC>`
+pnpm --filter verify-cli verify marklife P12 \
+  --transport bluetooth-spp --device /dev/rfcomm0 \
+  --rung verified --no-prompt
 ```
 
 Drop `--no-prompt` to walk the wizard. Drop `--dry-run` (when present)
 and the flow opens the device, runs the status probe, sends the
 diagnostic-print bytes, then submits via `gh` or the prefilled URL.
+(Marklife has no status probe — it opens the RFCOMM port and writes.)

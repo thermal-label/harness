@@ -346,4 +346,49 @@ describe('verify-cli --dry-run end-to-end', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/Device declares no tcp transport/);
   }, 30_000);
+
+  it('renders a valid HardwareReport for marklife P12 bluetooth-spp', async () => {
+    const result = await runCli([
+      'verify',
+      'marklife',
+      'P12',
+      '--transport',
+      'bluetooth-spp',
+      '--rung',
+      'verified',
+      '--notes',
+      'bench self-validation',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+
+    expect(result.exitCode, `stderr:\n${result.stderr}`).toBe(0);
+    const report = extractJsonReport(result.stdout);
+
+    expect(report.schemaVersion).toBe(1);
+    expect(report.driver).toBe('marklife');
+    expect(report.device.confirmed.model).toBe('P12');
+    expect(report.transports).toHaveLength(1);
+    expect(report.transports[0]?.name).toBe('bluetooth-spp');
+    expect(report.transports[0]?.rung).toBe('verified');
+    expect(report.transports[0]?.notes).toBe('bench self-validation');
+    expect(report.device.confirmed.overrides?.media).toBe('continuous-15mm');
+    expect(Number.isFinite(Date.parse(report.submittedAt))).toBe(true);
+  }, 30_000);
+
+  it('rejects unsupported transports for marklife', async () => {
+    const result = await runCli([
+      'verify',
+      'marklife',
+      'P12',
+      '--transport',
+      'usb',
+      '--rung',
+      'verified',
+      '--no-prompt',
+      '--dry-run',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/marklife only speaks bluetooth-spp/);
+  }, 30_000);
 });
