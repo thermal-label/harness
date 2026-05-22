@@ -18,7 +18,7 @@ and is not intended for end users.
 | labelmanager | `usb`               | First MVP per plan 05 §sequencing.                                                                                         |
 | labelwriter  | `usb`, `tcp` (9100) | Multi-transport: USB on every model, TCP-9100 on Wi-Fi-capable models (LW Wireless, LW 4xx Wi-Fi, 550 Turbo, 5XL).         |
 | brother-ql   | `usb`, `tcp` (9100) | QL-820NWB / QL-820NWBc reference target. Bluetooth-SPP supported by the production node adapter; not wired in the CLI yet. |
-| marklife     | `bluetooth-spp`     | Deli/FeiOou AbleMark/YXQ family. Classic-BT-SPP over an OS-paired RFCOMM device node; `--device <path>`. BLE deferred.     |
+| marklife     | `usb`, `bluetooth-spp` | Deli/FeiOou AbleMark/YXQ family; P12 = L11 protocol. USB Printer-class (libusb) or Classic-BT-SPP over an OS-paired RFCOMM node (`--device <path>`). |
 
 Subsequent drivers (niimbot, ...) land as separate PRs.
 
@@ -367,20 +367,40 @@ DK; 306 dots for 29 mm DK).
 printed x-axis (QL pin 0 sits on the right side of the printed face).
 Same convention as the production node adapter.
 
-## Marklife — model + RFCOMM device path
+## Marklife — model + transport
 
 Reference target: **P12** (`P12` registry key) — the 0.5"-class
-narrow-tape chassis, YXQ-stream protocol id 4. The marklife family
-(Deli / FeiOou AbleMark / YXQ) is **Classic-Bluetooth-SPP only** on
-the print path — the vendor APK declares no USB / TCP
-(`~/marklife/hardware.md` § 1).
+narrow-tape chassis, **L11 binary protocol**, 96-dot head. The CLI
+drives it two ways:
 
-| Aspect        | Coverage                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Transports    | `bluetooth-spp` only. The CLI opens an OS-paired RFCOMM device node via `SerialTransport`; pass its path with `--device`.                                |
-| Media         | `--media <key>` against `@thermal-label/marklife-core`'s `MEDIA` registry (`CONTINUOUS_15MM`, `GAP_50X30`, …). Optional — defaults to the head-size class. |
-| Identity      | Bluetooth-SPP surfaces no vid/pid and marklife has no host-readable identity probe, so the report's `detected` block is the registry name + device path. |
-| BLE           | The P12 is dual-mode (Classic SPP + a `*_BLE` GATT advertisement). The driver declares no BLE profile for the P12 — BLE is a web-harness follow-up.      |
+| Aspect     | Coverage                                                                                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transports | `usb` (Printer-class device, `UsbTransport` / libusb — the cleanest path on Linux) and `bluetooth-spp` (Classic-BT SPP over an OS-paired RFCOMM node, passed with `--device`).      |
+| Media      | `--media <key>` against `@thermal-label/marklife-core`'s `MEDIA` registry (`CONTINUOUS_15MM`, `GAP_50X30`, …). Optional — defaults to the head-size class.                          |
+| Identity   | USB carries vid/pid (`09c7:0011`); Bluetooth-SPP surfaces neither and marklife has no host-readable identity probe — so on SPP the report identity is the registry name + path.     |
+| BLE        | The P12 also advertises BLE GATT, but Node has no BLE transport — the BLE route is the `harness-marklife` web app, not this CLI.                                                    |
+
+### USB (recommended on Linux)
+
+The P12 enumerates as a USB Printer-class device (`09c7:0011`). The
+kernel `usblp` driver claims it; `UsbTransport` (libusb) detaches that
+and drives the bulk endpoint directly — but libusb needs device
+access. Install a udev rule once:
+
+```sh
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="09c7", ATTR{idProduct}=="0011", MODE="0660", GROUP="plugdev"' \
+  | sudo tee /etc/udev/rules.d/99-marklife-p12.rules
+sudo udevadm control --reload && sudo udevadm trigger
+# then replug the printer
+```
+
+Then it's a one-liner — no pairing, no device path:
+
+```sh
+pnpm --filter verify-cli verify marklife P12 --transport usb --rung verified --no-prompt
+```
+
+(No udev rule? Run the command under `sudo` instead.)
 
 ### Pairing + RFCOMM bind (Linux)
 
@@ -406,7 +426,7 @@ sudo rfcomm bind /dev/rfcomm0 55:55:09:23:A1:5B
 macOS exposes `/dev/tty.<Name>-SPPDev` after pairing; Windows assigns
 a `COMx` port in the Bluetooth settings.
 
-### Maintainer one-liner
+### Maintainer one-liner (Bluetooth-SPP)
 
 ```sh
 pnpm --filter verify-cli verify marklife P12 \
@@ -423,8 +443,8 @@ Add `--dry-run` to render the issue body with no hardware, or
 
 ### Diagnostic-print layout (marklife)
 
-One head-aligned print authored at the chassis head-dot count (100
-dots for the P12's 0.5" head) and handed to the marklife-core YXQ
+One head-aligned print authored at the chassis head-dot count (96
+dots for the P12's 0.5" head) and handed to the marklife-core L11
 encoder. Sections, stacked vertically with a 4-px white gap:
 
 1. **Header** — `v<harness-version>` and the model key, 1x. Strings
@@ -439,7 +459,7 @@ encoder. Sections, stacked vertically with a 4-px white gap:
 6. **Bottom orientation marker** — `B` at 1x.
 
 No cutter probe — the marklife family has no auto-cut. No
-leading/trailing dead-zone pad — the YXQ encoder emits its own `ESC J`
+leading/trailing dead-zone pad — the L11 encoder emits its own `ESC J`
 feed past the head.
 
 ## Local commands
@@ -474,6 +494,10 @@ pnpm --filter verify-cli verify brother-ql QL_820NWBc \
 # brother-ql — two-color (DK-22251)
 pnpm --filter verify-cli verify brother-ql QL_820NWBc \
   --media DK-22251 --transport usb --rung verified --no-prompt
+
+# marklife (P12) — USB (after the udev rule; see the Marklife section)
+pnpm --filter verify-cli verify marklife P12 \
+  --transport usb --rung verified --no-prompt
 
 # marklife (P12) — Bluetooth-SPP, after `rfcomm bind /dev/rfcomm0 <MAC>`
 pnpm --filter verify-cli verify marklife P12 \

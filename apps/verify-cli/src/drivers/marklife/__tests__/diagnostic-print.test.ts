@@ -19,18 +19,18 @@ function engineOf(device: MarklifeDevice): MarklifeEngine {
 }
 
 describe('marklife diagnostic-print encoder', () => {
-  it('builds a head-width bitmap for the P12 (0.5" / 100-dot head)', () => {
+  it('builds a head-width bitmap for the P12 (0.5" / 96-dot head)', () => {
     const bitmap = buildDiagnosticBitmap({
       device: P12,
       media: MEDIA_15MM,
       harnessVersion: '0.0.0',
       driverVersion: '0.1.0',
     });
-    expect(bitmap.widthPx).toBe(100); // P12 registry headDots
+    expect(bitmap.widthPx).toBe(96); // P12 registry headDots (HCI-capture confirmed)
     expect(bitmap.heightPx).toBeGreaterThan(100); // stacked sections
   });
 
-  it('encodes the P12 diagnostic to a non-empty YXQ wire stream', () => {
+  it('encodes the P12 diagnostic to a non-empty L11 wire stream', () => {
     const bitmap = buildDiagnosticBitmap({
       device: P12,
       media: MEDIA_15MM,

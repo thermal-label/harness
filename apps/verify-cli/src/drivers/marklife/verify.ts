@@ -1,26 +1,23 @@
 /**
  * Marklife verify flow.
  *
- * Wizard by default; expert flags bypass prompts wholesale. Marklife
- * is a Classic-Bluetooth-SPP family — the operator pairs the printer
- * at the OS level and binds an RFCOMM device node, then passes its
- * path with `--device`. See the verify-cli README marklife section
- * for the `rfcomm bind` walkthrough.
+ * Wizard by default; expert flags bypass prompts wholesale. The
+ * marklife P12 is reachable two ways from the CLI:
+ *   - `usb` — the printer enumerates as a USB Printer-class device;
+ *     opened via `UsbTransport` (libusb). The cleanest path, no
+ *     pairing — libusb needs a udev rule for the vid/pid (or sudo),
+ *     since the kernel `usblp` driver claims the device.
+ *   - `bluetooth-spp` — Classic-BT SPP over an OS-paired RFCOMM node
+ *     passed with `--device`. See the verify-cli README marklife
+ *     section for the `rfcomm bind` walkthrough.
  *
- * Flow:
- *   1. Resolve model (flag or pick-from-registry prompt).
- *   2. Resolve transport — marklife today is Bluetooth-SPP only.
- *   3. Resolve media — `--media` flag, else the catalogue default for
- *      the chassis head-size class.
- *   4. Connect via `SerialTransport` over the RFCOMM path + write the
- *      encoded diagnostic job (`marklife-yxq` for the P12).
- *   5. Operator inspects what came out, picks the rung + notes.
- *   6. Render `IssueBody`; submit via `gh` / prefilled URL.
+ * Flow: resolve model → transport → media → connect + write the
+ * encoded L11 diagnostic job → operator picks the rung + notes →
+ * render `IssueBody`, submit via `gh` / prefilled URL.
  *
- * BLE: the P12 is dual-mode (Classic SPP + BLE GATT), but there is no
- * Node BLE transport in this ecosystem and the marklife driver
- * declares no BLE profile for the P12 — the BLE route is a web-harness
- * follow-up. This CLI exercises the Classic-SPP transport only.
+ * BLE: the P12 is triple-transport (USB + SPP + BLE GATT), but there
+ * is no Node BLE transport in this ecosystem — the BLE route is the
+ * `harness-marklife` web app. This CLI exercises USB and SPP.
  */
 import {
   DEFAULT_MEDIA,
@@ -52,7 +49,12 @@ import {
   promptSelect,
   type PromptContext,
 } from '../../prompts.js';
-import { connectMarklife, writeDiagnosticPrint } from './connect.js';
+import {
+  connectMarklifeSpp,
+  connectMarklifeUsb,
+  writeDiagnosticPrint,
+  type ConnectedSession,
+} from './connect.js';
 import { buildDiagnosticBitmap, encodeBitmap } from './diagnostic-print.js';
 import { submitIssue, buildPrefillUrl, openInBrowser } from '../../submit.js';
 import { renderBitmapPreview } from '../../bitmap-preview.js';
@@ -63,7 +65,7 @@ const DRIVER_VERSION = driverVersion('@thermal-label/marklife-core');
 const TARGET_REPO = 'thermal-label/marklife';
 const FALLBACK_EMAIL = 'mannes@krukje.nl';
 
-const SUPPORTED_TRANSPORTS: readonly TransportType[] = ['bluetooth-spp'];
+const SUPPORTED_TRANSPORTS: readonly TransportType[] = ['usb', 'bluetooth-spp'];
 
 /** Chassis head-size class → media-catalogue `targetModels` tag. */
 const SIZE_CLASS_TARGET: Record<MarklifePhysicalSizeClass, MarklifeTargetModel> = {
@@ -129,7 +131,7 @@ export async function runMarklifeVerify(options: VerifyOptions): Promise<void> {
     console.log('');
   }
 
-  const identity = await runConnect(device, engine, media, options, bitmap, ctx);
+  const identity = await runConnect(device, engine, media, options, bitmap, ctx, transport);
 
   const rung = await resolveRung(options, ctx);
   const notes = await resolveNotes(options, ctx);
@@ -235,27 +237,47 @@ async function runConnect(
   options: VerifyOptions,
   bitmap: LabelBitmap,
   ctx: PromptContext,
+  transport: TransportType,
 ): Promise<IdentitySnapshot> {
   if (options.dryRun) {
-    return synthesiseIdentity(device);
+    return synthesiseIdentity(device, transport);
   }
 
-  const serialPath = await resolveSerialPath(options, ctx);
-
-  console.log(`Connecting over Bluetooth-SPP (${serialPath})...`);
-  let session;
-  try {
-    session = await connectMarklife(device, serialPath);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Could not open ${serialPath}. Pair the printer and bind an RFCOMM node first ` +
-        `(see the verify-cli README marklife section), or pass --dry-run to exercise ` +
-        `the rendering path without hardware. Underlying error: ${message}`,
+  let session: ConnectedSession;
+  if (transport === 'usb') {
+    console.log('Connecting over USB...');
+    try {
+      session = await connectMarklifeUsb(device);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Could not open the P12 over USB. libusb needs device access — the kernel ` +
+          `usblp driver claims the printer, so install a udev rule for its vid/pid ` +
+          `(see the verify-cli README marklife section) or run under sudo. Or pass ` +
+          `--dry-run to exercise the rendering path without hardware. ` +
+          `Underlying error: ${message}`,
+      );
+    }
+    console.log(
+      `Connected over USB. vid=0x${session.identity.vid?.toString(16) ?? '?'} ` +
+        `pid=0x${session.identity.pid?.toString(16) ?? '?'}`,
     );
+  } else {
+    const serialPath = await resolveSerialPath(options, ctx);
+    console.log(`Connecting over Bluetooth-SPP (${serialPath})...`);
+    try {
+      session = await connectMarklifeSpp(device, serialPath);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Could not open ${serialPath}. Pair the printer and bind an RFCOMM node first ` +
+          `(see the verify-cli README marklife section), or pass --dry-run to exercise ` +
+          `the rendering path without hardware. Underlying error: ${message}`,
+      );
+    }
+    console.log(`Connected on ${serialPath}.`);
   }
 
-  console.log(`Connected on ${serialPath}.`);
   console.log('Encoding diagnostic print...');
   const bytes = encodeBitmap(bitmap, engine, media);
   console.log(`Sending ${String(bytes.length)} bytes to printer...`);
@@ -264,8 +286,8 @@ async function runConnect(
   } catch (err) {
     if (err instanceof TransportClosedError) {
       throw new Error(
-        'Bluetooth-SPP transport closed mid-write. Check the printer is powered and ' +
-          'in range; re-running is safe.',
+        'Transport closed mid-write. Check the printer is powered and connected; ' +
+          're-running is safe.',
       );
     }
     throw err;
@@ -338,9 +360,9 @@ async function resolveTransport(
  * the media `id`) → the first catalogue entry whose `targetModels`
  * matches the chassis head-size class → `DEFAULT_MEDIA`.
  *
- * The YXQ encoder for the P12 (protocol id 4) does not read media
- * geometry — the field is informational for the report — so an
- * imperfect default still produces a valid diagnostic print.
+ * The L11 encoder for the P12 does not read media geometry — the
+ * field is informational for the report — so an imperfect default
+ * still produces a valid diagnostic print.
  */
 function resolveMedia(device: MarklifeDevice, options: VerifyOptions): MarklifeMedia {
   const entries = Object.entries(MEDIA) as [string, MarklifeMedia][];
@@ -422,12 +444,18 @@ interface BuildReportInput {
   notes: string | undefined;
 }
 
-function synthesiseIdentity(device: MarklifeDevice): IdentitySnapshot {
-  // Marklife has no host-readable identity probe and Bluetooth-SPP
-  // surfaces no vid/pid — the synthesised snapshot is the registry
-  // name plus a dry-run marker so triage can tell it from a real run.
+function synthesiseIdentity(
+  device: MarklifeDevice,
+  transport: TransportType,
+): IdentitySnapshot {
+  // Marklife has no host-readable identity probe. For a USB dry-run
+  // the registry carries vid/pid; Bluetooth-SPP surfaces neither.
+  const usb = device.transports.usb;
   return {
     advertisedName: device.name,
+    ...(transport === 'usb' && usb
+      ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) }
+      : {}),
     extra: { synthesised: true, source: 'dry-run-fallback' },
   };
 }
@@ -440,6 +468,8 @@ function buildReport(input: BuildReportInput): HardwareReport {
     ...(input.notes ? { notes: input.notes } : {}),
   };
 
+  const usb = input.device.transports.usb;
+
   return {
     schemaVersion: 1,
     driver: DRIVER_KEY,
@@ -449,8 +479,12 @@ function buildReport(input: BuildReportInput): HardwareReport {
       detected: input.detectedIdentity,
       confirmed: {
         model: input.device.name,
-        // No vid/pid — Bluetooth-SPP carries none. Record the media
-        // the operator printed against so triage can reproduce.
+        // vid/pid recorded for the USB transport; Bluetooth-SPP
+        // carries neither. Record the media the operator printed
+        // against either way so triage can reproduce.
+        ...(input.transport === 'usb' && usb
+          ? { vid: parseInt(usb.vid, 16), pid: parseInt(usb.pid, 16) }
+          : {}),
         overrides: { media: String(input.media.id) },
       },
     },
