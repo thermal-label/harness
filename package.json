@@ -29,6 +29,7 @@
       "@thermal-label/letratag-core": "^0.6.0",
       "@thermal-label/letratag-web": "^0.6.0",
       "@thermal-label/marklife-core": "link:../marklife/packages/core",
+      "@thermal-label/marklife-web": "link:../marklife/packages/web",
       "@thermal-label/transport": "^0.6.0"
     }
   },
