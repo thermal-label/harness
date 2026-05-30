@@ -1,6 +1,6 @@
 {
   "name": "@thermal-label/harness-labelwriter",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Browser-hosted labelwriter hardware-reporting harness (plan 06). Single-page guided UX, WebUSB connect, diagnostic-print, prefilled GitHub-issue submit. Workspace-internal — released only as zipped static-bundle GitHub Release artifacts.",
   "type": "module",
