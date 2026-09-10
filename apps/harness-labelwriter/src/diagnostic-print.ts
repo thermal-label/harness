@@ -5,14 +5,23 @@
  * electrically a LabelManager) through the same shared
  * `buildDiagnosticImage`. LW family uses a tear-bar, not autocut, so no
  * cutter ladder for either engine type. RGBA out — driver does its own
- * threshold/dither + the LW "send fewer rows" leading-edge skip.
+ * threshold/dither.
+ *
+ * Dead-zone handling: the LW head sits a few mm past the leading edge
+ * after form-feed, so the *authoring canvas* is shorter than the
+ * physical label. We subtract `leadingDots + trailingDots` (resolved
+ * via `getPrintableCanvasDots`) from the requested height — every
+ * pixel we draw lands on a row the head can reach. The driver passes
+ * `media.lengthDots` to ESC L separately so form-feed pitch stays
+ * correct.
  */
 import type { PrintEngine, RawImageData } from '@thermal-label/contracts';
-import type {
-  LabelWriterAnyMedia,
-  LabelWriterDevice,
-  LabelWriterMedia,
-  LabelWriterTapeMedia,
+import {
+  getPrintableCanvasDots,
+  type LabelWriterAnyMedia,
+  type LabelWriterDevice,
+  type LabelWriterMedia,
+  type LabelWriterTapeMedia,
 } from '@thermal-label/labelwriter-core';
 import { buildDiagnosticImage as buildShared } from '@thermal-label/harness-core/shared';
 
@@ -44,10 +53,17 @@ export function buildDiagnosticImage(input: DiagnosticImageInput): RawImageData 
     heightDots = mmToDots(TAPE_DEFAULT_MM, dpi);
   } else {
     const lbl = m as LabelWriterMedia;
-    widthDots = Math.min(mmToDots(lbl.widthMm, dpi), headDots);
-    heightDots =
+    const canvas = getPrintableCanvasDots(input.engine);
+    // Width: cap the authored label width at the engine's printable
+    // canvas (the head can never address pins past `widthDots`).
+    widthDots = Math.min(mmToDots(lbl.widthMm, dpi), canvas.widthDots);
+    // Height: physical label length minus the leading + trailing dead
+    // zones. The driver then passes the full `lengthDots` to ESC L so
+    // form-feed pitch tracks the actual label, not the shorter canvas.
+    const labelLengthDots =
       lbl.lengthDots ??
       (lbl.heightMm !== undefined ? mmToDots(lbl.heightMm, dpi) : mmToDots(CONTINUOUS_LABEL_DEFAULT_MM, dpi));
+    heightDots = Math.max(1, labelLengthDots - canvas.leadingDots - canvas.trailingDots);
   }
   return buildShared({
     widthDots,

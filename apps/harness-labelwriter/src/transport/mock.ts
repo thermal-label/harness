@@ -239,30 +239,35 @@ function buildMockResponses(): MockResponse {
   });
 
   // Uncatalogued SKU — a real `ESC U` reply captured off an LW 550 by
-  // a community tester: the frame that surfaced the deci-mm parsing
-  // bug (raw u16 `0x023B` is 57.1 mm, not 571). SKU `S0722540` is
+  // a community tester (2026-05-23 bench capture). SKU `S0722540` is
   // absent from the labelwriter media registry, so `skuInfoToMedia`
   // yields a geometry-bearing descriptor (`id: 'sku-S0722540'`,
   // 57.1 × 31.7 mm die-cut) that maps to no catalogue entry →
-  // `detected-unrecognized`. Stored as the verbatim bytes — the
-  // 59-byte capture zero-padded over its empty production-date/time
-  // tail to the 63-byte `SKU_INFO_BYTE_COUNT` — so the harness
-  // exercises the real `parseSkuInfo` path, not a synthesised one.
+  // `detected-unrecognized`.
+  //
+  // Verbatim 63-byte capture: full secondary geometry — marker pitch /
+  // width / start offset, vertical offset, liner width, total label
+  // count (1000), total roll length, counter margin, count-down
+  // strategy, and production date / time bytes. `parseSkuInfo` +
+  // `skuInfoDetails` exercise their real-world parsing paths, not a
+  // sparser synthesised approximation. This is also the frame that
+  // surfaced the deci-mm parsing bug (raw u16 `0x023B` → 57.1 mm via
+  // `u16DeciMm`) — kept as a decimal-geometry regression walk-through.
   const sku550Unknown = new Uint8Array([
-    0xb6, 0xca, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, // magic / version / length / crc
+    0xb6, 0xca, 0x00, 0x3c, 0x82, 0xeb, 0xee, 0x6f, // magic / version / length=60 / crc / reserved
     0x53, 0x30, 0x37, 0x32, 0x32, 0x35, 0x34, 0x30, // SKU "S0722540" (bytes 8-15)
     0x00, 0x00, 0x00, 0x00, // SKU field padding (bytes 16-19)
-    0x00, 0xff, 0x06, 0x01, // brand=dymo, region, material, labelType=die
+    0x00, 0xff, 0x06, 0x01, // brand=dymo, region, material=removable, labelType=die
     0x01, 0x00, 0x00, 0x00, // labelColor=white, contentColor=black, markerType=0
-    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 28-31)
-    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 32-35)
-    0x00, 0x00, 0x00, 0x00, // marker geometry (bytes 36-39)
+    0x9d, 0x01, 0x1e, 0x00, // markerPitch=413 (41.3 mm), marker1Width=30 (3.0 mm)
+    0x58, 0x00, 0x00, 0x00, // marker1ToStart=88 (8.8 mm), marker2Width=0
+    0x00, 0x00, 0x19, 0x00, // marker2Offset=0, verticalOffset=25 (2.5 mm)
     0x3d, 0x01, 0x3b, 0x02, // labelLength=317 (31.7 mm), labelWidth=571 (57.1 mm)
     0x00, 0x00, 0x00, 0x00, // printable offsets (bytes 44-47)
-    0x00, 0x00, 0x00, 0x00, // liner width / total label count (bytes 48-51)
-    0x00, 0x00, 0x00, 0x00, // total length / counter margin (bytes 52-55)
-    0x00, 0x00, 0x00, // counterStrategy=count-up (bytes 56-58)
-    0x00, 0x00, 0x00, 0x00, // production date/time — empty (zero pad, bytes 59-62)
+    0x6b, 0x02, 0xe8, 0x03, // linerWidth=619 (61.9 mm), totalLabelCount=1000
+    0xa0, 0x50, 0x64, 0x00, // totalLength=20640 (2064.0 mm), counterMargin=100
+    0x01, 0x00, 0x00, 0x00, // counterStrategy=count-down (bytes 56-59)
+    0xc9, 0x5f, 0x91, // productionDate (60-61), productionTime first byte (62)
   ]);
 
   // 34-byte lw5-raster `ESC V` engine-version blocks — the USB PID

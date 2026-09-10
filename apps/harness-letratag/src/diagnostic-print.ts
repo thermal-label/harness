@@ -43,10 +43,9 @@ export function buildDiagnosticImage(input: DiagnosticPrintInput): RawImageData 
   // back defensively so a future registry edit doesn't crash.
   const headDots = engine?.headDots ?? 30;
   const dpi = engine?.dpi ?? 200;
-  // Every LT cassette is 12 mm with `printableDots: 30` — read it
-  // off the media descriptor so we honour any future edge-case
-  // narrowing (e.g. iron-on cassettes that print fewer rows).
-  const widthDots = Math.min(input.media.printableDots, headDots);
+  // Printable head height is an engine fact (`headDots`), not a
+  // per-cassette one — every LT cassette images the same 30 dots.
+  const widthDots = headDots;
   return buildShared({
     widthDots,
     heightDots: Math.round((TAPE_DEFAULT_MM * dpi) / 25.4),

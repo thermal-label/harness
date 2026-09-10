@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
 
@@ -56,7 +56,7 @@ jobs:
         run: zip -r "../../../${{ steps.artifact.outputs.name }}" .
 
       - name: Upload as GitHub Release artifact
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.artifact.outputs.name }}
           generate_release_notes: true
@@ -75,7 +75,7 @@ jobs:
         env:
           DOCS_DISPATCH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
         if: env.DOCS_DISPATCH_TOKEN != ''
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ env.DOCS_DISPATCH_TOKEN }}
           repository: thermal-label/thermal-label.github.io
