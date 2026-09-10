@@ -172,10 +172,99 @@ describe('marklife harness adapter — diagnostics path (mock p12)', () => {
       mocked: true,
     });
 
-    expect(report.device.detected.serviceUuid).toBe(
-      '0000ff00-0000-1000-8000-00805f9b34fb',
-    );
+    expect(report.device.detected.serviceUuid).toBe('0000ff00-0000-1000-8000-00805f9b34fb');
     // mock run is tagged so a stray submit isn't a real verification.
     expect(report.device.detected.extra?.mocked).toBe(true);
+  });
+});
+
+// ─── Catalogue-wide selection ────────────────────────────────────
+
+describe('device catalogue', () => {
+  it('offers every drivable, browser-reachable marklife chassis', () => {
+    const keys = adapter.devices.map(d => d.key);
+    // One per sub-engine: l11, yxq, tspl, escpos.
+    expect(keys).toContain('P12');
+    expect(keys).toContain('P15');
+    expect(keys).toContain('S2');
+    expect(keys).toContain('A1');
+    expect(keys).toContain('LP15');
+    expect(keys.length).toBeGreaterThan(20);
+  });
+
+  it('excludes the JBIG chassis whose encoder is deferred', () => {
+    const keys = adapter.devices.map(d => d.key);
+    // These throw UnsupportedOperationError at encode time (D4) —
+    // offering them would walk the operator to an impossible print.
+    for (const key of ['D100', 'X4', 'X8', 'U210_BY_D210', 'L100_BY_X4']) {
+      expect(keys).not.toContain(key);
+    }
+  });
+
+  it('spans more than one transport, so the shell renders a button per pipe', () => {
+    const seen = new Set<string>();
+    for (const d of adapter.devices) for (const t of Object.keys(d.transports)) seen.add(t);
+    expect(seen.has('usb')).toBe(true);
+    expect(seen.has('bluetooth-spp')).toBe(true);
+    expect(seen.has('bluetooth-gatt')).toBe(true);
+  });
+
+  it('mock targets all resolve to a catalogue entry', () => {
+    const keys = new Set(adapter.devices.map(d => d.key));
+    for (const [alias, spec] of Object.entries(adapter.mockTargets)) {
+      expect(keys.has(spec.device.key), `${alias} -> ${spec.device.key}`).toBe(true);
+    }
+  });
+});
+
+describe('media picker', () => {
+  const mediaFor = (deviceKey: string): string[] => {
+    const device = adapter.devices.find(d => d.key === deviceKey);
+    if (!device) throw new Error(`no device ${deviceKey}`);
+    const engine = device.engines[0]!;
+    // MEDIA is keyed by name in the registry map; the entries
+    // themselves carry `id`, not `key`.
+    return adapter.mediaPicker
+      .filterByDeviceEngine(adapter.media, device, engine)
+      .map(m => String(m.id));
+  };
+
+  it('narrows a 0.5" chassis to narrow-tape stock', () => {
+    const ids = mediaFor('P12');
+    expect(ids).toContain('continuous-15mm');
+    expect(ids).not.toContain('shipping-100x150');
+  });
+
+  it('narrows a 2" chassis to mobile stock', () => {
+    const ids = mediaFor('S2');
+    expect(ids).toContain('continuous-50mm');
+    expect(ids).not.toContain('continuous-15mm');
+  });
+});
+
+describe('buildReport transport', () => {
+  it('names the transport that was actually exercised', () => {
+    const device = adapter.devices.find(d => d.key === 'P15');
+    const media = adapter.media.find(m => m.id === 'continuous-15mm');
+    if (!device || !media) throw new Error('P15 / 15 mm roll missing from the catalogue');
+    const session = {
+      engine: device.engines[0],
+      media,
+      printed: true,
+      rung: 'verified',
+      notes: '',
+    } as unknown as MarklifeSession;
+    const report = adapter.buildReport({
+      device,
+      identity: {},
+      primarySession: session,
+      allSessions: [session],
+      multiEngine: false,
+      mocked: false,
+      transport: 'usb',
+    });
+    expect(report.transports[0]?.name).toBe('usb');
+    // vid/pid only belong on the report when USB was the pipe.
+    expect(report.device.confirmed.vid).toBe(0x5958);
   });
 });

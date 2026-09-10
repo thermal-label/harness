@@ -306,6 +306,16 @@ export interface BuildReportInput<TDevice, TMedia> {
   multiEngine: boolean;
   /** True if the run used the mock transport. */
   mocked: boolean;
+  /**
+   * The transport the operator actually connected over. Drivers whose
+   * registry declares a single browser transport can ignore it and
+   * name their transport literally; multi-transport drivers (marklife
+   * reaches USB, BLE GATT and SPP) must report the one that was
+   * exercised, because a verdict only speaks for the pipe it was
+   * measured on. Null only if the report is built without a live
+   * connection, which `canSubmit` already prevents.
+   */
+  transport?: BrowserTransport | null;
 }
 
 // ─── DriverAdapter ───────────────────────────────────────────────

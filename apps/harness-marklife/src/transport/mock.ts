@@ -32,20 +32,34 @@ import {
 } from '@thermal-label/contracts';
 
 /**
- * Mock target — singleton today (the P12 is the only marklife model
- * this harness targets). Defined as a union for symmetry with the
- * other harness apps so a future registry expansion has a clean
- * extension point.
+ * Mock targets — one representative chassis per sub-engine and
+ * head-size class, so `?mock=<key>` can walk every distinct encode
+ * path without hardware:
+ *
+ *   p12 — marklife-l11, 0.5" narrow tape, USB + SPP + BLE GATT
+ *   p15 — marklife-l11, 0.5" narrow tape, USB + SPP
+ *   s2  — marklife-yxq, 2" mobile (the zlib-compressed raster path)
+ *   a1  — marklife-tspl, the ASCII-markup path
+ *   lp15 — marklife-escpos, the ESC/POS path
+ *
+ * `key` is the marklife registry key; the adapter resolves it
+ * against `DEVICES` so a registry rebind cannot leave a stale
+ * protocol behind here.
  */
-export type MockTarget = 'p12';
+export type MockTarget = 'p12' | 'p15' | 's2' | 'a1' | 'lp15';
 
 interface MockMeta {
   key: string;
   name: string;
+  aliases: readonly string[];
 }
 
-const TARGET_META: Record<MockTarget, MockMeta> = {
-  p12: { key: 'P12', name: 'Marklife P12' },
+export const MOCK_TARGETS: Record<MockTarget, MockMeta> = {
+  p12: { key: 'P12', name: 'Marklife P12', aliases: ['p12', 'marklife', 'marklife-p12'] },
+  p15: { key: 'P15', name: 'Marklife P15', aliases: ['p15', 'marklife-p15'] },
+  s2: { key: 'S2', name: 'Marklife S2', aliases: ['s2', 'marklife-s2'] },
+  a1: { key: 'A1', name: 'Marklife A1', aliases: ['a1', 'marklife-a1'] },
+  lp15: { key: 'LP15', name: 'Marklife LP15', aliases: ['lp15', 'marklife-lp15'] },
 };
 
 export class MockTransport implements Transport {
@@ -54,10 +68,9 @@ export class MockTransport implements Transport {
   private writes = 0;
 
   private constructor() {
-    // Per-target state isn't needed today — P12 is the only target.
-    // The MockTarget union exists so sibling apps stay shape-
-    // symmetric and a future narrow-tape L11 variant has a clean
-    // extension point.
+    // No per-target state: every marklife chassis is fire-and-forget
+    // on the wire, so the mock differs only in which registry entry
+    // the adapter pairs it with.
   }
 
   static open(target: MockTarget = MockTransport.currentTarget): MockTransport {
@@ -66,7 +79,7 @@ export class MockTransport implements Transport {
   }
 
   static identityFor(target: MockTarget): MockMeta {
-    return TARGET_META[target];
+    return MOCK_TARGETS[target];
   }
 
   get connected(): boolean {
