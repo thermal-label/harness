@@ -25,6 +25,7 @@ import type { EngineSession } from '@thermal-label/harness-shell';
 import type { HardwareReport, IdentitySnapshot } from '@thermal-label/harness-core/shared';
 import type { MarklifeMedia } from '@thermal-label/marklife-core';
 import { adapter } from '../adapter';
+import { buildDiagnosticImage } from '../diagnostic-print';
 
 type MarklifeSession = EngineSession<MarklifeMedia>;
 
@@ -266,5 +267,56 @@ describe('buildReport transport', () => {
     expect(report.transports[0]?.name).toBe('usb');
     // vid/pid only belong on the report when USB was the pipe.
     expect(report.device.confirmed.vid).toBe(0x5958);
+  });
+});
+
+// ─── Diagnostic canvas tracks the selected media ─────────────────
+
+describe('diagnostic canvas', () => {
+  const deviceFor = (key: string) => {
+    const d = adapter.devices.find(x => x.key === key);
+    if (!d) throw new Error(`no device ${key}`);
+    return d;
+  };
+  const mediaFor = (id: string) => {
+    const m = adapter.media.find(x => String(x.id) === id);
+    if (!m) throw new Error(`no media ${id}`);
+    return m;
+  };
+  const build = (deviceKey: string, mediaId: string) =>
+    buildDiagnosticImage({
+      device: deviceFor(deviceKey),
+      media: mediaFor(mediaId),
+      harnessVersion: '0.0.0',
+      driverVersion: '0.0.0',
+    });
+
+  it('narrows the canvas to the loaded roll', () => {
+    // Both fit inside the S2's 384-dot head, so the roll decides.
+    const wide = build('S2', 'gap-50x30');
+    const narrow = build('S2', 'gap-40x20');
+    expect(wide.width).toBeGreaterThan(narrow.width);
+  });
+
+  it('never exceeds the head, however wide the roll', () => {
+    // A 50 mm roll against a 96-dot (12 mm) head: the head wins.
+    const img = build('P12', 'gap-50x30');
+    const head = deviceFor('P12').engines[0]?.headDots ?? 0;
+    expect(img.width).toBeLessThanOrEqual(head);
+  });
+
+  it('bounds the canvas height on die-cut stock', () => {
+    // 30 mm vs 20 mm at 203 dpi — the page boundary must show up.
+    const tall = build('S2', 'gap-50x30');
+    const short = build('S2', 'gap-40x20');
+    expect(tall.height).toBeGreaterThan(short.height);
+  });
+
+  it('leaves continuous stock to the shared feed budget', () => {
+    // No page boundary, so height must not track the roll width.
+    const cont = build('P12', 'continuous-15mm');
+    const diecut = build('P12', 'gap-15x30');
+    expect(cont.height).not.toBe(diecut.height);
+    expect(cont.width).toBeGreaterThan(0);
   });
 });

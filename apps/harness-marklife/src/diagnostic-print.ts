@@ -1,21 +1,27 @@
 /**
  * Marklife diagnostic-image builder for the browser harness.
  *
- * The P12 is single-engine, narrow-tape (continuous 15 mm stock,
- * ~100 printable dots @ 203 dpi on the 0.5" head). The shared
- * `buildDiagnosticImage` in harness-core drives the layout — header,
- * orientation markers, edge probes, sample text, diagonal fill — and
- * its priority-drop pass trims the verbose sections automatically
- * for so narrow a head.
+ * The canvas is derived from the **selected media**, not from the head
+ * alone. An earlier version pinned the width to `headDots` and never
+ * passed a height, so the preview was identical for every roll — the
+ * operator could switch from 12 mm narrow tape to an 80 mm label and
+ * see no change, which makes the preview worse than useless on a
+ * family whose chassis span 12 mm to 100 mm stock.
  *
- * No cutter-offset ladder — the marklife family has no auto-cut, so
- * there is no head-to-blade offset to probe. The P12 prints on
- * continuous stock, so `heightDots` is left unset and the shared
- * builder substitutes its continuous-stock feed budget (no per-page
- * boundary to respect).
+ * Width is the narrower of the loaded stock and the head: the head
+ * cannot address pins past `headDots`, and printing wider than the
+ * label puts ink on the platen.
  *
- * Returns RGBA so the driver's threshold + L11 raster pipeline runs
- * end-to-end. The harness is a fidelity test, not a bypass.
+ * Height is the label length for die-cut stock, and left unset for
+ * continuous — the shared builder then substitutes its continuous
+ * feed budget, which is the right behaviour when there is no page
+ * boundary to respect.
+ *
+ * No cutter-offset ladder — this family has no auto-cut, so there is
+ * no head-to-blade offset to probe.
+ *
+ * Returns RGBA so the driver's own threshold and raster pipeline runs
+ * end to end. The harness is a fidelity test, not a bypass.
  */
 import type { RawImageData } from '@thermal-label/contracts';
 import type { MarklifeDevice, MarklifeMedia } from '@thermal-label/marklife-core';
@@ -28,33 +34,38 @@ export interface DiagnosticPrintInput {
   driverVersion: string;
 }
 
-/**
- * `headDots` for the P12. The registry declares `headDots: 100` on
- * the single engine (a best-guess for the 0.5" narrow-tape class,
- * flagged TODO until an on-the-wire capture confirms it). The 100-dot
- * fallback guards against a malformed registry edit.
- */
-const HEAD_DOTS_FALLBACK = 100;
+/** Guards a malformed registry edit; the narrowest head in the family. */
+const HEAD_DOTS_FALLBACK = 96;
+/** Used when an engine somehow declares no dpi. Whole family is 203. */
+const DPI_FALLBACK = 203;
+
+const mmToDots = (mm: number, dpi: number): number => Math.round((mm * dpi) / 25.4);
 
 export function buildDiagnosticImage(input: DiagnosticPrintInput): RawImageData {
   const engine = input.device.engines[0];
-  // P12 engine declares `headDots: 100` and `dpi: 203` — fall back
-  // defensively so a future registry edit doesn't crash.
   const headDots = engine?.headDots ?? HEAD_DOTS_FALLBACK;
-  // The marklife media descriptor carries no `printableDots`
-  // (continuous stock has no fixed printable-dot count), so the
-  // head-dot count is the head-perpendicular width. The L11 encoder
-  // pads the bitmap up to the next byte boundary itself.
-  const widthDots = headDots;
+  const dpi = engine?.dpi ?? DPI_FALLBACK;
+  const { media } = input;
+
+  // Clamp to the head: a 50 mm roll in a 12 mm chassis still only has
+  // 12 mm of pins behind it.
+  const mediaDots = mmToDots(media.widthMm, dpi);
+  const widthDots = Math.max(8, Math.min(mediaDots, headDots));
+
+  // Die-cut stock has a page boundary; continuous does not, and the
+  // shared builder's own feed budget is the right answer there.
+  const heightDots =
+    media.type === 'continuous' || media.heightMm === undefined
+      ? undefined
+      : Math.max(8, mmToDots(media.heightMm, dpi));
+
   return buildShared({
     widthDots,
-    // Continuous stock — omit `heightDots` so the shared builder
-    // uses its continuous-stock feed default. No per-page boundary
-    // to respect on a 15 mm continuous roll.
+    ...(heightDots === undefined ? {} : { heightDots }),
     harnessVersion: input.harnessVersion,
     driverVersion: input.driverVersion,
     driverKey: 'marklife',
     deviceKey: input.device.key,
-    mediaId: String(input.media.id),
+    mediaId: String(media.id),
   });
 }
