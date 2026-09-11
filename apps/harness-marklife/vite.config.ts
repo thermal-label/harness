@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
@@ -34,19 +33,6 @@ export default defineConfig({
   // Static-bundle output: relative asset paths so the bundle works
   // when served from a sub-path (docs site mounts at /harness/marklife/).
   base: './',
-  resolve: {
-    alias: {
-      // `marklife-core/src/zlib.ts` (its `marklife-yxq` compressor)
-      // hard-imports `deflateSync` / `inflateSync` from `node:zlib`,
-      // a Node builtin Vite externalises for the browser — which
-      // breaks rollup's named-import resolution. Redirect `node:zlib`
-      // to a `pako`-backed shim (the browser path `marklife-core`'s
-      // own source comment intends). The P12 is a `marklife-l11`
-      // engine — its encoder emits an uncompressed raster, so the
-      // shim is never executed at runtime in this app.
-      'node:zlib': resolve(appDir, 'src/shims/node-zlib.ts'),
-    },
-  },
   server: {
     fs: {
       // marklife-core/-web are `link:`-overridden to the sibling
