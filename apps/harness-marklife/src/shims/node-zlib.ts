@@ -11,12 +11,11 @@
  * shim is exactly that, wired in via the `node:zlib` alias in
  * `vite.config.ts`.
  *
- * The P12 this harness targets is a `marklife-l11` engine — the L11
- * encoder sends an *uncompressed* raster, so `yxqZlibCompress` /
- * `yxqZlibDecompress` are never reached at runtime in this app. The
- * shim exists purely to satisfy the bundler's resolution of the
- * `marklife-core` barrel import; it is functionally correct
- * regardless, so a future YXQ-engine harness could reuse it.
+ * Every option `marklife-core` passes must be forwarded. `windowBits`
+ * in particular is load-bearing, not decorative — see the note in
+ * `marklife-core/src/zlib.ts` for why the YXQ stream needs a 1 KiB
+ * window. Dropping it yields a 32 KiB-window stream the S2 cannot
+ * inflate: the job is accepted, the paper feeds, nothing prints.
  *
  * `pako` is a real dependency of `marklife-core` (declared there as a
  * devDependency alongside `@types/pako`) — this app adds it as its own
@@ -24,10 +23,11 @@
  */
 import { deflate, inflate } from 'pako';
 
-/** `level` is the only `node:zlib` option `marklife-core` passes that pako honours. */
+/** The `node:zlib` options `marklife-core` passes. pako honours all but `chunkSize`. */
 interface ZlibOptions {
   level?: number;
   chunkSize?: number;
+  windowBits?: number;
 }
 
 /**
@@ -36,7 +36,10 @@ interface ZlibOptions {
  * streams internally; the output bytes are identical).
  */
 export function deflateSync(input: Uint8Array, options?: ZlibOptions): Uint8Array {
-  return deflate(input, options?.level !== undefined ? { level: options.level as 0 } : {});
+  const opts: { level?: 0; windowBits?: number } = {};
+  if (options?.level !== undefined) opts.level = options.level as 0;
+  if (options?.windowBits !== undefined) opts.windowBits = options.windowBits;
+  return deflate(input, opts);
 }
 
 /** `node:zlib`-shaped `inflateSync` — zlib container, synchronous. */
