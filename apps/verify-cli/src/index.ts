@@ -6,8 +6,8 @@
  * submit. Wizard prompts by default; expert flags bypass for
  * known-good-hardware one-liners.
  *
- * Drivers covered today: labelmanager, brother-ql. Subsequent drivers
- * land as separate PRs.
+ * Drivers covered today: labelmanager, labelwriter, brother-ql, marklife.
+ * Subsequent drivers land as separate PRs.
  */
 import { Command } from 'commander';
 import { runVerify } from './verify.js';
@@ -22,7 +22,7 @@ const TRANSPORT_TYPES: readonly TransportType[] = [
   'bluetooth-gatt',
 ];
 const RUNGS: readonly ProposedRung[] = ['verified', 'partial', 'failing'];
-const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter', 'brother-ql'] as const;
+const SUPPORTED_DRIVERS = ['labelmanager', 'labelwriter', 'brother-ql', 'marklife'] as const;
 
 interface VerifyCommandOptions {
   transport?: TransportType;
@@ -42,6 +42,8 @@ interface VerifyCommandOptions {
   host?: string;
   /** TCP-9100 port (default 9100). Brother-ql TCP only. */
   port?: number;
+  /** OS serial / RFCOMM device path for the marklife bluetooth-spp transport. */
+  device?: string;
   /** Engine role for multi-engine LabelWriter devices (Twin/Duo). */
   engine?: string;
 }
@@ -117,6 +119,10 @@ program
     Number.parseInt(v, 10),
   )
   .option(
+    '--device <path>',
+    'OS serial / RFCOMM device path for the marklife bluetooth-spp transport (e.g. /dev/rfcomm0, COM5). Bind it after OS-level pairing; wizard prompts if omitted.',
+  )
+  .option(
     '--engine <role>',
     'Engine role on multi-engine LabelWriter devices (Twin Turbo: left/right; Duo: label/tape). Defaults to the first engine declared on the model. Ignored on single-engine devices.',
   )
@@ -148,6 +154,7 @@ program
         media: options.media,
         host: options.host,
         port: options.port,
+        device: options.device,
         engine: options.engine,
       });
     } catch (err) {

@@ -213,18 +213,15 @@ async function bindResult(
   if (transport === 'usb') {
     const usb = (transports.usb as { vid?: string; pid?: string } | undefined) ?? undefined;
     const printerUsb =
-      (initialPrinter?.device?.transports?.usb as
-        | { vid?: string; pid?: string }
-        | undefined) ?? undefined;
+      (initialPrinter?.device?.transports?.usb as { vid?: string; pid?: string } | undefined) ??
+      undefined;
     const source = printerUsb ?? usb;
     if (source?.vid !== undefined && source.pid !== undefined) {
       identity.vid = parseInt(source.vid, 16);
       identity.pid = parseInt(source.pid, 16);
     }
   } else if (transport === 'bluetooth-gatt') {
-    const gatt = transports['bluetooth-gatt'] as
-      | { serviceUuid?: string }
-      | undefined;
+    const gatt = transports['bluetooth-gatt'] as { serviceUuid?: string } | undefined;
     if (gatt?.serviceUuid) identity.serviceUuid = gatt.serviceUuid;
   } else if (transport === 'serial' || transport === 'bluetooth-spp') {
     const serial = transports.serial as { defaultBaud?: number } | undefined;
@@ -354,11 +351,7 @@ function asCandidates(candidates: DropdownCandidates): DropdownCandidates {
       <StatusPill :state="printerDot.state" :label="printerDot.label" />
       <!-- Battery glyph (plan 13 §F) — renders only when the driver
            reports `status.battery`; AC/USB devices show nothing. -->
-      <StatusPill
-        v-if="batteryDot"
-        :state="batteryDot.state"
-        :label="batteryDot.label"
-      />
+      <StatusPill v-if="batteryDot" :state="batteryDot.state" :label="batteryDot.label" />
     </template>
 
     <p v-if="mockMode.isMock" class="mock-banner">
@@ -429,9 +422,7 @@ function asCandidates(candidates: DropdownCandidates): DropdownCandidates {
         <p class="muted small">Raw status response (first bytes, hex):</p>
         <pre>{{ rawStatusBytes }}</pre>
       </template>
-      <p v-else class="muted small">
-        Connect first to see live status bytes here.
-      </p>
+      <p v-else class="muted small">Connect first to see live status bytes here.</p>
     </template>
   </SectionCard>
 </template>

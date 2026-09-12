@@ -75,30 +75,21 @@ function confirm(): void {
 <template>
   <div class="dropdown-card">
     <p class="lead">
-      The connection succeeded but the harness couldn't tell which model
-      you picked. Confirm so it can drive the right protocol.
+      The connection succeeded but the harness couldn't tell which model you picked. Confirm so it
+      can drive the right protocol.
     </p>
     <ul class="candidates">
       <li v-for="item in items" :key="item.key">
         <label>
-          <input
-            type="radio"
-            name="device-pick"
-            :value="item.key"
-            v-model="selected"
-          />
+          <input type="radio" name="device-pick" :value="item.key" v-model="selected" />
           <span class="name">{{ item.name }}</span>
           <span v-if="item.subtitle" class="subtitle"> {{ item.subtitle }}</span>
         </label>
       </li>
     </ul>
     <div class="actions">
-      <button class="primary" :disabled="!selected" @click="confirm">
-        Use this one
-      </button>
-      <button class="ghost" type="button" @click="emit('cancel')">
-        Cancel
-      </button>
+      <button class="primary" :disabled="!selected" @click="confirm">Use this one</button>
+      <button class="ghost" type="button" @click="emit('cancel')">Cancel</button>
     </div>
   </div>
 </template>

@@ -164,6 +164,7 @@ function buildReport() {
     allSessions: assessedSessions,
     multiEngine: isMultiEngine.value,
     mocked: session.connection.mocked,
+    transport: session.connection.transport,
   });
   // The runtime/OS snapshot is shell-owned context, folded in here so
   // no per-driver `buildReport` has to thread it through.

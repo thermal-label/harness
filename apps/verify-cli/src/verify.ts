@@ -1,9 +1,10 @@
 /**
  * Top-level orchestration for `verify-cli verify <driver> [model]`.
  *
- * Three drivers today: labelmanager (USB-only), labelwriter (USB + TCP-9100,
- * plus the multi-transport "test another transport" loop), and brother-ql
- * (USB + TCP-9100, multi-transport too; Bluetooth-SPP deferred). The
+ * Four drivers today: labelmanager (USB-only), labelwriter (USB + TCP-9100,
+ * plus the multi-transport "test another transport" loop), brother-ql
+ * (USB + TCP-9100, multi-transport too; Bluetooth-SPP deferred), and
+ * marklife (Bluetooth-SPP over an OS-paired RFCOMM device node). The
  * dispatcher is a real `switch` with an exhaustiveness guard; plan 05
  * §sequencing nominated the second driver as the moment to grow it from a
  * flat if-tree.
@@ -12,15 +13,16 @@
  * than a discriminated union — every flag is optional at the type level,
  * and each driver's orchestrator validates the subset it cares about
  * (driver-irrelevant fields like `tapeWidth` for brother-ql are simply
- * ignored). Adding a fourth driver is one more `case` here.
+ * ignored). Adding another driver is one more `case` here.
  */
 import type { TransportType } from '@thermal-label/contracts';
 import type { ProposedRung } from '@thermal-label/harness-core/shared';
 import { runLabelmanagerVerify } from './drivers/labelmanager/verify.js';
 import { runLabelwriterVerify } from './drivers/labelwriter/verify.js';
 import { runBrotherQlVerify } from './drivers/brother-ql/verify.js';
+import { runMarklifeVerify } from './drivers/marklife/verify.js';
 
-export type SupportedDriver = 'labelmanager' | 'labelwriter' | 'brother-ql';
+export type SupportedDriver = 'labelmanager' | 'labelwriter' | 'brother-ql' | 'marklife';
 
 export interface VerifyOptions {
   driver: SupportedDriver;
@@ -56,6 +58,12 @@ export interface VerifyOptions {
   /** TCP-9100 port (default 9100). Brother-ql tcp transport only. */
   port: number | undefined;
   /**
+   * OS serial / RFCOMM device path for the `bluetooth-spp` transport
+   * (e.g. `/dev/rfcomm0`, `COM5`). Marklife only; the operator binds
+   * it after OS-level pairing. Prompted in wizard mode if omitted.
+   */
+  device: string | undefined;
+  /**
    * Engine role to drive on multi-engine devices (LW Twin Turbo:
    * `left` / `right`; LW Duo: `label` / `tape`). Default is the
    * device's first declared engine. Single-engine devices ignore this
@@ -74,6 +82,9 @@ export async function runVerify(options: VerifyOptions): Promise<void> {
       return;
     case 'brother-ql':
       await runBrotherQlVerify(options);
+      return;
+    case 'marklife':
+      await runMarklifeVerify(options);
       return;
     default: {
       const _exhaustive: never = options.driver;

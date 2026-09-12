@@ -15,6 +15,8 @@ overrides:
   '@thermal-label/labelwriter-web': ^0.6.3
   '@thermal-label/letratag-core': ^0.6.1
   '@thermal-label/letratag-web': ^0.6.1
+  '@thermal-label/marklife-core': ^0.1.0
+  '@thermal-label/marklife-web': ^0.1.0
   '@thermal-label/transport': ^0.6.0
 
 importers:
@@ -56,7 +58,7 @@ importers:
         version: 0.6.1
       '@thermal-label/brother-ql-web':
         specifier: ^0.6.1
-        version: 0.6.1(typescript@5.5.4)(usb@2.17.0)
+        version: 0.6.1(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/contracts':
         specifier: ^0.6.0
         version: 0.6.0
@@ -71,7 +73,7 @@ importers:
         version: link:../../packages/harness-shell
       '@thermal-label/transport':
         specifier: ^0.6.0
-        version: 0.6.0(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -132,10 +134,10 @@ importers:
         version: 0.6.0
       '@thermal-label/labelmanager-web':
         specifier: ^0.6.0
-        version: 0.6.0(typescript@5.5.4)(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/transport':
         specifier: ^0.6.0
-        version: 0.6.0(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -196,10 +198,10 @@ importers:
         version: 0.6.3(@thermal-label/d1-core@0.6.0)
       '@thermal-label/labelwriter-web':
         specifier: ^0.6.3
-        version: 0.6.3(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)
+        version: 0.6.3(@thermal-label/d1-core@0.6.0)(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/transport':
         specifier: ^0.6.0
-        version: 0.6.0(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -254,10 +256,68 @@ importers:
         version: 0.6.1
       '@thermal-label/letratag-web':
         specifier: ^0.6.1
-        version: 0.6.1(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.1)(@thermal-label/transport@0.6.0(usb@2.17.0))
+        version: 0.6.1(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.1)(@thermal-label/transport@0.6.0(serialport@12.0.0)(usb@2.17.0))
       '@thermal-label/transport':
         specifier: ^0.6.0
-        version: 0.6.0(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
+      vue:
+        specifier: ^3.5.0
+        version: 3.5.34(typescript@5.5.4)
+    devDependencies:
+      '@mbtech-nl/eslint-config':
+        specifier: ^1.1.0
+        version: 1.1.0(@typescript-eslint/utils@8.59.2(eslint@9.39.4)(typescript@5.5.4))(eslint@9.39.4)(typescript@5.5.4)
+      '@mbtech-nl/tsconfig':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      '@types/web-bluetooth':
+        specifier: ^0.0.20
+        version: 0.0.20
+      '@vitejs/plugin-vue':
+        specifier: ^5.1.0
+        version: 5.2.4(vite@5.4.21(@types/node@22.19.17))(vue@3.5.34(typescript@5.5.4))
+      typescript:
+        specifier: ~5.5.0
+        version: 5.5.4
+      vite:
+        specifier: ^5.4.0
+        version: 5.4.21(@types/node@22.19.17)
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+      vue-tsc:
+        specifier: ^2.1.0
+        version: 2.2.12(typescript@5.5.4)
+
+  apps/harness-marklife:
+    dependencies:
+      '@mbtech-nl/bitmap':
+        specifier: ^1.3.0
+        version: 1.3.0
+      '@thermal-label/contracts':
+        specifier: ^0.6.0
+        version: 0.6.0
+      '@thermal-label/harness-components':
+        specifier: workspace:*
+        version: link:../../packages/harness-components
+      '@thermal-label/harness-core':
+        specifier: workspace:*
+        version: link:../../packages/harness-core
+      '@thermal-label/harness-shell':
+        specifier: workspace:*
+        version: link:../../packages/harness-shell
+      '@thermal-label/marklife-core':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@thermal-label/marklife-web':
+        specifier: ^0.1.0
+        version: 0.1.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)
+      '@thermal-label/transport':
+        specifier: ^0.6.0
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
       vue:
         specifier: ^3.5.0
         version: 3.5.34(typescript@5.5.4)
@@ -313,12 +373,18 @@ importers:
       '@thermal-label/labelwriter-core':
         specifier: ^0.6.3
         version: 0.6.3(@thermal-label/d1-core@0.6.0)
+      '@thermal-label/marklife-core':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@thermal-label/transport':
         specifier: ^0.6.0
-        version: 0.6.0(usb@2.17.0)
+        version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
+      serialport:
+        specifier: ^12.0.0
+        version: 12.0.0
       usb:
         specifier: ^2.14.0
         version: 2.17.0
@@ -1230,6 +1296,70 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@serialport/binding-mock@10.2.2':
+    resolution: {integrity: sha512-HAFzGhk9OuFMpuor7aT5G1ChPgn5qSsklTFOTUX72Rl6p0xwcSVsRtG/xaGp6bxpN7fI9D/S8THLBWbBgS6ldw==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/bindings-cpp@12.0.1':
+    resolution: {integrity: sha512-r2XOwY2dDvbW7dKqSPIk2gzsr6M6Qpe9+/Ngs94fNaNlcTRCV02PfaoDmRgcubpNVVcLATlxSxPTIDw12dbKOg==}
+    engines: {node: '>=16.0.0'}
+
+  '@serialport/bindings-interface@1.2.2':
+    resolution: {integrity: sha512-CJaUd5bLvtM9c5dmO9rPBHPXTa9R2UwpkJ0wdh9JCYcbrPWsKz+ErvR0hBLeo7NPeiFdjFO4sonRljiw4d2XiA==}
+    engines: {node: ^12.22 || ^14.13 || >=16}
+
+  '@serialport/parser-byte-length@12.0.0':
+    resolution: {integrity: sha512-0ei0txFAj+s6FTiCJFBJ1T2hpKkX8Md0Pu6dqMrYoirjPskDLJRgZGLqoy3/lnU1bkvHpnJO+9oJ3PB9v8rNlg==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-cctalk@12.0.0':
+    resolution: {integrity: sha512-0PfLzO9t2X5ufKuBO34DQKLXrCCqS9xz2D0pfuaLNeTkyGUBv426zxoMf3rsMRodDOZNbFblu3Ae84MOQXjnZw==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-delimiter@11.0.0':
+    resolution: {integrity: sha512-aZLJhlRTjSmEwllLG7S4J8s8ctRAS0cbvCpO87smLvl3e4BgzbVgF6Z6zaJd3Aji2uSiYgfedCdNc4L6W+1E2g==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-delimiter@12.0.0':
+    resolution: {integrity: sha512-gu26tVt5lQoybhorLTPsH2j2LnX3AOP2x/34+DUSTNaUTzu2fBXw+isVjQJpUBFWu6aeQRZw5bJol5X9Gxjblw==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-inter-byte-timeout@12.0.0':
+    resolution: {integrity: sha512-GnCh8K0NAESfhCuXAt+FfBRz1Cf9CzIgXfp7SdMgXwrtuUnCC/yuRTUFWRvuzhYKoAo1TL0hhUo77SFHUH1T/w==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-packet-length@12.0.0':
+    resolution: {integrity: sha512-p1hiCRqvGHHLCN/8ZiPUY/G0zrxd7gtZs251n+cfNTn+87rwcdUeu9Dps3Aadx30/sOGGFL6brIRGK4l/t7MuQ==}
+    engines: {node: '>=8.6.0'}
+
+  '@serialport/parser-readline@11.0.0':
+    resolution: {integrity: sha512-rRAivhRkT3YO28WjmmG4FQX6L+KMb5/ikhyylRfzWPw0nSXy97+u07peS9CbHqaNvJkMhH1locp2H36aGMOEIA==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-readline@12.0.0':
+    resolution: {integrity: sha512-O7cywCWC8PiOMvo/gglEBfAkLjp/SENEML46BXDykfKP5mTPM46XMaX1L0waWU6DXJpBgjaL7+yX6VriVPbN4w==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-ready@12.0.0':
+    resolution: {integrity: sha512-ygDwj3O4SDpZlbrRUraoXIoIqb8sM7aMKryGjYTIF0JRnKeB1ys8+wIp0RFMdFbO62YriUDextHB5Um5cKFSWg==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-regex@12.0.0':
+    resolution: {integrity: sha512-dCAVh4P/pZrLcPv9NJ2mvPRBg64L5jXuiRxIlyxxdZGH4WubwXVXY/kBTihQmiAMPxbT3yshSX8f2+feqWsxqA==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-slip-encoder@12.0.0':
+    resolution: {integrity: sha512-0APxDGR9YvJXTRfY+uRGhzOhTpU5akSH183RUcwzN7QXh8/1jwFsFLCu0grmAUfi+fItCkR+Xr1TcNJLR13VNA==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/parser-spacepacket@12.0.0':
+    resolution: {integrity: sha512-dozONxhPC/78pntuxpz/NOtVps8qIc/UZzdc/LuPvVsqCoJXiRxOg6ZtCP/W58iibJDKPZPAWPGYeZt9DJxI+Q==}
+    engines: {node: '>=12.0.0'}
+
+  '@serialport/stream@12.0.0':
+    resolution: {integrity: sha512-9On64rhzuqKdOQyiYLYv2lQOh3TZU/D3+IWCR5gk0alPel2nwpp4YwDEGiUBfrQZEdQ6xww0PWkzqth4wqwX3Q==}
+    engines: {node: '>=12.0.0'}
+
   '@thermal-label/brother-ql-core@0.6.1':
     resolution: {integrity: sha512-onUZ4NsUbDO7omZFEVQ+BLbESFxb6qVGdbd8M9KKQbGIHvbiDos6lnmHESxuy3syGFw1i6uwoMNnwURgCDhf7A==}
     engines: {node: '>=20.9.0'}
@@ -1246,6 +1376,10 @@ packages:
 
   '@thermal-label/d1-core@0.6.0':
     resolution: {integrity: sha512-LwkjsK9cyp3BIGKTQRb0ItT1+NRM2aaBVQS6LEP4sqvqzZQBOc/LE1QoVU7+XoYmFjskmZzYWS76rD299GK9Qg==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/escpos-core@0.2.1':
+    resolution: {integrity: sha512-a23NbSMa2pCU1oPbs+J0wurflaWJ+LGiVzkMyD2pgY1Gj4GHvHlkhMlFwFyKgbfe86bhcJQtRG+7P0uVoR4hpQ==}
     engines: {node: '>=20.9.0'}
 
   '@thermal-label/labelmanager-core@0.6.0':
@@ -1285,6 +1419,16 @@ packages:
       '@thermal-label/letratag-core': ^0.6.1
       '@thermal-label/transport': ^0.6.0
 
+  '@thermal-label/marklife-core@0.1.0':
+    resolution: {integrity: sha512-FRnc9l+w8atkRkChzIysjZBpQgJ9M7ZDblIygqUcsfhe07r9oTWApWOx/fL1hiZblL3319bSYyt+iG/Ji+kkzw==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/marklife-web@0.1.0':
+    resolution: {integrity: sha512-T9mXdvWxJIz3Fi8HR3ys7QDgRRn0rxPr95NHe4fkPcyiS78DmxF0B4CBmEU9ChclLRhtf5Z3OD1PBl57SWgyzw==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      typescript: '>=5.0'
+
   '@thermal-label/transport@0.6.0':
     resolution: {integrity: sha512-Na1e0CrNBhCEFH1mxBTD6WUmuyjwuysZIUnBeYTPk2Y8FpAVSxKbXPs8INFBTQ4sJbRehkT8d/TgGjFhrZ6PFQ==}
     engines: {node: '>=20.9.0'}
@@ -1296,6 +1440,10 @@ packages:
         optional: true
       usb:
         optional: true
+
+  '@thermal-label/tspl-core@0.2.0':
+    resolution: {integrity: sha512-RxihmkSeydZ8/gwLd8btN//CxB2VuXl2BbdhwMZYgtA46QlRjJd/RZelXDy51ui7QgbcElr/yZlxvCo4lvfhBg==}
+    engines: {node: '>=20.9.0'}
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -1750,6 +1898,15 @@ packages:
 
   de-indent@1.0.2:
     resolution: {integrity: sha512-e/1zu3xH5MQryN2zdVaF0OrdNLUbvWxzMbi+iNA6Bky7l1RoP8a2fIbRocyHclXt/arDrrR6lL3TqFD9pMQTsg==}
+
+  debug@4.3.4:
+    resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2252,6 +2409,9 @@ packages:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
     engines: {node: '>=4'}
 
+  ms@2.1.2:
+    resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -2275,9 +2435,16 @@ packages:
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
 
+  node-addon-api@7.0.0:
+    resolution: {integrity: sha512-vgbBJTS4m5/KkE16t5Ly0WW9hz46swAstv0hYYwMtbG7AznRhNyfLRe8HZAiWIpcHzoO7HxhLuBQj9rJ/Ho0ZA==}
+
   node-addon-api@8.7.0:
     resolution: {integrity: sha512-9MdFxmkKaOYVTV+XVRG8ArDwwQ77XIgIPyKASB1k3JPq3M8fGQQQE3YpMOrKm6g//Ktx8ivZr8xo1Qmtqub+GA==}
     engines: {node: ^18 || ^20 || >= 21}
+
+  node-gyp-build@4.6.0:
+    resolution: {integrity: sha512-NTZVKn9IylLwUzaKjkas1e4u2DLNcV4rdYagA4PWdPwW87Bi7z+BznyKSRwS/761tV/lzCGXplWsiaMjLqP2zQ==}
+    hasBin: true
 
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
@@ -2334,6 +2501,9 @@ packages:
 
   package-manager-detector@0.2.11:
     resolution: {integrity: sha512-BEnLolu+yuz22S56CU1SUKq3XC3PkwD5wv4ikR4MfGvnRVcmzXR9DwSlW2fEamyTPyXHomBJRzgapeuBvRNzJQ==}
+
+  pako@2.2.0:
+    resolution: {integrity: sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==}
 
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
@@ -2481,6 +2651,10 @@ packages:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
+
+  serialport@12.0.0:
+    resolution: {integrity: sha512-AmH3D9hHPFmnF/oq/rvigfiAouAKyK/TjnrkwZRYSFZxNggJxwvbAbfYrLeuvq7ktUdhuHdVdSjj852Z55R+uA==}
+    engines: {node: '>=16.0.0'}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -3469,16 +3643,70 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.3':
     optional: true
 
+  '@serialport/binding-mock@10.2.2':
+    dependencies:
+      '@serialport/bindings-interface': 1.2.2
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@serialport/bindings-cpp@12.0.1':
+    dependencies:
+      '@serialport/bindings-interface': 1.2.2
+      '@serialport/parser-readline': 11.0.0
+      debug: 4.3.4
+      node-addon-api: 7.0.0
+      node-gyp-build: 4.6.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@serialport/bindings-interface@1.2.2': {}
+
+  '@serialport/parser-byte-length@12.0.0': {}
+
+  '@serialport/parser-cctalk@12.0.0': {}
+
+  '@serialport/parser-delimiter@11.0.0': {}
+
+  '@serialport/parser-delimiter@12.0.0': {}
+
+  '@serialport/parser-inter-byte-timeout@12.0.0': {}
+
+  '@serialport/parser-packet-length@12.0.0': {}
+
+  '@serialport/parser-readline@11.0.0':
+    dependencies:
+      '@serialport/parser-delimiter': 11.0.0
+
+  '@serialport/parser-readline@12.0.0':
+    dependencies:
+      '@serialport/parser-delimiter': 12.0.0
+
+  '@serialport/parser-ready@12.0.0': {}
+
+  '@serialport/parser-regex@12.0.0': {}
+
+  '@serialport/parser-slip-encoder@12.0.0': {}
+
+  '@serialport/parser-spacepacket@12.0.0': {}
+
+  '@serialport/stream@12.0.0':
+    dependencies:
+      '@serialport/bindings-interface': 1.2.2
+      debug: 4.3.4
+    transitivePeerDependencies:
+      - supports-color
+
   '@thermal-label/brother-ql-core@0.6.1':
     dependencies:
       '@mbtech-nl/bitmap': 1.3.0
       '@thermal-label/contracts': 0.6.0
 
-  '@thermal-label/brother-ql-web@0.6.1(typescript@5.5.4)(usb@2.17.0)':
+  '@thermal-label/brother-ql-web@0.6.1(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)':
     dependencies:
       '@thermal-label/brother-ql-core': 0.6.1
       '@thermal-label/contracts': 0.6.0
-      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
       typescript: 5.5.4
     transitivePeerDependencies:
       - serialport
@@ -3493,17 +3721,21 @@ snapshots:
       '@mbtech-nl/bitmap': 1.3.0
       '@thermal-label/contracts': 0.6.0
 
+  '@thermal-label/escpos-core@0.2.1':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+
   '@thermal-label/labelmanager-core@0.6.0':
     dependencies:
       '@mbtech-nl/bitmap': 1.3.0
       '@thermal-label/contracts': 0.6.0
       '@thermal-label/d1-core': 0.6.0
 
-  '@thermal-label/labelmanager-web@0.6.0(typescript@5.5.4)(usb@2.17.0)':
+  '@thermal-label/labelmanager-web@0.6.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)':
     dependencies:
       '@thermal-label/contracts': 0.6.0
       '@thermal-label/labelmanager-core': 0.6.0
-      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
       typescript: 5.5.4
     transitivePeerDependencies:
       - serialport
@@ -3516,11 +3748,11 @@ snapshots:
     optionalDependencies:
       '@thermal-label/d1-core': 0.6.0
 
-  '@thermal-label/labelwriter-web@0.6.3(@thermal-label/d1-core@0.6.0)(typescript@5.5.4)(usb@2.17.0)':
+  '@thermal-label/labelwriter-web@0.6.3(@thermal-label/d1-core@0.6.0)(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)':
     dependencies:
       '@thermal-label/contracts': 0.6.0
       '@thermal-label/labelwriter-core': 0.6.3(@thermal-label/d1-core@0.6.0)
-      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
       typescript: 5.5.4
     transitivePeerDependencies:
       - '@thermal-label/d1-core'
@@ -3532,17 +3764,40 @@ snapshots:
       '@mbtech-nl/bitmap': 1.3.0
       '@thermal-label/contracts': 0.6.0
 
-  '@thermal-label/letratag-web@0.6.1(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.1)(@thermal-label/transport@0.6.0(usb@2.17.0))':
+  '@thermal-label/letratag-web@0.6.1(@thermal-label/contracts@0.6.0)(@thermal-label/letratag-core@0.6.1)(@thermal-label/transport@0.6.0(serialport@12.0.0)(usb@2.17.0))':
     dependencies:
       '@thermal-label/contracts': 0.6.0
       '@thermal-label/letratag-core': 0.6.1
-      '@thermal-label/transport': 0.6.0(usb@2.17.0)
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
 
-  '@thermal-label/transport@0.6.0(usb@2.17.0)':
+  '@thermal-label/marklife-core@0.1.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/escpos-core': 0.2.1
+      '@thermal-label/tspl-core': 0.2.0
+      pako: 2.2.0
+
+  '@thermal-label/marklife-web@0.1.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/marklife-core': 0.1.0
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - serialport
+      - usb
+
+  '@thermal-label/transport@0.6.0(serialport@12.0.0)(usb@2.17.0)':
     dependencies:
       '@thermal-label/contracts': 0.6.0
     optionalDependencies:
+      serialport: 12.0.0
       usb: 2.17.0
+
+  '@thermal-label/tspl-core@0.2.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
 
   '@tybys/wasm-util@0.10.2':
     dependencies:
@@ -4012,6 +4267,10 @@ snapshots:
   csstype@3.2.3: {}
 
   de-indent@1.0.2: {}
+
+  debug@4.3.4:
+    dependencies:
+      ms: 2.1.2
 
   debug@4.4.3:
     dependencies:
@@ -4547,6 +4806,8 @@ snapshots:
 
   mri@1.2.0: {}
 
+  ms@2.1.2: {}
+
   ms@2.1.3: {}
 
   muggle-string@0.4.1: {}
@@ -4559,7 +4820,11 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
+  node-addon-api@7.0.0: {}
+
   node-addon-api@8.7.0: {}
+
+  node-gyp-build@4.6.0: {}
 
   node-gyp-build@4.8.4: {}
 
@@ -4616,6 +4881,8 @@ snapshots:
   package-manager-detector@0.2.11:
     dependencies:
       quansync: 0.2.11
+
+  pako@2.2.0: {}
 
   parent-module@1.0.1:
     dependencies:
@@ -4758,6 +5025,25 @@ snapshots:
   semver@5.7.2: {}
 
   semver@7.7.4: {}
+
+  serialport@12.0.0:
+    dependencies:
+      '@serialport/binding-mock': 10.2.2
+      '@serialport/bindings-cpp': 12.0.1
+      '@serialport/parser-byte-length': 12.0.0
+      '@serialport/parser-cctalk': 12.0.0
+      '@serialport/parser-delimiter': 12.0.0
+      '@serialport/parser-inter-byte-timeout': 12.0.0
+      '@serialport/parser-packet-length': 12.0.0
+      '@serialport/parser-readline': 12.0.0
+      '@serialport/parser-ready': 12.0.0
+      '@serialport/parser-regex': 12.0.0
+      '@serialport/parser-slip-encoder': 12.0.0
+      '@serialport/parser-spacepacket': 12.0.0
+      '@serialport/stream': 12.0.0
+      debug: 4.3.4
+    transitivePeerDependencies:
+      - supports-color
 
   shebang-command@2.0.0:
     dependencies:

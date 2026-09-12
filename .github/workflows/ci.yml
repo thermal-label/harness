@@ -55,6 +55,7 @@ jobs:
           - harness-labelmanager
           - harness-labelwriter
           - harness-letratag
+          - harness-marklife
     steps:
       - uses: actions/checkout@v6
 

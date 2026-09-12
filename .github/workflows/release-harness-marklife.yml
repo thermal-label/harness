@@ -1,0 +1,83 @@
+name: Release harness-marklife
+
+# Builds the marklife harness app to a static bundle, zips dist/,
+# and attaches it as a Release artifact named
+# `harness-marklife-<tag>.zip`. The docs site CI's
+# `pull-harness-bundles` step pulls the `latest`-tagged artifact and
+# serves it under thermal-label.github.io/harness/marklife/.
+#
+# Triggered by tags matching `harness-marklife-v*`. Run locally
+# (no auto-tag in this repo) by:
+#   git tag harness-marklife-v0.1.0
+#   git push origin harness-marklife-v0.1.0
+#
+# This workflow does NOT trigger releases automatically — the
+# maintainer cuts tags by hand.
+
+on:
+  push:
+    tags:
+      - 'harness-marklife-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build harness-marklife
+        run: pnpm --filter @thermal-label/harness-marklife build
+
+      - name: Determine artifact name
+        id: artifact
+        run: |
+          # GITHUB_REF is already `harness-marklife-v<version>` — the tag
+          # itself is the artifact stem, so don't prefix it a second time.
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "name=${TAG}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Zip dist/
+        working-directory: apps/harness-marklife/dist
+        run: zip -r "../../../${{ steps.artifact.outputs.name }}" .
+
+      - name: Upload as GitHub Release artifact
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ steps.artifact.outputs.name }}
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+
+      - name: Notify docs site to rebuild
+        # The docs site rebuilds and re-runs pull-harness-bundles to pick up
+        # this new bundle. Cross-repo repository_dispatch needs a token with
+        # write access to the docs repo — the built-in GITHUB_TOKEN is scoped
+        # to this repo only. Create a PAT (or fine-grained token) with
+        # `contents: write` on thermal-label/thermal-label.github.io and store
+        # it as the DOCS_DISPATCH_TOKEN secret. If the secret is absent this
+        # step is skipped — the release still succeeds and the docs site
+        # picks the bundle up on its next scheduled/pushed build.
+        env:
+          DOCS_DISPATCH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+        if: env.DOCS_DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ env.DOCS_DISPATCH_TOKEN }}
+          repository: thermal-label/thermal-label.github.io
+          event-type: docs-update
+          client-payload: '{"repo": "harness", "ref": "${{ github.ref_name }}"}'

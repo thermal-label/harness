@@ -153,9 +153,7 @@ const hasPrinted = computed(() => Boolean(session.activeSession.value?.printed))
         </p>
       </div>
 
-      <p v-if="previewError" class="warn small">
-        Preview unavailable: {{ previewError }}
-      </p>
+      <p v-if="previewError" class="warn small">Preview unavailable: {{ previewError }}</p>
 
       <div class="actions">
         <button class="primary" :disabled="printing" type="button" @click="doPrint">

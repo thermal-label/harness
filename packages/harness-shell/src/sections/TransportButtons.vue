@@ -59,9 +59,7 @@ const buttons = computed<readonly ButtonSpec[]>(() =>
   props.transports.map(t => ({ transport: t, label: BUTTON_LABELS[t] })),
 );
 
-const helpHref = computed(
-  () => `https://thermal-label.github.io/help/connect/${props.driverKey}/`,
-);
+const helpHref = computed(() => `https://thermal-label.github.io/help/connect/${props.driverKey}/`);
 </script>
 
 <template>
