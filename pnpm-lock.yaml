@@ -15,8 +15,8 @@ overrides:
   '@thermal-label/labelwriter-web': ^0.6.3
   '@thermal-label/letratag-core': ^0.6.1
   '@thermal-label/letratag-web': ^0.6.1
-  '@thermal-label/marklife-core': link:../marklife/packages/core
-  '@thermal-label/marklife-web': link:../marklife/packages/web
+  '@thermal-label/marklife-core': ^0.1.0
+  '@thermal-label/marklife-web': ^0.1.0
   '@thermal-label/transport': ^0.6.0
 
 importers:
@@ -310,11 +310,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/harness-shell
       '@thermal-label/marklife-core':
-        specifier: link:../../../marklife/packages/core
-        version: link:../../../marklife/packages/core
+        specifier: ^0.1.0
+        version: 0.1.0
       '@thermal-label/marklife-web':
-        specifier: link:../../../marklife/packages/web
-        version: link:../../../marklife/packages/web
+        specifier: ^0.1.0
+        version: 0.1.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)
       '@thermal-label/transport':
         specifier: ^0.6.0
         version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
@@ -374,8 +374,8 @@ importers:
         specifier: ^0.6.3
         version: 0.6.3(@thermal-label/d1-core@0.6.0)
       '@thermal-label/marklife-core':
-        specifier: link:../../../marklife/packages/core
-        version: link:../../../marklife/packages/core
+        specifier: ^0.1.0
+        version: 0.1.0
       '@thermal-label/transport':
         specifier: ^0.6.0
         version: 0.6.0(serialport@12.0.0)(usb@2.17.0)
@@ -1378,6 +1378,10 @@ packages:
     resolution: {integrity: sha512-LwkjsK9cyp3BIGKTQRb0ItT1+NRM2aaBVQS6LEP4sqvqzZQBOc/LE1QoVU7+XoYmFjskmZzYWS76rD299GK9Qg==}
     engines: {node: '>=20.9.0'}
 
+  '@thermal-label/escpos-core@0.2.1':
+    resolution: {integrity: sha512-a23NbSMa2pCU1oPbs+J0wurflaWJ+LGiVzkMyD2pgY1Gj4GHvHlkhMlFwFyKgbfe86bhcJQtRG+7P0uVoR4hpQ==}
+    engines: {node: '>=20.9.0'}
+
   '@thermal-label/labelmanager-core@0.6.0':
     resolution: {integrity: sha512-KyTQbPhqnFf3Mj8h+CIkUdiD/MzWHZGqDa7zm3hw4O3CtXL7mgat2dLtHX05dz4NxsnGYJNMN+b9PUJeKvc/wQ==}
     engines: {node: '>=20.9.0'}
@@ -1415,6 +1419,16 @@ packages:
       '@thermal-label/letratag-core': ^0.6.1
       '@thermal-label/transport': ^0.6.0
 
+  '@thermal-label/marklife-core@0.1.0':
+    resolution: {integrity: sha512-FRnc9l+w8atkRkChzIysjZBpQgJ9M7ZDblIygqUcsfhe07r9oTWApWOx/fL1hiZblL3319bSYyt+iG/Ji+kkzw==}
+    engines: {node: '>=20.9.0'}
+
+  '@thermal-label/marklife-web@0.1.0':
+    resolution: {integrity: sha512-T9mXdvWxJIz3Fi8HR3ys7QDgRRn0rxPr95NHe4fkPcyiS78DmxF0B4CBmEU9ChclLRhtf5Z3OD1PBl57SWgyzw==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      typescript: '>=5.0'
+
   '@thermal-label/transport@0.6.0':
     resolution: {integrity: sha512-Na1e0CrNBhCEFH1mxBTD6WUmuyjwuysZIUnBeYTPk2Y8FpAVSxKbXPs8INFBTQ4sJbRehkT8d/TgGjFhrZ6PFQ==}
     engines: {node: '>=20.9.0'}
@@ -1426,6 +1440,10 @@ packages:
         optional: true
       usb:
         optional: true
+
+  '@thermal-label/tspl-core@0.2.0':
+    resolution: {integrity: sha512-RxihmkSeydZ8/gwLd8btN//CxB2VuXl2BbdhwMZYgtA46QlRjJd/RZelXDy51ui7QgbcElr/yZlxvCo4lvfhBg==}
+    engines: {node: '>=20.9.0'}
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -2483,6 +2501,9 @@ packages:
 
   package-manager-detector@0.2.11:
     resolution: {integrity: sha512-BEnLolu+yuz22S56CU1SUKq3XC3PkwD5wv4ikR4MfGvnRVcmzXR9DwSlW2fEamyTPyXHomBJRzgapeuBvRNzJQ==}
+
+  pako@2.2.0:
+    resolution: {integrity: sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==}
 
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
@@ -3700,6 +3721,10 @@ snapshots:
       '@mbtech-nl/bitmap': 1.3.0
       '@thermal-label/contracts': 0.6.0
 
+  '@thermal-label/escpos-core@0.2.1':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+
   '@thermal-label/labelmanager-core@0.6.0':
     dependencies:
       '@mbtech-nl/bitmap': 1.3.0
@@ -3745,12 +3770,34 @@ snapshots:
       '@thermal-label/letratag-core': 0.6.1
       '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
 
+  '@thermal-label/marklife-core@0.1.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/escpos-core': 0.2.1
+      '@thermal-label/tspl-core': 0.2.0
+      pako: 2.2.0
+
+  '@thermal-label/marklife-web@0.1.0(serialport@12.0.0)(typescript@5.5.4)(usb@2.17.0)':
+    dependencies:
+      '@thermal-label/contracts': 0.6.0
+      '@thermal-label/marklife-core': 0.1.0
+      '@thermal-label/transport': 0.6.0(serialport@12.0.0)(usb@2.17.0)
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - serialport
+      - usb
+
   '@thermal-label/transport@0.6.0(serialport@12.0.0)(usb@2.17.0)':
     dependencies:
       '@thermal-label/contracts': 0.6.0
     optionalDependencies:
       serialport: 12.0.0
       usb: 2.17.0
+
+  '@thermal-label/tspl-core@0.2.0':
+    dependencies:
+      '@mbtech-nl/bitmap': 1.3.0
 
   '@tybys/wasm-util@0.10.2':
     dependencies:
@@ -4834,6 +4881,8 @@ snapshots:
   package-manager-detector@0.2.11:
     dependencies:
       quansync: 0.2.11
+
+  pako@2.2.0: {}
 
   parent-module@1.0.1:
     dependencies:

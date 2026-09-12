@@ -16,13 +16,9 @@ const versionOf = (pkgPath: string): string =>
 const HARNESS_VERSION = versionOf(`${appDir}package.json`);
 const DRIVER_VERSION = versionOf(`${appDir}node_modules/@thermal-label/marklife-core/package.json`);
 
-// `@thermal-label/contracts` is no longer aliased — Wave 1 published it
-// to npm, so the harness root's pnpm override pins it to `^0.6.0` and
-// every importer (the app and the linked marklife-core/-web siblings)
-// resolves the one registry copy. The marklife-core/-web packages are
-// still unpublished, so the harness root's pnpm override redirects
-// `@thermal-label/marklife-core` / `-web` to `link:../marklife/packages/*`
-// instead — the linked `dist/` must be built before this app's build.
+// `@thermal-label/contracts` and `marklife-core` / `-web` all resolve
+// from the registry through the harness root's pnpm overrides, so the
+// app and the driver share the one contracts copy.
 
 export default defineConfig({
   plugins: [vue()],
@@ -33,16 +29,6 @@ export default defineConfig({
   // Static-bundle output: relative asset paths so the bundle works
   // when served from a sub-path (docs site mounts at /harness/marklife/).
   base: './',
-  server: {
-    fs: {
-      // marklife-core/-web are `link:`-overridden to the sibling
-      // checkout (outside the harness root) — they are unpublished.
-      // Vite's dev server refuses to serve files outside its
-      // allow-list, so widen it to the ~/thermal-label workspace
-      // parent. Inert once the override returns to a registry pin.
-      allow: ['../../..'],
-    },
-  },
   optimizeDeps: {
     force: false,
   },
